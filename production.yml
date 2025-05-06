@@ -5,7 +5,7 @@ volumes:
 services:
   shinyapp:
     ports:
-      - "8010:8010"
+      - "8000:8000"
     build:
       context: .
       dockerfile: ./compose/production/shiny/Dockerfile
@@ -20,10 +20,10 @@ services:
       - "traefik.http.routers.shinyapp.entrypoints=web-secure"
       - "traefik.http.routers.shinyapp.tls=true"
       - "traefik.http.routers.shinyapp.tls.certresolver=letsencrypt"
-      - "traefik.http.services.shinyapp.loadbalancer.server.port=8010"
+      - "traefik.http.services.shinyapp.loadbalancer.server.port=8000"
     networks:
       - web
-    command: python -m tfbpshiny shiny --port 8010 --host 0.0.0.0
+    command: python -m tfbpshiny shiny --host 0.0.0.0
 
 
   traefik:
