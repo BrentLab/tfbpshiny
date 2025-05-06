@@ -1,0 +1,82 @@
+site_name: tfbpshiny
+site_description: "A collection of objects and functions to work with calling cards sequencing tools"
+site_author: "ben mueller <email@email.com>, chase mateusiak <chasem@wustl.edu>, michael brent <brent@wustl.edu>"
+site_url: "https://brentlab.github.io/tfbpshiny/"
+repo_url: "https://github.com/brentlab/tfbpshiny"
+repo_name: "tfbpshiny"
+edit_uri: "edit/master/docs/"
+watch: ['tfbpshiny', 'docs']
+
+theme:
+  name: material
+
+plugins:
+- search
+- autorefs
+- section-index
+- mkdocs-jupyter:
+      remove_tag_config:
+          remove_input_tags:
+              - hide
+          remove_output_tags:
+              - hide
+- mkdocstrings:
+    handlers:
+          python:
+            paths: [tfbpshiny]  # search packages in the src folder
+            merge_init_into_class: True
+            options:
+              docstring_style: 'sphinx'
+
+markdown_extensions:
+  - smarty
+  - toc:
+      permalink: True
+  - sane_lists
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: "!!python/name:pymdownx.superfences.fence_code_format"
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+  - https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js
+  - js/init-mermaid.js
+
+nav:
+- Home: index.md
+- Tutorials:
+  - Database Interface: tutorials/database_interface.ipynb
+  - LassoCV: tutorials/lassoCV.ipynb
+  - Interactor Modeling Workflow: tutorials/interactor_modeling_workflow.ipynb
+- API:
+  - Models:
+    - Overview: ml_models/index.md
+    - SigmoidModel: ml_models/SigmoidModel.md
+    - Lasso Modeling: ml_models/lasso_modeling.md
+  - Database Interface:
+    - Records Only Classes:
+      - interface/BindingManualQCAPI.md
+      - interface/DataSourceAPI.md
+      - interface/DtoAPI.md
+      - interface/ExpressionManualQCAPI.md
+      - interface/FileFormatAPI.md
+      - interface/GenomicFeatureAPI.md
+      - interface/RegulatorAPI.md
+    - Records and Files Classes:
+      - BindingAPI: interface/BindingAPI.md
+      - BindingConcatenatedAPI: interface/BindingConcatenatedAPI.md
+      - CallingCardsBackgroundAPI: interface/CallingCardsBackgroundAPI.md
+      - ExpressionAPI: interface/ExpressionAPI.md
+      - PromoterSetAPI: interface/PromoterSetAPI.md
+      - PromoterSetSigAPI: interface/PromoterSetSigAPI.md
+    - Developer Classes:
+      - interface/AbstractAPI.md
+      - interface/AbstractRecordsAndFilesAPI.md
+      - interface/AbstractRecordsOnlyAPI.md
+      - interface/Cache.md
+      - interface/ParamsDict.md

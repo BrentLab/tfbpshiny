@@ -1,0 +1,248 @@
+from logging import Logger
+
+from shiny import Inputs, Outputs, Session, module, reactive, req, ui
+
+from .bindingmanualqc_table_module import (
+    bindingmanualqc_table_server,
+    bindingmanualqc_table_ui,
+)
+from .dto_distributions_module import (
+    dto_distributions_server,
+    dto_distributions_ui,
+)
+from .rank_response_distributions_module import (
+    rank_response_distributions_server,
+    rank_response_distributions_ui,
+)
+from .rank_response_replicate_plot_module import (
+    rank_response_replicate_plot_server,
+    rank_response_replicate_plot_ui,
+)
+from .rank_response_replicate_table_module import (
+    rank_response_replicate_table_server,
+    rank_response_replicate_table_ui,
+)
+
+_init_rr_choices = [
+    "promotersetsig",
+    "expression",
+    "binding_source",
+    "expression_source",
+    "univariate_pvalue",
+    "univariate_rsquared",
+    "dto_fdr",
+    "dto_empirical_pvalue",
+    "rank_25",
+    "rank_50",
+    "genomic_inserts",
+    "mito_inserts",
+    "plasmid_inserts",
+]
+
+_init_bindingmanualqc_choices = [
+    "promotersetsig",
+    "dto_status",
+    "rank_response_status",
+]
+
+
+@module.ui
+def compare_ui():
+    return ui.layout_sidebar(
+        ui.sidebar(
+            ui.input_switch(
+                "symbol_locus_tag_switch", label="Symbol/Locus Tag", value=False
+            ),
+            ui.input_select(
+                "regulator",
+                label="Regulator",
+                selectize=True,
+                selected=None,
+                choices=[],
+            ),
+            ui.input_checkbox_group(
+                "rr_columns",
+                "RR Replicate Columns",
+                choices=_init_rr_choices,
+                selected=_init_rr_choices,
+            ),
+            ui.input_checkbox_group(
+                "bindingmanualqc_columns",
+                "BindingManualQC columns",
+                choices=_init_bindingmanualqc_choices,
+                selected=_init_bindingmanualqc_choices,
+            ),
+        ),
+        ui.div(
+            rank_response_distributions_ui("rank_response_distributions"),
+            dto_distributions_ui("dto_distributions"),
+            rank_response_replicate_plot_ui("rank_response_replicate_plot"),
+            rank_response_replicate_table_ui("rank_response_replicate_table"),
+            bindingmanualqc_table_ui("bindingmanualqc_table"),
+            style="max-width: 100%; overflow-x: auto;",
+        ),
+    )
+
+
+@module.server
+def compare_server(
+    input: Inputs,
+    output: Outputs,
+    session: Session,
+    *,
+    rank_response_metadata: reactive.ExtendedTask,
+    bindingmanualqc_result: reactive.ExtendedTask,
+    logger: Logger,
+):
+    """
+    This function produces the reactive/render functions necessary to producing the
+    binding and perturbation response `source_name` upset plots. All arguments must be
+    passed as keyword arguments.
+
+    :param rank_response_metadata_calc: This is the result from a
+        reactive.extended_task, which may be run in the background. Result can be
+        retrieved with .result()
+    :param source_name_dict: A dictionary where the keys are the levels of
+        `source_name` and the values are (possibly -- could be one to one) renamed
+        factor levels for display
+    :param output_id: output UI name for the upset plot
+    :param selected_sets: a reactive value, instantiated in the outer scope, to store
+        the user's upset plot set selection
+    :param logger: A logger object
+
+    :return: A reactive.calc with the metadata filtered for the selected upset plot
+        sets
+
+    """
+
+    @reactive.effect
+    def _():
+        rank_response_metadata_local = rank_response_metadata.result()
+
+        input_switch_value = input.symbol_locus_tag_switch.get()
+
+        logger.info("switch: %s", input_switch_value)
+
+        regulator_col = (
+            "regulator_symbol" if input_switch_value else "regulator_locus_tag"
+        )
+
+        logger.info("regulator_col: %s", regulator_col)
+
+        regulator_dict = (
+            rank_response_metadata_local[["regulator_id", regulator_col]]
+            .drop_duplicates()
+            .sort_values(by=regulator_col)
+            .set_index("regulator_id")
+            .to_dict(orient="dict")
+        )
+
+        logger.info("regulator_dict: %s", regulator_dict.keys())
+
+        ui.update_select("regulator", choices=regulator_dict)
+
+    @reactive.effect
+    def _():
+        x = input.regulator.get()
+        logger.debug("regulator: %s", x)
+
+    rr_metadata = rank_response_replicate_plot_server(
+        "rank_response_replicate_plot",
+        selected_regulator=input.regulator,
+        logger=logger,
+    )
+
+    @reactive.calc
+    def bindingmanualqc_subset_df():
+        # use the promotersetsig in rr_metadata to subset the bindingmanualqc table
+        # by right joining to rr_metadata on single_binding and composite_binding
+        rr_metadata_local = rr_metadata.get()
+        bindingmanualqc_local = bindingmanualqc_result.result()
+
+        logger.debug("bindingmanualqc_subset_df: %s", bindingmanualqc_local)
+        logger.debug("rr_metadata: %s", rr_metadata_local)
+
+        bindingmanualqc_subset = (
+            bindingmanualqc_local.merge(
+                rr_metadata_local[
+                    ["promotersetsig", "single_binding", "composite_binding"]
+                ],
+                how="right",
+                left_on=["single_binding", "composite_binding"],
+                right_on=["single_binding", "composite_binding"],
+            )
+            .drop_duplicates()
+            .sort_values(by="promotersetsig", ascending=False)
+        )
+
+        logger.debug("bindingmanualqc_subset: %s", bindingmanualqc_subset)
+
+        selected_bindingmanualqc_cols = list(input.bindingmanualqc_columns.get())
+        logger.debug(
+            f"bindingmanualqc selected columns: {selected_bindingmanualqc_cols}"
+        )
+        return bindingmanualqc_subset[selected_bindingmanualqc_cols]
+
+    # update the rr_metadata column options
+    @reactive.effect
+    def _():
+        rr_metadata_local = rr_metadata.get()
+        cols = list(rr_metadata_local.columns)
+        selected = list(input.rr_columns.get())
+
+        ui.update_checkbox_group("rr_columns", choices=cols, selected=selected)
+
+    # update the bindingmanualqc column options
+    @reactive.effect
+    def _():
+        bindingmanualqc_local = bindingmanualqc_result.result()
+        cols = list(bindingmanualqc_local.columns) + ["promotersetsig"]
+        selected = list(input.bindingmanualqc_columns.get())
+
+        ui.update_checkbox_group(
+            "bindingmanualqc_columns", choices=cols, selected=selected
+        )
+
+    @reactive.calc
+    def rr_display_table():
+        req(rr_metadata)
+        selected_rr_cols = list(input.rr_columns.get())
+        rr_metadata_local = rr_metadata.get()
+        rr_metadata_local.sort_values(
+            by="promotersetsig", ascending=False, inplace=True
+        )
+        logger.debug(f"rr selected columns: {selected_rr_cols}")
+
+        return rr_metadata_local[selected_rr_cols]
+
+    @reactive.calc
+    def bindingmanualqc_display_table():
+        selected_bindingmanualqc_cols = list(input.bindingmanualqc_columns.get())
+        bindingmanualqc_metadata_local = bindingmanualqc_result.result()
+        logger.debug(
+            f"bindingmanualqc selected columns: {selected_bindingmanualqc_cols}"
+        )
+
+        return bindingmanualqc_metadata_local[selected_bindingmanualqc_cols]
+
+    rank_response_distributions_server(
+        "rank_response_distributions",
+        rank_response_metadata=rank_response_metadata,
+        logger=logger,
+    )
+
+    dto_distributions_server(
+        "dto_distributions",
+        rank_response_metadata=rank_response_metadata,
+        logger=logger,
+    )
+
+    bindingmanualqc_table_server(
+        "bindingmanualqc_table",
+        bindingmanualqc_df=bindingmanualqc_subset_df,
+        logger=logger,
+    )
+
+    rank_response_replicate_table_server(
+        "rank_response_replicate_table", rr_metadata=rr_display_table, logger=logger
+    )

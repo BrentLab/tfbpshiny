@@ -1,0 +1,92 @@
+import argparse
+import logging
+import time
+from typing import Literal
+
+from shiny import run_app
+
+from configure_logger import LogLevel, configure_logger
+
+
+def configure_logging(
+    log_level: int, handler_type: Literal["console", "file"] = "console"
+) -> logging.Logger:
+    log_file = f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log"
+    return configure_logger(
+        "shiny", level=log_level, handler_type=handler_type, log_file=log_file
+    )
+
+
+def run_shiny(args: argparse.Namespace) -> None:
+    kwargs: dict[str, object] = {"port": args.port, "host": args.host}
+    if args.debug:
+        kwargs.update({"reload": True, "reload_dirs": ["tfbpshiny/shiny_app"]})
+    run_app("tfbpshiny.app:app", **kwargs)  # type: ignore
+
+
+def make_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tfbpshiny",
+        description=(
+            "tfbpshiny is a CLI with multiple utilities "
+            "(e.g., shiny). Use --help after any command."
+        ),
+        epilog="Use 'tfbpshiny <utility> --help' for more info on each utility.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    # Shared logging args
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set logging level",
+    )
+    parser.add_argument(
+        "--log-handler",
+        type=str,
+        default="console",
+        choices=["console", "file"],
+        help="Set log handler type",
+    )
+
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # Subcommand: shiny
+    shiny_parser = subparsers.add_parser("shiny", help="Run the shiny app")
+    shiny_parser.add_argument(
+        "--debug", action="store_true", help="Enable debug mode with auto-reload"
+    )
+    shiny_parser.add_argument(
+        "--port", type=int, default=8000, help="Port to serve the Shiny app on"
+    )
+    shiny_parser.add_argument(
+        "--host", type=str, default="127.0.0.1", help="Host to bind the Shiny app"
+    )
+    shiny_parser.set_defaults(func=run_shiny)
+
+    # Example additional command:
+    # another_parser = subparsers.add_parser("another", help="Another command")
+    # another_parser.add_argument("--param", required=True)
+    # another_parser.set_defaults(func=run_another_command)
+
+    return parser
+
+
+def main() -> None:
+    parser = make_parser()
+    args = parser.parse_args()
+
+    try:
+        log_level = LogLevel.from_string(args.log_level)
+    except ValueError as e:
+        print(f"Invalid log level: {e}")
+        parser.print_help()
+        return
+
+    _ = configure_logging(log_level, args.log_handler)
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

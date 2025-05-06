@@ -1,0 +1,45 @@
+volumes:
+  production_traefik: {}
+  shiny_logs: {}
+
+services:
+  shinyapp:
+    ports:
+      - "8010:8010"
+    build:
+      context: .
+      dockerfile: ./compose/production/shiny/Dockerfile
+    image: tfbpshiny_production_app
+    env_file:
+      - ./.envs/.production/.shiny
+    volumes:
+      - shiny_logs:/app/logs
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.shinyapp.rule=Host(`tfbindingandperturbation.com`)"
+      - "traefik.http.routers.shinyapp.entrypoints=web-secure"
+      - "traefik.http.routers.shinyapp.tls=true"
+      - "traefik.http.routers.shinyapp.tls.certresolver=letsencrypt"
+      - "traefik.http.services.shinyapp.loadbalancer.server.port=8010"
+    networks:
+      - web
+    command: python -m tfbpshiny shiny --port 8010 --host 0.0.0.0
+
+
+  traefik:
+    build:
+      context: .
+      dockerfile: ./compose/production/traefik/Dockerfile
+    image: tfbpshiny_production_traefik
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - production_traefik:/etc/traefik/acme
+    networks:
+      - web
+
+networks:
+  web:
+    external: false

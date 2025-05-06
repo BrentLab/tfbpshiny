@@ -1,0 +1,28 @@
+{
+    "editor.formatOnSave": true,
+    "cSpell.words": [
+        "aiohttp",
+        "arange",
+        "astype",
+        "dtype",
+        "interactor",
+        "issubdtype",
+        "ndarray",
+        "ndim",
+        "overexpression",
+        "pval",
+        "pvalues",
+        "randperm",
+        "rankdata",
+        "topn",
+        "tfbpshiny"
+    ],
+    "[markdown]": {
+        "editor.formatOnSave": false
+    },
+    "python.testing.pytestArgs": [
+        "."
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
+}

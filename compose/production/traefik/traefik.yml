@@ -1,0 +1,62 @@
+api:
+  dashboard: true
+
+log:
+  level: INFO
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: web-secure
+          scheme: https
+
+  web-secure:
+    address: ":443"
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "chasem@wustl.edu"
+      storage: /etc/traefik/acme/acme.json
+      httpChallenge:
+        entryPoint: web
+
+http:
+  routers:
+    shinyapp-router:
+      rule: "Host(`tfbindingandperturbation.com`) || Host(`www.tfbindingandperturbation.com`)"
+      entryPoints:
+        - web-secure
+      service: shinyapp
+      tls:
+        certResolver: letsencrypt
+
+    dashboard:
+      rule: "Host(`shinytraefik.tfbindingandperturbation.com`)"
+      entryPoints:
+        - web-secure
+      service: api@internal
+      middlewares:
+        - auth
+      tls:
+        certResolver: letsencrypt
+
+  middlewares:
+    auth:
+      basicAuth:
+        users:
+          - "admin:${TRAEFIK_DASHBOARD_PASSWORD_HASH}"
+
+  services:
+    shinyapp:
+      loadBalancer:
+        servers:
+          - url: http://shinyapp:8006
+
+providers:
+  file:
+    filename: /etc/traefik/traefik.yml
+    watch: true

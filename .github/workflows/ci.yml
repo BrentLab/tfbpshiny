@@ -1,0 +1,64 @@
+name: Pytest
+
+on:
+  pull_request:
+    branches: ["main", "dev"]
+    paths-ignore: ["docs/**"]
+
+  push:
+    branches: ["main", "dev"]
+    paths-ignore: ["docs/**"]
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  linter:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Consider using pre-commit.ci for open source project
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.0
+
+  pytest:
+    strategy:
+      matrix:
+        # see https://github.com/actions/runner-images
+        os:
+          [
+            ubuntu-22.04,
+            ubuntu-24.04,
+            macos-13,
+            windows-2022,
+            windows-2019,
+          ]
+        python-version: ["3.11"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Install requirements
+        run: |
+          pip install -U pip
+          pip install poetry
+          poetry install
+
+      - name: Upload coverage reports to Codecov with GitHub Action
+        if: matrix.os == 'ubuntu-20.04'
+        uses: codecov/codecov-action@v3
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
