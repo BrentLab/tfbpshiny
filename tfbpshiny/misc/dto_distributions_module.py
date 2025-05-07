@@ -20,6 +20,17 @@ def dto_distributions_server(
     rank_response_metadata: reactive.ExtendedTask,
     logger: Logger,
 ):
+    """
+    This function produces the reactive/render functions necessary to producing the dto
+    distributions plot.
+
+    :param rank_response_metadata: This is the result from a reactive.extended_task.
+        Result can be retrieved with .result()
+    :param logger: A logger object
+    :return: None
+
+    """
+
     @output(id="dto_plot")
     @render_widget
     def dto_plot():

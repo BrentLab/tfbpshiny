@@ -54,12 +54,17 @@ def all_regulator_compare_server(
     logger: Logger,
 ):
     """
+    This produces the reactive/render functions necessary to producing the
+    all_regulator_compare module which display distributions of rank response and DTO
+    currently over all regulators/replicates in the database.
 
     :param rank_response_metadata: This is the result from a reactive.extended_task.
         Result can be retrieved with .result()
     :param bindingmanualqc_result: This is the result from a reactive.extended_task.
         Result can be retrieved with .result()
     :param logger: A logger object
+    :return: None
+
     """
 
     # update the bindingmanualqc column options

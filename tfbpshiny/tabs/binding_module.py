@@ -39,6 +39,18 @@ def binding_server(
     binding_metadata_task: reactive.ExtendedTask,
     logger: Logger,
 ) -> reactive.calc:
+    """
+    This function produces the reactive/render functions necessary to producing the
+    binding upset plot and correlation matrix.
+
+    :param binding_metadata_task: This is the result from a reactive.extended_task.
+        Result can be retrieved with .result()
+    :param logger: A logger object
+    :return: A reactive.calc with the metadata filtered for the selected upset plot sets
+        (note that this is not currently working b/c of something to do with the upset
+        plot server)
+
+    """
 
     # TODO: this should be retrieved from the db as a reactive.extended_task.
     # move it into the app.py and init function

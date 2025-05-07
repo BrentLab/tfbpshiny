@@ -85,12 +85,18 @@ def individual_regulator_compare_server(
     logger: Logger,
 ):
     """
+    This function produces the reactive/render functions necessary to producing the
+    individual_regulator_compare module which inclues the rank response plots and
+    associated QC tables.
 
     :param rank_response_metadata: This is the result from a reactive.extended_task.
         Result can be retrieved with .result()
     :param bindingmanualqc_result: This is the result from a reactive.extended_task.
         Result can be retrieved with .result()
     :param logger: A logger object
+
+    return: None
+
     """
 
     @reactive.effect
