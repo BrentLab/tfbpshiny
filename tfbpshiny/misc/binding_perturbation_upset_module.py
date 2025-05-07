@@ -30,8 +30,8 @@ def upset_plot_server(
     binding and perturbation response `source_name` upset plots. All arguments must be
     passed as keyword arguments.
 
-    :param metadata_result_calc: This is the result from a reactive.extended_task,
-        which may be run in the background. Result can be retrieved with .result()
+    :param metadata_result: This is the result from a reactive.extended_task.
+        Result can be retrieved with .result()
     :param source_name_dict: A dictionary where the keys are the levels of
         `source_name` and the values are (possibly -- could be one to one) renamed
         factor levels for display
@@ -88,6 +88,8 @@ def upset_plot_server(
         w.width = "100%"
         w.height = "100%"
 
+        # TODO: as a module, this is no longer working. Might have something to do
+        # with the UI `id` being a concat of the parent modules
         def selection_changed(s):
             logger.error("Selection callback triggered")
             sets = (
@@ -106,4 +108,5 @@ def upset_plot_server(
         )
         return as_widget(w)
 
+    # TODO: see the note above `selection_changed()`
     return selected_set_df

@@ -19,6 +19,17 @@ def rank_response_distributions_server(
     rank_response_metadata: reactive.ExtendedTask,
     logger: Logger,
 ):
+    """
+    This function produces the reactive/render functions necessary to producing the rank
+    response distributions plot.
+
+    :param rank_response_metadata: This is the result from a reactive.extended_task.
+        Result can be retrieved with .result()
+    :param logger: A logger object
+    :return: None
+
+    """
+
     @output(id="rank_response_plot")
     @render_plotly
     def rank_response_plot():

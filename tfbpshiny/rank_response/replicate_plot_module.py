@@ -1,3 +1,12 @@
+"""
+This module contains the server and UI components for the rank response replicate plots.
+
+It is both complicated and ugly. It does have a commented out portion that allows you to
+call the functions to create the plots interactively in vscode ( not the # %% which
+creates cells in the .py file).
+
+"""
+
 from logging import Logger
 
 # %%
@@ -197,6 +206,18 @@ def rank_response_replicate_plot_server(
     selected_regulator: reactive.value,
     logger: Logger,
 ):
+    """
+    This function produces the reactive/render functions necessary to producing the rank
+    response replicate plots. All arguments must be passed as keyword arguments.
+
+    Unlike most of the other modules, this does hit the database. It is an ExtendedTask
+    request and can be quite log if there are many replicates.
+
+    :param selected_regulator: A reactive value that contains the selected regulator
+    :param logger: A logger object
+    :return: A reactive value that contains the rank response metadata
+
+    """
 
     rr_metadata = reactive.Value()
 
