@@ -1,7 +1,7 @@
 from shiny import reactive
 
 
-def make_metadata_task(api, label, logger):
+def get_metadata_task(api, label, logger):
     @reactive.extended_task()
     async def get_metadata():
         logger.info(f"Retrieving {label} metadata")

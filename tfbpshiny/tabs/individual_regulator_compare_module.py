@@ -2,23 +2,15 @@ from logging import Logger
 
 from shiny import Inputs, Outputs, Session, module, reactive, req, ui
 
-from .bindingmanualqc_table_module import (
+from ..misc.bindingmanualqc_table_module import (
     bindingmanualqc_table_server,
     bindingmanualqc_table_ui,
 )
-from .dto_distributions_module import (
-    dto_distributions_server,
-    dto_distributions_ui,
-)
-from .rank_response_distributions_module import (
-    rank_response_distributions_server,
-    rank_response_distributions_ui,
-)
-from .rank_response_replicate_plot_module import (
+from ..rank_response.replicate_plot_module import (
     rank_response_replicate_plot_server,
     rank_response_replicate_plot_ui,
 )
-from .rank_response_replicate_table_module import (
+from ..rank_response.replicate_table_module import (
     rank_response_replicate_table_server,
     rank_response_replicate_table_ui,
 )
@@ -47,7 +39,7 @@ _init_bindingmanualqc_choices = [
 
 
 @module.ui
-def compare_ui():
+def individual_regulator_compare_ui():
     return ui.layout_sidebar(
         ui.sidebar(
             ui.input_switch(
@@ -74,8 +66,6 @@ def compare_ui():
             ),
         ),
         ui.div(
-            rank_response_distributions_ui("rank_response_distributions"),
-            dto_distributions_ui("dto_distributions"),
             rank_response_replicate_plot_ui("rank_response_replicate_plot"),
             rank_response_replicate_table_ui("rank_response_replicate_table"),
             bindingmanualqc_table_ui("bindingmanualqc_table"),
@@ -85,7 +75,7 @@ def compare_ui():
 
 
 @module.server
-def compare_server(
+def individual_regulator_compare_server(
     input: Inputs,
     output: Outputs,
     session: Session,
@@ -95,24 +85,12 @@ def compare_server(
     logger: Logger,
 ):
     """
-    This function produces the reactive/render functions necessary to producing the
-    binding and perturbation response `source_name` upset plots. All arguments must be
-    passed as keyword arguments.
 
-    :param rank_response_metadata_calc: This is the result from a
-        reactive.extended_task, which may be run in the background. Result can be
-        retrieved with .result()
-    :param source_name_dict: A dictionary where the keys are the levels of
-        `source_name` and the values are (possibly -- could be one to one) renamed
-        factor levels for display
-    :param output_id: output UI name for the upset plot
-    :param selected_sets: a reactive value, instantiated in the outer scope, to store
-        the user's upset plot set selection
+    :param rank_response_metadata: This is the result from a reactive.extended_task.
+        Result can be retrieved with .result()
+    :param bindingmanualqc_result: This is the result from a reactive.extended_task.
+        Result can be retrieved with .result()
     :param logger: A logger object
-
-    :return: A reactive.calc with the metadata filtered for the selected upset plot
-        sets
-
     """
 
     @reactive.effect
@@ -224,18 +202,6 @@ def compare_server(
         )
 
         return bindingmanualqc_metadata_local[selected_bindingmanualqc_cols]
-
-    rank_response_distributions_server(
-        "rank_response_distributions",
-        rank_response_metadata=rank_response_metadata,
-        logger=logger,
-    )
-
-    dto_distributions_server(
-        "dto_distributions",
-        rank_response_metadata=rank_response_metadata,
-        logger=logger,
-    )
 
     bindingmanualqc_table_server(
         "bindingmanualqc_table",
