@@ -38,7 +38,7 @@ if not os.getenv("DOCKER_ENV"):
 
 logger = logging.getLogger("shiny")
 
-
+# configure the logger
 log_file = f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log"
 log_level = int(os.getenv("TFBPSHINY_LOG_LEVEL", "10"))
 handler_type = cast(
@@ -50,9 +50,6 @@ configure_logger(
     handler_type=handler_type,
     log_file=log_file,
 )
-
-
-# All regulators / individual regulators rather than "comparison" in top level tabs
 
 app_ui = ui.page_fillable(
     ui.panel_title(
