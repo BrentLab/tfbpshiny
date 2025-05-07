@@ -1,6 +1,8 @@
 import logging
 import os
+import time
 from pathlib import Path
+from typing import Literal, cast
 
 from dotenv import load_dotenv
 from shiny import App, reactive, ui
@@ -11,6 +13,8 @@ from tfbpapi import (
     PromoterSetSigAPI,
     RankResponseAPI,
 )
+
+from configure_logger import configure_logger
 
 from .tabs.all_regulator_compare_module import (
     all_regulator_compare_server,
@@ -33,26 +37,20 @@ if not os.getenv("DOCKER_ENV"):
     load_dotenv(dotenv_path=Path(".env"))
 
 logger = logging.getLogger("shiny")
-logger.setLevel(logging.DEBUG)  # Set the logging level for the "shiny" logger
 
-# Prevent propagation to the root logger
-logger.propagate = False
 
-# Check if the logger already has handlers
-if not logger.handlers:
-    # Create a StreamHandler
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(logging.DEBUG)  # Set the handler's logging level
+log_file = f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log"
+log_level = int(os.getenv("TFBPSHINY_LOG_LEVEL", "10"))
+handler_type = cast(
+    Literal["console", "file"], os.getenv("TFBPSHINY_LOG_HANDLER", "console")
+)
+configure_logger(
+    "shiny",
+    level=log_level,
+    handler_type=handler_type,
+    log_file=log_file,
+)
 
-    # Define the log format
-    formatter = logging.Formatter(
-        fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    stream_handler.setFormatter(formatter)
-
-    # Add the handler to the "shiny" logger
-    logger.addHandler(stream_handler)
 
 # All regulators / individual regulators rather than "comparison" in top level tabs
 
