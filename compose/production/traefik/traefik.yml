@@ -54,7 +54,7 @@ http:
     shinyapp:
       loadBalancer:
         servers:
-          - url: http://shinyapp:8006
+          - url: http://shinyapp:8000
 
 providers:
   file:
