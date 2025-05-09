@@ -8,6 +8,7 @@ from ..misc.correlation_plot_module import (
     correlation_matrix_server,
     correlation_matrix_ui,
 )
+from ..utils.source_name_lookup import get_source_name_dict
 
 
 @module.ui
@@ -106,18 +107,10 @@ def binding_server(
 
     """
 
-    # TODO: this should be retrieved from the db as a reactive.extended_task.
-    # move it into the app.py and init function
-    source_name_dict = {
-        "harbison_chip": "2004 ChIP-chip",
-        "chipexo_pugh_allevents": "2021 ChIP-exo",
-        "brent_nf_cc": "Calling Cards",
-    }
-
     selected_binding_sets = upset_plot_server(
         "binding_upset",
         metadata_result=binding_metadata_task,
-        source_name_dict=source_name_dict,
+        source_name_dict=get_source_name_dict("perturbation_response"),
         logger=logger,
     )
 
