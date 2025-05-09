@@ -44,7 +44,7 @@ def perturbation_response_ui():
                             "The correlation matrix shows similarity "
                             "between TF perturbation response profiles."
                         ),
-                        style="margin-top: 1rem; width: 100%; max-width: 1200px;",
+                        style=("margin-top: 1rem; width: 100%; " "max-width: 1200px;"),
                     ),
                     style=(
                         "width: 1200px; min-height: 500px; "
