@@ -9,24 +9,80 @@ from ..misc.correlation_plot_module import (
     correlation_matrix_ui,
 )
 
-col_widths = {
-    "xxl": (7, 5),
-    "xl": (7, 5),
-    "lg": (12, 12),
-    "md": (12, 12),
-    "sm": (12, 12),
-    "xs": (12, 12),
-}
-
 
 @module.ui
 def perturbation_response_ui():
-    return (
-        ui.layout_columns(
-            upset_plot_ui("perturbation_response_upset"),
-            correlation_matrix_ui("perturbation_corr_matrix"),
-            col_widths=col_widths,  # type: ignore
-        ),
+    return ui.div(
+        ui.div(
+            # Outer flex container: two columns
+            ui.div(
+                # Left column: UpSet + description
+                ui.div(
+                    # UpSet Plot Card
+                    ui.card(
+                        ui.card_header("Perturbation Response UpSet Plot"),
+                        ui.card_body(upset_plot_ui("perturbation_response_upset")),
+                        ui.card_footer(
+                            ui.p(
+                                "Click any one of the sets to show what proportion of "
+                                "the regulators in the selected set are also present "
+                                "in the other sets.",
+                                class_="text-muted",
+                            ),
+                        ),
+                    ),
+                    ui.div(
+                        ui.h3("Description"),
+                        ui.p(
+                            "The UpSet plot displays shared regulators"
+                            "across multiple perturbation response datasets. "
+                            "You can explore intersections by clicking bars or nodes. "
+                            "Use this to identify regulators present in multiple "
+                            "datasets or unique to one."
+                        ),
+                        ui.p(
+                            "The correlation matrix shows similarity "
+                            "between TF perturbation response profiles."
+                        ),
+                        style=("margin-top: 1rem; width: 100%; " "max-width: 1200px;"),
+                    ),
+                    style=(
+                        "width: 1200px; min-height: 500px; "
+                        "margin-right: 2rem; flex-shrink: 0;"
+                    ),
+                ),
+                # Right column: Correlation matrix
+                ui.div(
+                    ui.card(
+                        ui.card_header("Perturbation Response Correlation Matrix"),
+                        ui.card_body(
+                            ui.div(
+                                correlation_matrix_ui("perturbation_corr_matrix"),
+                                style=(
+                                    "width: 450px; height: 450px;"
+                                    "display: flex; align-items: center; "
+                                    "justify-content: center;"
+                                ),
+                            ),
+                            style="display: flex; justify-content: center; "
+                            "align-items: center;",
+                        ),
+                        ui.card_footer(
+                            ui.p(
+                                "Click and drag to zoom in on a specific region of the "
+                                "correlation matrix. Double click to reset the zoom.",
+                                class_="text-muted",
+                            ),
+                        ),
+                    ),
+                    style="flex-shrink: 0; display: flex; justify-content: center;",
+                ),
+                style=(
+                    "display: flex; flex-direction: row; justify-content: center; "
+                    "align-items: flex-start;"
+                ),
+            )
+        )
     )
 
 
