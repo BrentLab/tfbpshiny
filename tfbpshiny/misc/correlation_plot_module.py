@@ -58,7 +58,7 @@ def correlation_matrix_server(
         fig = px.imshow(
             clustered_corr,
             text_auto=".2f",
-            aspect="auto",
+            aspect="equal",
             color_continuous_scale="Blues",
             title="Clustered TF Correlation Matrix",
             zmin=0,
@@ -68,7 +68,7 @@ def correlation_matrix_server(
         # Improve layout and readability
         fig.update_layout(
             title_x=0.5,
-            margin=dict(l=60, r=40, t=50, b=60),
+            margin=dict(l=60, r=60, t=50, b=60),
             coloraxis_colorbar=dict(
                 title="Correlation",
                 ticks="outside",
