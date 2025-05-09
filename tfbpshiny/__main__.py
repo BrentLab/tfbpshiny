@@ -1,20 +1,9 @@
 import argparse
-import logging
-import time
-from typing import Literal
+import os
 
 from shiny import run_app
 
-from configure_logger import LogLevel, configure_logger
-
-
-def configure_logging(
-    log_level: int, handler_type: Literal["console", "file"] = "console"
-) -> logging.Logger:
-    log_file = f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log"
-    return configure_logger(
-        "shiny", level=log_level, handler_type=handler_type, log_file=log_file
-    )
+from configure_logger import LogLevel
 
 
 def run_shiny(args: argparse.Namespace) -> None:
@@ -79,12 +68,16 @@ def main() -> None:
 
     try:
         log_level = LogLevel.from_string(args.log_level)
+        print(log_level)
     except ValueError as e:
         print(f"Invalid log level: {e}")
         parser.print_help()
         return
 
-    _ = configure_logging(log_level, args.log_handler)
+    # the log level is expected to be an int, but only str can be set as an env var
+    # convert to int when configuring the logger
+    os.environ["TFBPSHINY_LOG_LEVEL"] = str(log_level.value)
+    os.environ["TFBPSHINY_LOG_HANDLER"] = args.log_handler
     args.func(args)
 
 
