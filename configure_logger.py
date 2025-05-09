@@ -11,7 +11,7 @@ class LogLevel(Enum):
     CRITICAL = logging.CRITICAL
 
     @classmethod
-    def from_string(cls, level_str: str) -> int:
+    def from_string(cls, level_str: str) -> Enum:
         """
         Convert a string representation of a log level to a LogLevel enum.
 
@@ -21,7 +21,7 @@ class LogLevel(Enum):
 
         """
         try:
-            return getattr(cls, level_str.upper()).value
+            return getattr(cls, level_str.upper())
         except AttributeError:
             raise ValueError(
                 f"Invalid log level: {level_str}. "

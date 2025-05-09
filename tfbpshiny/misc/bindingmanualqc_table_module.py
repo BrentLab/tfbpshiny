@@ -18,6 +18,18 @@ def bindingmanualqc_table_server(
     bindingmanualqc_df: reactive.calc,
     logger: Logger,
 ):
+    """
+    This function produces the reactive/render functions necessary to producing the
+    binding manual quality control table. All arguments must be passed as keyword
+    arguments.
+
+    :param bindingmanualqc_df: the filtered bindingmanualqc_df based on the selected
+        regulator
+    :param logger: A logger object
+    :return: None
+
+    """
+
     @render.data_frame
     def bindingmanualqc_table():
         df_local = bindingmanualqc_df()

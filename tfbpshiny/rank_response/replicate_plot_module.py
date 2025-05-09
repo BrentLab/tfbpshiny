@@ -1,13 +1,130 @@
+"""
+This module contains the server and UI components for the rank response replicate plots.
+
+It is both complicated and ugly. It does have a commented out portion that allows you to
+call the functions to create the plots interactively in vscode ( not the # %% which
+creates cells in the .py file).
+
+"""
+
 from logging import Logger
+
+import pandas as pd
 
 # %%
 import plotly.graph_objects as go
-from callingcardstools.Analysis.yeast.rank_response import compute_rank_response
 from pandas.errors import EmptyDataError
-from scipy.stats import binom
+from scipy.stats import binom, binomtest
+from scipy.stats._result_classes import BinomTestResult
 from shiny import Inputs, Outputs, Session, module, reactive, render, req, ui
 from shinywidgets import output_widget, render_plotly
 from tfbpapi import RankResponseAPI
+
+# from callingcardstools.analysis.yeast.rank_response
+
+
+def parse_binomtest_results(binomtest_obj: BinomTestResult, **kwargs):
+    """
+    Parses the results of a binomtest into a tuple of floats.
+
+    This function takes the results of a binomtest and returns a tuple of
+    floats containing the response ratio, p-value, and confidence interval
+    bounds.
+
+    Args:
+        binomtest_obj (scipy.stats.BinomTestResult): The results of a binomtest
+            for a single rank bin.
+        Additional keyword arguments: Additional keyword arguments are passed
+            to the proportional_ci method of the binomtest object.
+
+    Returns:
+        tuple: A tuple of floats containing the response ratio, p-value, and
+            confidence interval bounds.
+
+    Example:
+        >>> parse_binomtest_results(binomtest(1, 2, 0.5, alternative='greater')
+        (0.5, 0.75, 0.2, 0.8)
+
+    """
+    return (
+        binomtest_obj.statistic,
+        binomtest_obj.pvalue,
+        binomtest_obj.proportion_ci(
+            confidence_level=kwargs.get("confidence_level", 0.95),
+            method=kwargs.get("method", "exact"),
+        ).low,
+        binomtest_obj.proportion_ci(
+            confidence_level=kwargs.get("confidence_level", 0.95),
+            method=kwargs.get("method", "exact"),
+        ).high,
+    )
+
+
+def compute_rank_response(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    """
+    Computes rank-based statistics and binomial test results for a DataFrame.
+
+    This function groups the DataFrame by 'rank_bin' and aggregates it to
+    calculate the number of responsive items in each rank bin, as well as
+    various statistics related to a binomial test.  It calculates the
+    cumulative number of successes, response ratio, p-value, and confidence
+    intervals for each rank bin.
+
+    Args:
+        df (pd.DataFrame): DataFrame containing the columns 'rank_bin',
+            'responsive', and 'random'. 'rank_bin' is an integer representing
+            the rank bin, 'responsive' is a boolean indicating responsiveness,
+            and 'random' is a float representing the random expectation.
+        Additional keyword arguments: Additional keyword arguments are passed
+            to the binomtest function, including arguments to the
+            proportional_ci method of the BinomTestResults object (see scipy
+            documentation for details)
+
+    Returns:
+        pd.DataFrame: A DataFrame indexed by 'rank_bin' with columns for the
+            number of responsive items in each bin ('n_responsive_in_rank'),
+            cumulative number of successes ('n_successes'), response ratio
+            ('response_ratio'), p-value ('p_value'), and confidence interval
+            bounds ('ci_lower' and 'ci_upper').
+
+    Example:
+        >>> df = pd.DataFrame({'rank_bin': [1, 1, 2],
+        ...                    'responsive': [True, False, True],
+        ...                    'random': [0.5, 0.5, 0.5]})
+        >>> compute_rank_response(df)
+        # Returns a DataFrame with rank-based statistics and binomial
+        # test results.
+
+    """
+    rank_response_df = (
+        df.groupby("rank_bin")
+        .agg(
+            n_responsive_in_rank=pd.NamedAgg(column="responsive", aggfunc="sum"),
+            random=pd.NamedAgg(column="random", aggfunc="first"),
+        )
+        .reset_index()
+    )
+
+    rank_response_df["n_successes"] = rank_response_df["n_responsive_in_rank"].cumsum()
+
+    # Binomial Test and Confidence Interval
+    rank_response_df[["response_ratio", "pvalue", "ci_lower", "ci_upper"]] = (
+        rank_response_df.apply(
+            lambda row: parse_binomtest_results(
+                binomtest(
+                    int(row["n_successes"]),
+                    int(row.rank_bin),
+                    float(row["random"]),
+                    alternative=kwargs.get("alternative", "two-sided"),
+                ),
+                **kwargs,
+            ),
+            axis=1,
+            result_type="expand",
+        )
+    )
+
+    return rank_response_df
 
 
 # Function to calculate confidence interval for the random value
@@ -197,6 +314,18 @@ def rank_response_replicate_plot_server(
     selected_regulator: reactive.value,
     logger: Logger,
 ):
+    """
+    This function produces the reactive/render functions necessary to producing the rank
+    response replicate plots. All arguments must be passed as keyword arguments.
+
+    Unlike most of the other modules, this does hit the database. It is an ExtendedTask
+    request and can be quite log if there are many replicates.
+
+    :param selected_regulator: A reactive value that contains the selected regulator
+    :param logger: A logger object
+    :return: A reactive value that contains the rank response metadata
+
+    """
 
     rr_metadata = reactive.Value()
 
