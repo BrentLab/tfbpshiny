@@ -32,6 +32,20 @@ def correlation_matrix_server(
     tf_binding_df: pd.DataFrame,
     logger: Logger,
 ):
+    """
+    This function produces the reactive/render functions necessary to producing the
+    binding and perturbation response correlation matrix plot. Currently used in the
+    binding and perturbation response tabs. NOTE: tf_binding_df is currently passed as a
+    static dataframe -- this needs to be changed when the predictors df are retrieved
+    from the db.
+
+    :param tf_binding_df: A pandas dataframe with the binding or perturbation response
+        data. The index should be the target symbol and the columns should be the
+        binding or perturbation response data. NOTE the TODO in the description
+    :param logger: A logger object
+    :return: None
+
+    """
 
     @render_plotly
     def correlation_matrix_plot():
