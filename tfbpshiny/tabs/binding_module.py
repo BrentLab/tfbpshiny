@@ -106,11 +106,10 @@ def binding_server(
         plot server)
 
     """
-
     selected_binding_sets = upset_plot_server(
         "binding_upset",
         metadata_result=binding_metadata_task,
-        source_name_dict=get_source_name_dict("perturbation_response"),
+        source_name_dict=get_source_name_dict("binding"),
         logger=logger,
     )
 
