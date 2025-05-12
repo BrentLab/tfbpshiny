@@ -8,7 +8,7 @@ This may be installed from github using pip. To install the most up to date vers
 install the `dev` branch
 
 ```python
-git+https://github.com/BrentLab/tfbpshiny@dev
+pip install git+https://github.com/BrentLab/tfbpshiny@dev
 ```
 
 ### Docker compose (production profile)
