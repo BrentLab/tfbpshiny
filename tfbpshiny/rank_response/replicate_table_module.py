@@ -36,7 +36,7 @@ def rank_response_replicate_table_server(
 
     @render.data_frame
     def rank_response_replicate_table():
-        df_local = rr_metadata()
+        df_local = rr_metadata().copy()
         # if "binding_source" is in df_local.columns, then use
         # get_source_name_dict("binding") to rename the levels in the column from
         # the dict keys to the dict values. If a key doesn't exist, use the current
