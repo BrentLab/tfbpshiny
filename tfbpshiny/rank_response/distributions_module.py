@@ -4,6 +4,8 @@ import plotly.express as px
 from shiny import Inputs, Outputs, Session, module, reactive
 from shinywidgets import output_widget, render_plotly
 
+from ..utils.source_name_lookup import get_source_name_dict
+
 
 @module.ui
 def rank_response_distributions_ui():
@@ -33,11 +35,30 @@ def rank_response_distributions_server(
     @output(id="rank_response_plot")
     @render_plotly
     def rank_response_plot():
-        df = rank_response_metadata.result()
+        df = rank_response_metadata.result().copy()
         if df.empty or not {"rank_25", "expression_source", "binding_source"}.issubset(
             df.columns
         ):
             return px.scatter(title="No data available")
+
+        # if "binding_source" is in df_local.columns, then use
+        # get_source_name_dict("binding") to rename the levels in the column from
+        # the dict keys to the dict values. If a key doesn't exist, use the current
+        # entry
+        if "binding_source" in df.columns:
+            source_name_dict = get_source_name_dict("binding")
+            df["binding_source"] = df["binding_source"].map(
+                lambda x: source_name_dict.get(x, x)
+            )
+        # if "expression_source" is in df_local.columns, then use
+        # get_source_name_dict("expression") to rename the levels in the column from
+        # the dict keys to the dict values. If a key doesn't exist, use the current
+        # entry
+        if "expression_source" in df.columns:
+            source_name_dict = get_source_name_dict("perturbation_response")
+            df["expression_source"] = df["expression_source"].map(
+                lambda x: source_name_dict.get(x, x)
+            )
 
         fig = px.box(
             df,
