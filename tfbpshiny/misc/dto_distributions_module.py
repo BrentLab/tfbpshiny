@@ -39,7 +39,6 @@ def dto_distributions_server(
             "expression_source",
             "binding_source",
             "dto_empirical_pvalue",
-            "dto_fdr",
         }.issubset(df.columns):
             return px.scatter(title="No data to plot")  # fallback empty plot
 
@@ -47,7 +46,7 @@ def dto_distributions_server(
         df_long = pd.melt(
             df,
             id_vars=["expression_source", "binding_source"],
-            value_vars=["dto_empirical_pvalue", "dto_fdr"],
+            value_vars=["dto_empirical_pvalue"],
             var_name="metric",
             value_name="value",
         )
@@ -61,7 +60,7 @@ def dto_distributions_server(
             facet_row="metric",
             points="outliers",
             category_orders={
-                "metric": ["dto_empirical_pvalue", "dto_fdr"],
+                "metric": ["dto_empirical_pvalue"],
             },
         )
 
