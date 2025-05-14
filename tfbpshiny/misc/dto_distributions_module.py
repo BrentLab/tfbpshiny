@@ -5,6 +5,7 @@ from shiny import Inputs, Outputs, Session, module, reactive
 from shinywidgets import output_widget, render_plotly
 
 from ..misc.generic_distribution_plot import create_distribution_plot
+from ..utils.source_name_lookup import get_source_name_dict
 
 
 @module.ui
