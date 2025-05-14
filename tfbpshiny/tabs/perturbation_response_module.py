@@ -8,6 +8,7 @@ from ..misc.correlation_plot_module import (
     correlation_matrix_server,
     correlation_matrix_ui,
 )
+from ..utils.source_name_lookup import get_source_name_dict
 
 
 @module.ui
@@ -109,14 +110,6 @@ def perturbation_response_server(
 
     """
 
-    # TODO: this should be retrieved from the db as a reactive.extended_task.
-    # move it into the app.py and init function
-    source_name_dict = {
-        "mcisaac_oe": "mcisaac_oe",
-        "kemmeren_tfko": "kemmeren_tfko",
-        "hu_reimann_tfko": "hu_reimann_tfko",
-    }
-
     # TODO: retrieving the response should be from the db as a reactive.extended_task
     tf_pr_df = pd.read_csv("tmp/shiny_data/response_data.csv")
     tf_pr_df.set_index("target_symbol", inplace=True)
@@ -129,7 +122,7 @@ def perturbation_response_server(
     selected_pr_sets = upset_plot_server(
         "perturbation_response_upset",
         metadata_result=pr_metadata_task,
-        source_name_dict=source_name_dict,
+        source_name_dict=get_source_name_dict("perturbation_response"),
         logger=logger,
     )
 
