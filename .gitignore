@@ -139,6 +139,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env_local
 .env_remote
 .envs/*
 # ignore .env files anywhere in the repo
