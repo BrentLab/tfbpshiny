@@ -6,6 +6,10 @@ from ..misc.dto_distributions_module import (
     dto_distributions_server,
     dto_distributions_ui,
 )
+from ..misc.univariate_pvalue_distributions_module import (
+    univariate_pvalue_distributions_server,
+    univariate_pvalue_distributions_ui,
+)
 from ..rank_response.distributions_module import (
     rank_response_distributions_server,
     rank_response_distributions_ui,
@@ -39,6 +43,7 @@ def all_regulator_compare_ui():
     return ui.card(
         rank_response_distributions_ui("rank_response_distributions"),
         dto_distributions_ui("dto_distributions"),
+        univariate_pvalue_distributions_ui("univariate_pvalue_distributions"),
         style="max-width: 100%; overflow-x: auto;",
     )
 
@@ -96,6 +101,12 @@ def all_regulator_compare_server(
 
     dto_distributions_server(
         "dto_distributions",
+        rank_response_metadata=rank_response_metadata,
+        logger=logger,
+    )
+
+    univariate_pvalue_distributions_server(
+        "univariate_pvalue_distributions",
         rank_response_metadata=rank_response_metadata,
         logger=logger,
     )
