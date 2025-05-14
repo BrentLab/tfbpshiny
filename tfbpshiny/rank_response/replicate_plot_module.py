@@ -251,9 +251,15 @@ def create_rank_response_replicate_plot(plots_dict):
             xaxis_title="Number of Genes, Ranked by Binding Score",
             xaxis=dict(tick0=0, dtick=5, range=[0, 150]),  # Set x-axis ticks and range
             yaxis=dict(
-                tick0=0, dtick=0.1, range=[0, 1.0]
-            ),  # Set y-axis ticks and range
+                tick0=0,
+                dtick=0.1,
+                range=[0, 1.0],  # tickformat=".2e"
+            ),  # Set y-axis ticks and range, ADDED tickformat
+            hovermode="x unified",  # Or "closest" based on preference
         )
+
+        # Apply scientific notation to y-values in hover tooltips for all traces
+        fig.update_traces(yhoverformat=".2e")
 
         output_dict[expression_id] = fig
 
