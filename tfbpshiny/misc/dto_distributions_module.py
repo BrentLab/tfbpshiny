@@ -1,9 +1,8 @@
 from logging import Logger
 
-import pandas as pd
 import plotly.express as px
 from shiny import Inputs, Outputs, Session, module, reactive
-from shinywidgets import output_widget, render_widget
+from shinywidgets import output_widget, render_plotly
 
 from ..utils.source_name_lookup import get_source_name_dict
 
@@ -34,9 +33,9 @@ def dto_distributions_server(
     """
 
     @output(id="dto_plot")
-    @render_widget
+    @render_plotly
     def dto_plot():
-        df = rank_response_metadata.result()
+        df = rank_response_metadata.result().copy()
         if df.empty or not {
             "expression_source",
             "binding_source",
@@ -44,7 +43,7 @@ def dto_distributions_server(
         }.issubset(df.columns):
             return px.scatter(title="No data to plot")  # fallback empty plot
 
-            # if "binding_source" is in df_local.columns, then use
+        # if "binding_source" is in df_local.columns, then use
         # get_source_name_dict("binding") to rename the levels in the column from
         # the dict keys to the dict values. If a key doesn't exist, use the current
         # entry
@@ -63,34 +62,43 @@ def dto_distributions_server(
                 lambda x: source_name_dict.get(x, x)
             )
 
-        # Reshape to long format for faceting
-        df_long = pd.melt(
-            df,
-            id_vars=["expression_source", "binding_source"],
-            value_vars=["dto_empirical_pvalue"],
-            var_name="metric",
-            value_name="value",
-        )
-
         fig = px.box(
-            df_long,
+            df,
             x="binding_source",
-            y="value",
+            y="dto_empirical_pvalue",
             color="binding_source",
             facet_col="expression_source",
-            facet_row="metric",
             points="outliers",
             category_orders={
-                "metric": ["dto_empirical_pvalue"],
+                "expression_source": ["Overexpression", "2014 TFKO", "2007 TFKO"]
             },
         )
 
+        # Modified layout with better legend positioning
         fig.update_layout(
-            margin=dict(l=20, r=20, t=30, b=30),
-            height=600,
+            # Increase right margin significantly to make room for legend
+            margin=dict(l=40, r=120, t=50, b=80),
+            height=450,
             boxmode="group",
+            yaxis_title="DTO Empirical P-value",
+            legend=dict(
+                orientation="v",
+                yanchor="top",
+                y=0.99,
+                xanchor="right",
+                x=1.3,
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                bordercolor="rgba(0, 0, 0, 0.2)",
+                borderwidth=1,
+            ),
+            autosize=True,
         )
 
-        fig.update_yaxes(matches=None)
+        # Better handling of facet labels
+        fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+
+        # Ensure axes don't get cut off
+        fig.update_xaxes(automargin=True)
+        fig.update_yaxes(automargin=True, matches=None)
 
         return fig

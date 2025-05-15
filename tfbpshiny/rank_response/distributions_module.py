@@ -67,15 +67,36 @@ def rank_response_distributions_server(
             color="binding_source",
             facet_col="expression_source",
             points="outliers",
+            category_orders={
+                "expression_source": ["Overexpression", "2014 TFKO", "2007 TFKO"]
+            },
         )
 
+        # Modified layout with better legend positioning
         fig.update_layout(
-            margin=dict(l=20, r=20, t=30, b=30),
-            height=600,
+            # Increase right margin significantly to make room for legend
+            margin=dict(l=40, r=120, t=50, b=80),
+            height=450,
             boxmode="group",
             yaxis_title="Rank 25 Response",
+            legend=dict(
+                orientation="v",
+                yanchor="top",
+                y=0.99,
+                xanchor="right",
+                x=1.3,  # Move further right (was 1.15)
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                bordercolor="rgba(0, 0, 0, 0.2)",
+                borderwidth=1,
+            ),
+            autosize=True,
         )
 
-        fig.update_yaxes(matches=None)
+        # Better handling of facet labels
+        fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+
+        # Ensure axes don't get cut off
+        fig.update_xaxes(automargin=True)
+        fig.update_yaxes(automargin=True, matches=None)
 
         return fig

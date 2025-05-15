@@ -40,11 +40,60 @@ _init_bindingmanualqc_choices = [
 
 @module.ui
 def all_regulator_compare_ui():
-    return ui.card(
-        rank_response_distributions_ui("rank_response_distributions"),
-        dto_distributions_ui("dto_distributions"),
-        univariate_pvalue_distributions_ui("univariate_pvalue_distributions"),
-        style="max-width: 100%; overflow-x: auto;",
+    return ui.page_fluid(
+        # Use a vertical layout with each plot in its own row
+        # This ensures no overlap can occur
+        ui.row(
+            ui.column(
+                12,  # Full width column
+                ui.h4("Rank Response Distributions", class_="mt-4"),
+                ui.div(
+                    rank_response_distributions_ui("rank_response_distributions"),
+                    # Add responsive classes
+                    class_="plotly-graph-responsive",
+                    style="width: 100%; min-height: 450px; height: auto;",
+                ),
+            )
+        ),
+        ui.row(
+            ui.column(
+                12,
+                ui.h4("DTO Distributions", class_="mt-4"),
+                ui.div(
+                    dto_distributions_ui("dto_distributions"),
+                    class_="plotly-graph-responsive",
+                    style="width: 100%; min-height: 450px; height: auto;",
+                ),
+            )
+        ),
+        ui.row(
+            ui.column(
+                12,
+                ui.h4("Univariate P-value Distributions", class_="mt-4"),
+                ui.div(
+                    univariate_pvalue_distributions_ui(
+                        "univariate_pvalue_distributions"
+                    ),
+                    class_="plotly-graph-responsive",
+                    style="width: 100%; min-height: 450px; height: auto;",
+                ),
+            )
+        ),
+        # Add custom CSS for plotly responsiveness
+        ui.tags.style(
+            """
+            .plotly-graph-responsive {
+                width: 100%;
+                height: auto;
+                overflow: visible;
+            }
+            .plotly-graph-responsive > div {
+                width: 100% !important;
+                height: auto !important;
+                min-height: 450px;
+            }
+        """
+        ),
     )
 
 
