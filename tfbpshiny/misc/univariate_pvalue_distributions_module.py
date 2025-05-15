@@ -44,7 +44,7 @@ def univariate_pvalue_distributions_server(
         }.issubset(df.columns):
             return px.scatter(title="No data to plot")  # fallback empty plot
 
-        # if "binding_source" is in df_local.columns, then use
+        # if "binding_source" is in df.columns, then use
         # get_source_name_dict("binding") to rename the levels in the column from
         # the dict keys to the dict values. If a key doesn't exist, use the current
         # entry
