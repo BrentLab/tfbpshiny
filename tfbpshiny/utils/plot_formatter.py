@@ -6,8 +6,6 @@ def plot_formatter() -> dict:
     Create a consistent theme dictionary for plotly plots.
 
     :return: Dictionary of theme settings to apply to plotly plots
-    :raises ValueError: If plot_type is not one of 'box', 'scatter', 'bar', or None
-
     """
     # Base theme applied to all plots
     base_theme = {
