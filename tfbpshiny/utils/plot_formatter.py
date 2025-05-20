@@ -6,6 +6,7 @@ def plot_formatter() -> dict:
     Create a consistent theme dictionary for plotly plots.
 
     :return: Dictionary of theme settings to apply to plotly plots
+
     """
     # Base theme applied to all plots
     base_theme = {
