@@ -18,8 +18,8 @@ def create_distribution_plot(
     :param df: DataFrame with the plot data
     :param y_column: Column name to plot on y-axis
     :param y_axis_title: Title for the y-axis
-    :param category_orders: Optional dict of category orders :return A formatted plotly
-        figure
+    :param category_orders: Optional dict of category orders
+    :return: A formatted plotly figure
 
     """
     df_renamed = rename_dataframe_data_sources(df)
