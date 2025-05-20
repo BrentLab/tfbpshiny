@@ -1,16 +1,11 @@
-"""Utility functions for consistent plot formatting across the application."""
+from plotly.graph_objects import Figure
 
 
-def plotly_plot_theme(plot_type=None):
+def plot_formatter() -> dict:
     """
     Create a consistent theme dictionary for plotly plots.
 
-    Args:
-        plot_type: Optional string indicating plot type for specialized theming
-                   (e.g., 'box', 'scatter', 'bar')
-
-    Returns:
-        Dictionary of theme settings to apply to plotly plots
+    :return: Dictionary of theme settings to apply to plotly plots
 
     """
     # Base theme applied to all plots
@@ -30,44 +25,29 @@ def plotly_plot_theme(plot_type=None):
         ),
     }
 
-    # Add specialized settings based on plot type
-    if plot_type == "box":
-        base_theme.update(
-            {
-                "boxmode": "group",
-            }
-        )
-    elif plot_type == "scatter":
-        base_theme.update(
-            {
-                # Scatter-specific settings
-            }
-        )
-    elif plot_type == "bar":
-        base_theme.update(
-            {
-                # Bar-specific settings
-            }
-        )
-
     return base_theme
 
 
-def apply_plot_formatting(fig, plot_type=None, y_axis_title=None):
+def apply_plot_formatter(
+    fig: Figure,
+    y_axis_title: str | None = None,
+) -> Figure:
     """
     Apply consistent formatting to a plotly figure.
 
-    Args:
-        fig: A plotly figure object
-        plot_type: Optional string indicating plot type (e.g., 'box', 'scatter', 'bar')
-        y_axis_title: Optional title for the y-axis
-
-    Returns:
-        The formatted plotly figure
+    :param fig: A plotly figure object
+    :param y_axis_title: A y axis title (optional)
+    :return: A plotly figure object with consistent formatting applied
+    :raises ValueError: If fig is not a plotly figure or if y_axis_title is not a string
 
     """
+    if not isinstance(fig, Figure):
+        raise ValueError("fig must be a plotly.graph_objs.Figure object")
+    if y_axis_title and not isinstance(y_axis_title, str):
+        raise ValueError("y_axis_title must be a string or None")
+
     # Apply theme based on plot type
-    theme = plotly_plot_theme(plot_type)
+    theme = plot_formatter()
     fig.update_layout(**theme)
 
     # Set y-axis title if provided
@@ -82,19 +62,3 @@ def apply_plot_formatting(fig, plot_type=None, y_axis_title=None):
     fig.update_yaxes(automargin=True, matches=None)
 
     return fig
-
-
-# Keep the original function for backward compatibility
-def format_distribution_plot(fig, y_axis_title=None):
-    """
-    Apply consistent formatting to distribution plots.
-
-    Args:
-        fig: A plotly figure object
-        y_axis_title: Optional title for the y-axis
-
-    Returns:
-        The formatted plotly figure
-
-    """
-    return apply_plot_formatting(fig, plot_type="box", y_axis_title=y_axis_title)
