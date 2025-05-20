@@ -4,7 +4,7 @@ import plotly.express as px
 from shiny import Inputs, Outputs, Session, module, reactive
 from shinywidgets import output_widget, render_plotly
 
-from ..misc.generic_distribution_plot import create_distribution_plot
+from ..utils.create_distribution_plot import create_distribution_plot
 
 
 @module.ui
