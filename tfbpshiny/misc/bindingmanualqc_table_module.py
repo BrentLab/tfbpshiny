@@ -32,7 +32,7 @@ def bindingmanualqc_table_server(
 
     @render.data_frame
     def bindingmanualqc_table():
-        df_local = bindingmanualqc_df()
+        df_local = bindingmanualqc_df()  # type: ignore
         if df_local.empty:
             return pd.DataFrame()
 

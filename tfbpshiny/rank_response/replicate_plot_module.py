@@ -20,7 +20,8 @@ from shiny import Inputs, Outputs, Session, module, reactive, render, req, ui
 from shinywidgets import output_widget, render_plotly
 from tfbpapi import RankResponseAPI
 
-# from callingcardstools.analysis.yeast.rank_response
+from ..utils.plot_formatter import apply_plot_formatter
+from ..utils.source_name_lookup import get_source_name_dict
 
 
 def parse_binomtest_results(binomtest_obj: BinomTestResult, **kwargs):
@@ -326,8 +327,9 @@ def rank_response_replicate_plot_server(
     :return: A reactive value that contains the rank response metadata
 
     """
+    perturbation_source_dict = get_source_name_dict(datatype="perturbation_response")
 
-    rr_metadata = reactive.Value()
+    rr_metadata = reactive.Value()  # type: ignore
 
     # Fetch data asynchronously -- see the main app for documentation on this pattern
     # of async fetching
@@ -413,7 +415,7 @@ def rank_response_replicate_plot_server(
         containers: dict = {}
         for source, plots_dict in plots_by_source.items():
             container = ui.card(
-                ui.h3(f"Expression Source: {source}"),
+                ui.h3(f"Expression Source: {perturbation_source_dict[source]}"),
                 *[
                     output_widget(f"plot_{source}_{expression_id}")
                     for expression_id in plots_dict.keys()
@@ -476,7 +478,7 @@ def rank_response_replicate_plot_server(
                 @output(id=plot_id)
                 @render_plotly
                 def render_plot(fig=fig):
-                    return fig
+                    return apply_plot_formatter(fig)
 
         logger.info("Rank response plots rendered successfully.")
 

@@ -3,10 +3,7 @@ from logging import Logger
 import pandas as pd
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from ..utils.source_name_lookup import get_source_name_dict
-
-# TODO: consider generalizing this for any dataframe. There is nothing specific to
-# rank_response_replicate_table in this module.
+from ..utils.rename_dataframe_data_sources import rename_dataframe_data_sources
 
 
 @module.ui
@@ -36,25 +33,8 @@ def rank_response_replicate_table_server(
 
     @render.data_frame
     def rank_response_replicate_table():
-        df_local = rr_metadata().copy()
-        # if "binding_source" is in df_local.columns, then use
-        # get_source_name_dict("binding") to rename the levels in the column from
-        # the dict keys to the dict values. If a key doesn't exist, use the current
-        # entry
-        if "binding_source" in df_local.columns:
-            source_name_dict = get_source_name_dict("binding")
-            df_local["binding_source"] = df_local["binding_source"].map(
-                lambda x: source_name_dict.get(x, x)
-            )
-        # if "expression_source" is in df_local.columns, then use
-        # get_source_name_dict("perturbation_response") to rename the levels in the
-        # column from the dict keys to the dict values. If a key doesn't exist,
-        # use the current entry
-        if "expression_source" in df_local.columns:
-            source_name_dict = get_source_name_dict("perturbation_response")
-            df_local["expression_source"] = df_local["expression_source"].map(
-                lambda x: source_name_dict.get(x, x)
-            )
+        df_local = rr_metadata().copy()  # type: ignore
+        df_local = rename_dataframe_data_sources(df_local)
         if df_local.empty:
             return pd.DataFrame()
 
