@@ -7,11 +7,9 @@ def rename_dataframe_data_sources(df: pd.DataFrame) -> pd.DataFrame:
     """
     Rename the data sources in the DataFrame.
 
-    Args:
-        df: DataFrame with the plot data
-
-    Returns:
-        DataFrame with renamed data sources
+    :param df: A dataframe that has the columns "binding_source" and/or
+        "expression_source" that need to be renamed.
+    :return: A copy of the dataframe with the data sources renamed.
 
     """
     df_copy = df.copy()
