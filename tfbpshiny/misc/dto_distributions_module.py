@@ -5,6 +5,7 @@ from shiny import Inputs, Outputs, Session, module, reactive
 from shinywidgets import output_widget, render_plotly
 
 from ..utils.create_distribution_plot import create_distribution_plot
+from ..utils.neg_log10_transform import neg_log10_transform
 
 
 @module.ui
@@ -39,6 +40,10 @@ def dto_distributions_server(
         if metadata.empty:
             return px.scatter(title="No data to plot")
 
+        metadata["dto_empirical_pvalue"] = neg_log10_transform(
+            metadata["dto_empirical_pvalue"]
+        )
+
         return create_distribution_plot(
-            metadata, "dto_empirical_pvalue", "DTO Empirical P-value"
+            metadata, "dto_empirical_pvalue", "-log10(DTO Empirical P-value)"
         )
