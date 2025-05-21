@@ -19,7 +19,7 @@ def dto_distributions_server(
     output: Outputs,
     session: Session,
     *,
-    rank_response_metadata: reactive.ExtendedTask,
+    rank_response_metadata: reactive.calc,
     logger: Logger,
 ):
     """
@@ -36,9 +36,27 @@ def dto_distributions_server(
     @output(id="dto_plot")
     @render_plotly
     def dto_plot():
-        metadata = rank_response_metadata.result()
+        metadata = rank_response_metadata()
         if metadata.empty:
             return px.scatter(title="No data to plot")
+
+        na_mask = metadata["dto_empirical_pvalue"].isna()
+        if na_mask.any():
+            cols_to_show = [
+                "regulator_symbol",
+                "binding_source",
+                "expression_source",
+                "dto_empirical_pvalue",
+            ]
+            logger.info(
+                f"DTO Empirical P-value contains NA values. {na_mask.sum()} rows"
+            )
+            logger.debug(
+                "DTO Empirical P-value contains NA values. "
+                "These will be removed from the plot:\n%s",
+                metadata.loc[na_mask, cols_to_show].drop_duplicates(),
+            )
+            metadata = metadata.loc[~na_mask]
 
         metadata["dto_empirical_pvalue"] = neg_log10_transform(
             metadata["dto_empirical_pvalue"]

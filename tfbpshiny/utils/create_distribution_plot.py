@@ -4,8 +4,9 @@ import pandas as pd
 import plotly.express as px
 from plotly.graph_objects import Figure
 
-from .plot_formatter import apply_plot_formatter
+from .plot_formatter import plot_formatter
 from .rename_dataframe_data_sources import rename_dataframe_data_sources
+from .source_name_lookup import get_source_name_dict
 
 logger = logging.getLogger("shiny")
 
@@ -14,32 +15,35 @@ def create_distribution_plot(
     df: pd.DataFrame,
     y_column: str,
     y_axis_title: str,
-    category_orders: dict[str, list] | None = None,
+    **kwargs,
 ) -> Figure:
-    """
-    Create a standardized distribution plot.
+    binding_source_dict = get_source_name_dict("binding")
+    perturbation_source_dict = get_source_name_dict("perturbation_response")
 
-    :param df: DataFrame with the plot data
-    :param y_column: Column name to plot on y-axis
-    :param y_axis_title: Title for the y-axis
-    :param category_orders: Optional dict of category orders
-    :return: A formatted plotly figure
-    :raises TypeError: If df is not a pandas DataFrame
-
-    """
     if not isinstance(df, pd.DataFrame):
         logger.error("Input df is not a pandas DataFrame")
         raise TypeError("Input df must be a pandas DataFrame")
 
     df_renamed = rename_dataframe_data_sources(df)
 
-    # Default category orders if not provided
-    if category_orders is None:
-        category_orders = {
-            "expression_source": ["Overexpression", "2014 TFKO", "2007 TFKO"]
-        }
+    # Determine consistent order from dict values
+    binding_levels = list(binding_source_dict.values())
+    perturbation_levels = list(perturbation_source_dict.values())
 
-    # Create the plot
+    # Optional override by user
+    category_orders = {
+        "binding_source": binding_levels,
+        "expression_source": perturbation_levels,
+    }
+
+    # Set fixed colors by binding source name
+    color_palette = px.colors.qualitative.Vivid
+    color_discrete_map = {
+        name: color_palette[i % len(color_palette)]
+        for i, name in enumerate(binding_levels)
+    }
+
+    # Create plot
     fig = px.box(
         df_renamed,
         x="binding_source",
@@ -48,6 +52,7 @@ def create_distribution_plot(
         facet_col="expression_source",
         points="outliers",
         category_orders=category_orders,
+        color_discrete_map=color_discrete_map,
     )
 
-    return apply_plot_formatter(fig, y_axis_title)
+    return plot_formatter(fig, y_axis_title, **kwargs)
