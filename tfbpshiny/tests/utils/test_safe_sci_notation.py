@@ -14,4 +14,3 @@ def test_safe_sci_notation_non_numeric():
     assert safe_sci_notation("not_a_number") == "not_a_number"
     assert safe_sci_notation(None) is None
     assert pd.isna(safe_sci_notation(np.nan))  # Use pd.isna to check for NaN
-    assert pd.isna(safe_sci_notation(np.nan))
