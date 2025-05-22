@@ -1,8 +1,12 @@
 # %%
+import logging
+
 import pandas as pd
 import plotly.graph_objects as go
 from scipy.stats import binom, binomtest
 from scipy.stats._result_classes import BinomTestResult
+
+logger = logging.getLogger("shiny")
 
 
 def parse_binomtest_results(binomtest_obj: BinomTestResult, **kwargs):
@@ -130,30 +134,43 @@ def binom_ci(trials, random_prob, alpha=0.05):
     return lower_bound, upper_bound
 
 
-def process_plot_data(data: pd.DataFrame, key: str) -> dict:
+def process_plot_data(data: pd.DataFrame, n_bins: int = 150, step: int = 5) -> dict:
     """
     Process the data for plotting. This function filters the data for a specific key,
     computes rank-based statistics, and prepares the data for plotting.
 
-    :param key: The key for the data to be processed.
     :param data: The DataFrame containing the data to be processed.
+    :param n_bins: The number of bins to consider (default is 150).
+    :param step: The step size for the x-axis (default is 5).
     :return: A dictionary containing the processed data for plotting.
 
     """
-    subset_data = data[data["rank_bin"] <= 150]
+    if not isinstance(n_bins, int) or n_bins <= 0:
+        logger.error(
+            f"n_bins {n_bins} is invalid. It must be a positive "
+            "integer. Setting to 150."
+        )
+        n_bins = 150
+    subset_data = data[data["rank_bin"] <= n_bins]
     rr_summary = compute_rank_response(subset_data)
-    return {
-        "x": rr_summary["rank_bin"],
+
+    bin_vector = pd.Series(range(5, n_bins + 1, step), name="rank_bin")
+    random_vector = [rr_summary["random"][0]] * len(bin_vector)
+    plot_data = {
+        # don't extract the bins from the df directly b/c there may fewer
+        # bins than n_bins and that can make the random line truncated
+        "x": bin_vector,
         "y": rr_summary["response_ratio"],
-        "random_y": rr_summary.get("random"),
+        # ensure that the vector of random is the same length as x
+        "random_y": random_vector,
         "ci": (
-            rr_summary["rank_bin"].apply(
-                lambda n: binom_ci(n, rr_summary["random"].iloc[0])
-            )
+            bin_vector.apply(lambda n: binom_ci(n, rr_summary["random"][0]))
             if "random" in rr_summary
             else None
         ),
     }
+
+    return plot_data
 
 
 def prepare_rank_response_data(rr_dict: dict) -> dict:
@@ -164,17 +181,22 @@ def prepare_rank_response_data(rr_dict: dict) -> dict:
     :return: Dictionary containing processed data for plotting.
 
     """
-    metadata: pd.DataFrame = rr_dict.get("metadata")
-    data_dict: dict = rr_dict.get("data", {})
+    metadata = rr_dict.get("metadata", pd.DataFrame())
+    data_dict = rr_dict.get("data", {})
+
+    # Use list comprehension to generate plots
     plots: dict = {}
     for _, row in metadata.iterrows():
+        id = str(row["id"])
+        data = data_dict.get(id)
+
         expression_id = str(row["expression"])
         promotersetsig_id = str(row["promotersetsig"])
-        data = data_dict.get(str(row["id"]))
-        if data is not None:
-            plots.setdefault(expression_id, {})[promotersetsig_id] = process_plot_data(
-                promotersetsig_id, data
-            )
+
+        plots.setdefault(expression_id, {}).update(
+            {promotersetsig_id: process_plot_data(data)}
+        )
+
     return plots
 
 
@@ -266,36 +288,32 @@ def create_rank_response_replicate_plot(plots_dict):
 
 # ## Example
 
-# %%
 # Set up the environment
 # import dotenv
-
 # from tfbpapi import *
 
 # dotenv.load_dotenv("/home/chase/code/tfbpshiny/.env", override=True)
 
-# # configure the logger to print to console
+# # # configure the logger to print to console
 # import logging
 
 # logging.basicConfig(level=logging.DEBUG)
 
 # rr_api = RankResponseAPI()
 
-# # %%
 # rr_api.pop_params()
+# # "expression_conditions": "expression_source=mcisaac_oe,time=15"
 # rr_api.push_params(
 #     {
-#         "regulator_symbol": "OAF1",
-#         "expression_conditions": "expression_source=mcisaac_oe,time=15"
+#         "regulator_symbol": "DEP1",
+#         "expression_source": "kemmeren_tfko",
 #     }
 # )
 
 # rr_dict = await rr_api.read(retrieve_files=True)
 
-# # %%
 # plots = prepare_rank_response_data(rr_dict)
 
-# # %%
 # x = create_rank_response_replicate_plot(plots)
 
 # %%
