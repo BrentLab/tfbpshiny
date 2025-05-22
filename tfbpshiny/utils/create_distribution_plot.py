@@ -17,6 +17,38 @@ def create_distribution_plot(
     y_axis_title: str,
     **kwargs,
 ) -> Figure:
+    """
+    Create consistently formatting distribution plots for DTO empirical pvalue, rank
+    response 25 and univariate pvalue.
+
+    :param df: DataFrame containing the data to plot. Must have at minimum the columns
+        'binding_source', 'expression_source' and the y_column
+    :param y_column: The column name in the DataFrame to plot on the y-axis
+    :param y_axis_title: The title for the y-axis
+    :param kwargs: Additional keyword arguments to pass to plot_formatter
+    :return: A Plotly Figure object containing the distribution plot
+    :raises ValueError: If the DataFrame does not contain the required columns
+    :raises TypeError: If the input df is not a pandas DataFrame or y_column is not
+        numeric
+
+    """
+    # check that y_column, binding_source and expression_source are in the DataFrame
+    if not all(
+        col in df.columns for col in [y_column, "binding_source", "expression_source"]
+    ):
+        logger.error(
+            "DataFrame must contain columns: "
+            f"{y_column}, binding_source, expression_source"
+        )
+        raise ValueError(
+            f"DataFrame must contain columns: "
+            f"{y_column}, binding_source, expression_source"
+        )
+    # check that y_column is numeric
+    if not pd.api.types.is_numeric_dtype(df[y_column]):
+        logger.error(f"Column {y_column} must be numeric")
+        raise TypeError(f"Column {y_column} must be numeric")
+
     binding_source_dict = get_source_name_dict("binding")
     perturbation_source_dict = get_source_name_dict("perturbation_response")
 
