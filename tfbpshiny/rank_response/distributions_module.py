@@ -18,7 +18,7 @@ def rank_response_distributions_server(
     output: Outputs,
     session: Session,
     *,
-    rank_response_metadata: reactive.ExtendedTask,
+    rank_response_metadata: reactive.calc,
     logger: Logger,
 ):
     """
@@ -35,7 +35,7 @@ def rank_response_distributions_server(
     @output(id="rank_response_plot")
     @render_plotly
     def rank_response_plot():
-        metadata = rank_response_metadata.result()
+        metadata = rank_response_metadata()
         if metadata.empty:
             return px.scatter(title="No data to plot")
 

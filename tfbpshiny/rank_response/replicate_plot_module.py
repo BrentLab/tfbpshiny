@@ -20,7 +20,7 @@ from shiny import Inputs, Outputs, Session, module, reactive, render, req, ui
 from shinywidgets import output_widget, render_plotly
 from tfbpapi import RankResponseAPI
 
-from ..utils.plot_formatter import apply_plot_formatter
+from ..utils.plot_formatter import plot_formatter
 from ..utils.source_name_lookup import get_source_name_dict
 
 
@@ -478,7 +478,7 @@ def rank_response_replicate_plot_server(
                 @output(id=plot_id)
                 @render_plotly
                 def render_plot(fig=fig):
-                    return apply_plot_formatter(fig)
+                    return plot_formatter(fig)
 
         logger.info("Rank response plots rendered successfully.")
 

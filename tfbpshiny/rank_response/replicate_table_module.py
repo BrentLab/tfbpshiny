@@ -1,9 +1,9 @@
 from logging import Logger
 
-import pandas as pd
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
 from ..utils.rename_dataframe_data_sources import rename_dataframe_data_sources
+from ..utils.safe_sci_notatation import safe_sci_notation
 
 
 @module.ui
@@ -35,9 +35,24 @@ def rank_response_replicate_table_server(
     def rank_response_replicate_table():
         df_local = rr_metadata().copy()  # type: ignore
         df_local = rename_dataframe_data_sources(df_local)
-        if df_local.empty:
-            return pd.DataFrame()
+
+        # list of numeric columns to format
+        cols_to_format = [
+            "univariate_pvalue",
+            "univariate_rsquared",
+            "dto_fdr",
+            "dto_empirical_pvalue",
+            "random_expectation",
+            "rank_25",
+            "rank_50",
+        ]
+
+        # Only apply formatting to numeric columns that exist in the DataFrame
+        existing_numeric_cols = [
+            col for col in cols_to_format if col in df_local.columns
+        ]
+        df_local[existing_numeric_cols] = df_local[existing_numeric_cols].applymap(
+            safe_sci_notation
+        )
 
         return df_local
-
-    return None

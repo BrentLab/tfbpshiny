@@ -14,76 +14,217 @@ from ..utils.source_name_lookup import get_source_name_dict
 @module.ui
 def perturbation_response_ui():
     return ui.div(
+        # First row: Description
         ui.div(
-            # Outer flex container: two columns
+            ui.p(
+                "This page displays the UpSet plot and correlation matrix for "
+                "TF perturbation response datasets. The current datasets include "
+                "data derived from gene deletions and overexpression methods."
+            ),
             ui.div(
-                # Left column: UpSet + description
-                ui.div(
-                    # UpSet Plot Card
-                    ui.card(
-                        ui.card_header("Perturbation Response UpSet Plot"),
-                        ui.card_body(upset_plot_ui("perturbation_response_upset")),
-                        ui.card_footer(
-                            ui.p(
-                                "Click any one of the sets to show what proportion of "
-                                "the regulators in the selected set are also present "
-                                "in the other sets.",
-                                class_="text-muted",
-                            ),
-                        ),
-                    ),
-                    ui.div(
-                        ui.h3("Description"),
-                        ui.p(
-                            "The UpSet plot displays shared regulators"
-                            "across multiple perturbation response datasets. "
-                            "You can explore intersections by clicking bars or nodes. "
-                            "Use this to identify regulators present in multiple "
-                            "datasets or unique to one."
-                        ),
-                        ui.p(
-                            "The correlation matrix shows similarity "
-                            "between TF perturbation response profiles."
-                        ),
-                        style=("margin-top: 1rem; width: 100%; " "max-width: 1200px;"),
-                    ),
-                    style=(
-                        "width: 1200px; min-height: 500px; "
-                        "margin-right: 2rem; flex-shrink: 0;"
-                    ),
+                ui.tags.p(
+                    "Each dataset captures the effect on gene expression of "
+                    "perturbing a regulator These experimental approaches differ "
+                    "in their perturbation strategy and noise profiles."
                 ),
-                # Right column: Correlation matrix
-                ui.div(
-                    ui.card(
-                        ui.card_header("Perturbation Response Correlation Matrix"),
-                        ui.card_body(
-                            ui.div(
-                                correlation_matrix_ui("perturbation_corr_matrix"),
-                                style=(
-                                    "width: 450px; height: 450px;"
-                                    "display: flex; align-items: center; "
-                                    "justify-content: center;"
+                ui.tags.ul(
+                    ui.tags.li(
+                        ui.tags.b("Overexpression: "),
+                        "This data is from the McIsaac lab. "
+                        "The TF is overexpressed from a strong promoter via "
+                        "estradiol induction of an artificial TF. Gene expression "
+                        "is measured via microarray at various time points. We are "
+                        "currently displaying results for the 15 minute time point. "
+                        "The data is publicly available from: ",
+                        ui.a(
+                            "Calico labs",
+                            href="https://idea.research.calicolabs.com/data",
+                            target="_blank",
+                        ),
+                        ".",
+                        ui.tags.br(),
+                        ui.tags.small(
+                            ui.em(
+                                "Hackett, Sean R et al. 'Learning causal networks "
+                                "using inducible transcription factors and "
+                                "transcriptome-wide time series.' "
+                                "Molecular systems biology vol. 16,3 (2020): e9174. ",
+                                ui.a(
+                                    "doi:10.15252/msb.20199174",
+                                    href="https://doi.org/10.15252/msb.20199174",
+                                    target="_blank",
                                 ),
-                            ),
-                            style="display: flex; justify-content: center; "
-                            "align-items: center;",
-                        ),
-                        ui.card_footer(
-                            ui.p(
-                                "Click and drag to zoom in on a specific region of the "
-                                "correlation matrix. Double click to reset the zoom.",
-                                class_="text-muted",
-                            ),
+                            )
                         ),
                     ),
-                    style="flex-shrink: 0; display: flex; justify-content: center;",
+                    ui.tags.li(
+                        ui.tags.b("2014 Transcription Factor Knock Out (TFKO): "),
+                        "Deletion of a transcription factor's coding region. "
+                        "Gene expression is measured via microarray. The data is "
+                        "publicly available from the ",
+                        ui.a(
+                            "Holstege Lab.",
+                            href="https://idea.research.calicolabs.com/data",
+                            target="_blank",
+                        ),
+                        ".",
+                        ui.tags.br(),
+                        ui.tags.small(
+                            ui.em(
+                                "Kemmeren P, Sameith K, van de Pasch LA, "
+                                "Benschop JJ, Lenstra TL, Margaritis T, O'Duibhir E, "
+                                "Apweiler E, van Wageningen S, Ko CW, et al. 2014. "
+                                "Large-scale genetic perturbations reveal regulatory "
+                                "networks and an abundance of gene-specific "
+                                "repressors. Cell 157: 740–752.",
+                                ui.a(
+                                    "doi:10.1016/j.cell.2014.02.054",
+                                    href="https://doi.org/10.1016/j.cell.2014.02.054",
+                                    target="_blank",
+                                ),
+                            )
+                        ),
+                    ),
+                    ui.tags.li(
+                        ui.tags.b("2007 TFKO: "),
+                        "This is also a deletion data set, with gene expression "
+                        "measured via microarray. This is a re-analysis of data "
+                        "produced in the Hu lab. The data is provided in the "
+                        "Supplement of the following paper: ",
+                        ui.tags.br(),
+                        ui.tags.small(
+                            ui.em(
+                                "Reimand, Jüri et al. 'Comprehensive reanalysis of "
+                                "transcription factor knockout expression data in "
+                                "Saccharomyces cerevisiae reveals many new targets.'"
+                                " Nucleic acids research vol. 38,14 (2010): 4768-77. ",
+                                ui.a(
+                                    "doi:10.1093/nar/gkq232",
+                                    href="https://doi.org/10.1093/nar/gkq232",
+                                    target="_blank",
+                                ),
+                            )
+                        ),
+                    ),
                 ),
-                style=(
-                    "display: flex; flex-direction: row; justify-content: center; "
-                    "align-items: flex-start;"
+                ui.p(
+                    "More information on how this data was parsed and "
+                    "processed for the tfbindingandperturbation database can "
+                    "be found ",
+                    ui.a(
+                        "here",
+                        href="https://github.com/cmatKhan/parsing_yeast_database_data",
+                        target="_blank",
+                    ),
+                    ".",
                 ),
-            )
-        )
+            ),
+            id="perturbation-description",
+        ),
+        # Second row: Plot area container
+        ui.div(
+            # Left: UpSet plot
+            ui.div(
+                ui.card(
+                    ui.card_header("Perturbation Response UpSet Plot"),
+                    ui.card_body(upset_plot_ui("perturbation_response_upset")),
+                    ui.card_footer(
+                        ui.p(
+                            "Click any one of the sets to show what proportion of "
+                            "the regulators in the selected set are also present "
+                            "in the other sets.",
+                            class_="text-muted",
+                        ),
+                    ),
+                ),
+                id="perturbation-upset-container",
+            ),
+            # Right: Correlation matrix
+            ui.div(
+                ui.card(
+                    ui.card_header("Perturbation Response Correlation Matrix"),
+                    ui.card_body(
+                        ui.div(
+                            correlation_matrix_ui("perturbation_corr_matrix"),
+                            id="perturbation-corr-plot-wrapper",
+                        ),
+                        id="perturbation-corr-body",
+                    ),
+                    ui.card_footer(
+                        ui.p(
+                            "Click and drag to zoom in on a specific region of the "
+                            "correlation matrix. Double click to reset the zoom.",
+                            class_="text-muted",
+                        ),
+                    ),
+                ),
+                id="perturbation-corr-container",
+            ),
+            id="perturbation-plot-row",
+        ),
+        # Add styles at the bottom
+        ui.tags.style(
+            """
+            #perturbation-description {
+                max-width: 100%;
+                margin-bottom: 1.5rem;
+            }
+
+            #perturbation-plot-row {
+                display: flex;
+                flex-direction: row;
+                justify-content: center;
+                align-items: flex-start;
+                gap: 2rem;
+            }
+
+            #perturbation-upset-container {
+                flex: 1.2;
+                min-width: 0;
+                min-height: 500px;
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+            }
+
+            #perturbation-corr-container {
+                flex: 0 0 500px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                height: 100%;
+            }
+
+            #perturbation-corr-plot-wrapper {
+                width: 450px;
+                height: 450px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            #perturbation-corr-body {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                flex: 1;
+            }
+
+            .card {
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+            }
+
+            .card-body {
+                flex: 1;
+            }
+
+            .card-footer {
+                margin-top: auto;
+            }
+            """
+        ),
     )
 
 

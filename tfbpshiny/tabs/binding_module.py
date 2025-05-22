@@ -14,74 +14,203 @@ from ..utils.source_name_lookup import get_source_name_dict
 @module.ui
 def binding_ui():
     return ui.div(
+        # First row: Description
         ui.div(
-            # Outer flex container: two columns
+            ui.p(
+                "This page displays the UpSet plot and correlation matrix for "
+                "TF the binding datasets. The current binding datasets are: "
+            ),
             ui.div(
-                # Left column: UpSet + description
-                ui.div(
-                    # UpSet Plot Card
-                    ui.card(
-                        ui.card_header("Binding UpSet Plot"),
-                        ui.card_body(upset_plot_ui("binding_upset")),
-                        ui.card_footer(
-                            ui.p(
-                                "Click any one of the sets to show what proportion of "
-                                "the regulators in the selected set are also present "
-                                "in the other sets.",
-                                class_="text-muted",
-                            ),
-                        ),
-                    ),
-                    ui.div(
-                        ui.h3("Description"),
-                        ui.p(
-                            "The UpSet plot displays shared regulators"
-                            "across multiple binding datasets. You can explore"
-                            "intersections by clicking bars or nodes. Use this"
-                            "to identify regulators present in multiple datasets"
-                            "or unique to one."
-                        ),
-                        ui.p(
-                            "The correlation matrix shows similarity "
-                            "between TF binding profiles."
-                        ),
-                        style="margin-top: 1rem; width: 100%; max-width: 1200px;",
-                    ),
-                    style=(
-                        "width: 1200px; min-height: 500px; "
-                        "margin-right: 2rem; flex-shrink: 0;"
-                    ),
+                ui.tags.p(
+                    "This page includes binding data from multiple "
+                    "experimental sources. Each technique provides genome-wide "
+                    "measurements of transcription factor (TF) binding events, "
+                    "but differs in resolution, noise profile, and protocol."
                 ),
-                # Right column: Correlation matrix
-                ui.div(
-                    ui.card(
-                        ui.card_header("Binding Correlation Matrix"),
-                        ui.card_body(
-                            ui.div(
-                                correlation_matrix_ui("binding_corr_matrix"),
-                                style=(
-                                    "width: 450px; height: 450px;"
-                                    "display: flex; align-items: center; "
-                                    "justify-content: center;"
+                ui.tags.ul(
+                    ui.tags.li(
+                        ui.tags.b("ChIP-chip: "),
+                        "Chromatin immunoprecipitation followed by "
+                        "microarray hybridization. This data is from the Young lab "
+                        "and is publicly available at ",
+                        ui.a(
+                            "The Young Lab",
+                            href="http://younglab.wi.mit.edu/regulatory_code/GWLD.html",
+                            target="_blank",
+                        ),
+                        ".",
+                        ui.tags.br(),
+                        ui.tags.small(
+                            ui.em(
+                                "Harbison CT, Gordon DB, Lee TI, Rinaldi NJ, "
+                                "Macisaac KD, Danford TW, Hannett NM, Tagne JB, "
+                                "Reynolds DB, Yoo J, et al. 2004. Transcriptional "
+                                "regulatory code of a eukaryotic genome. "
+                                "Nature 431: 99–104.",
+                                ui.a(
+                                    "doi:10.1038/nature02800",
+                                    href="https://doi.org/10.1038/nature02800",
+                                    target="_blank",
                                 ),
-                            ),
-                            style="display: flex; justify-content: center; "
-                            "align-items: center;",
-                        ),
-                        ui.card_footer(
-                            ui.p(
-                                "Click and drag to zoom in on a specific region of the "
-                                "correlation matrix. Double click to reset the zoom.",
-                                class_="text-muted",
-                            ),
+                            )
                         ),
                     ),
-                    style="flex-shrink: 0; display: flex; justify-content: center;",
+                    ui.tags.li(
+                        ui.tags.b("ChIP-exo: "),
+                        "Chromatin immunoprecipitation followed by exonuclease "
+                        "digestion and sequencing. This protocol yields "
+                        "high-resolution footprints of bound TFs with "
+                        "base-pair precision and reduced background noise compared "
+                        "to ChIP-chip or ChIP-seq. This dataset is produced by the "
+                        "Pugh lab and is publicly available at ",
+                        ui.a(
+                            "yeastepigenome.org",
+                            href="http://yeastepigenome.org",
+                            target="_blank",
+                        ),
+                        ".",
+                        ui.tags.br(),
+                        ui.tags.small(
+                            ui.em(
+                                "Rossi, Matthew J et al. “A high-resolution "
+                                "protein architecture of the budding yeast genome.” "
+                                "Nature vol. 592,7853 (2021): 309–314. ",
+                                ui.a(
+                                    "doi:10.1038/s41586-021-03314-8",
+                                    href="https://doi.org/10.1038/s41586-021-03314-8",
+                                    target="_blank",
+                                ),
+                            )
+                        ),
+                    ),
+                    ui.tags.li(
+                        ui.tags.b("Calling Cards: "),
+                        "An in vivo transposon-based TF method. ",
+                        "A transposase is tagged to a TF of interest while a "
+                        "enabling insertion events of a known transposon sequence "
+                        "near TF binding sites. This data is produced in both the"
+                        "Brent and Mitra labs at Washington University. Most is not "
+                        "publicly available yet.",
+                    ),
                 ),
-                style="display: flex; flex-direction: row; justify-content: center; "
-                "align-items: flex-start;",
-            )
-        )
+                ui.p(
+                    "More information on how this data was parsed and "
+                    "processed for the tfbindingandperturbation database can "
+                    "be found ",
+                    ui.a(
+                        "here",
+                        href="https://github.com/cmatKhan/parsing_yeast_database_data",
+                        target="_blank",
+                    ),
+                    ".",
+                ),
+            ),
+            id="binding-description",
+        ),
+        # Second row: Plot area container
+        ui.div(
+            # Left: UpSet plot
+            ui.div(
+                ui.card(
+                    ui.card_header("Binding UpSet Plot"),
+                    ui.card_body(upset_plot_ui("binding_upset")),
+                    ui.card_footer(
+                        ui.p(
+                            "Click any one of the sets to show what proportion of "
+                            "the regulators in the selected set are also present "
+                            "in the other sets.",
+                            class_="text-muted",
+                        ),
+                    ),
+                ),
+                id="binding-upset-container",
+            ),
+            # Right: Correlation matrix
+            ui.div(
+                ui.card(
+                    ui.card_header("Binding Correlation Matrix"),
+                    ui.card_body(
+                        ui.div(
+                            correlation_matrix_ui("binding_corr_matrix"),
+                            id="binding-corr-plot-wrapper",
+                        ),
+                        id="binding-corr-body",
+                    ),
+                    ui.card_footer(
+                        ui.p(
+                            "Click and drag to zoom in on a specific region of the "
+                            "correlation matrix. Double click to reset the zoom.",
+                            class_="text-muted",
+                        ),
+                    ),
+                ),
+                id="binding-corr-container",
+            ),
+            id="binding-plot-row",
+        ),
+        # Add styles at the bottom
+        ui.tags.style(
+            """
+            #binding-description {
+                max-width: 100%;
+                margin-bottom: 1.5rem;
+            }
+
+            #binding-plot-row {
+                display: flex;
+                flex-direction: row;
+                justify-content: center;
+                align-items: flex-start;
+                gap: 2rem;
+            }
+
+            #binding-upset-container {
+                flex: 1.2;
+                min-width: 0;
+                min-height: 500px;
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+            }
+
+            #binding-corr-container {
+                flex: 0 0 500px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                height: 100%;
+            }
+
+            #binding-corr-plot-wrapper {
+                width: 450px;
+                height: 450px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            #binding-corr-body {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                flex: 1;
+            }
+
+            .card {
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+            }
+
+            .card-body {
+                flex: 1;
+            }
+
+            .card-footer {
+                margin-top: auto;
+            }
+            """
+        ),
     )
 
 
