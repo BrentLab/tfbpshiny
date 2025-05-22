@@ -5,6 +5,7 @@ from shiny import Inputs, Outputs, Session, module, reactive
 from shinywidgets import output_widget, render_plotly
 
 from ..utils.create_distribution_plot import create_distribution_plot
+from ..utils.neg_log10_transform import neg_log10_transform
 
 
 @module.ui
@@ -18,7 +19,7 @@ def dto_distributions_server(
     output: Outputs,
     session: Session,
     *,
-    rank_response_metadata: reactive.ExtendedTask,
+    rank_response_metadata: reactive.calc,
     logger: Logger,
 ):
     """
@@ -35,10 +36,32 @@ def dto_distributions_server(
     @output(id="dto_plot")
     @render_plotly
     def dto_plot():
-        metadata = rank_response_metadata.result()
+        metadata = rank_response_metadata()
         if metadata.empty:
             return px.scatter(title="No data to plot")
 
+        na_mask = metadata["dto_empirical_pvalue"].isna()
+        if na_mask.any():
+            cols_to_show = [
+                "regulator_symbol",
+                "binding_source",
+                "expression_source",
+                "dto_empirical_pvalue",
+            ]
+            logger.info(
+                f"DTO Empirical P-value contains NA values. {na_mask.sum()} rows"
+            )
+            logger.debug(
+                "DTO Empirical P-value contains NA values. "
+                "These will be removed from the plot:\n%s",
+                metadata.loc[na_mask, cols_to_show].drop_duplicates(),
+            )
+            metadata = metadata.loc[~na_mask]
+
+        metadata["dto_empirical_pvalue"] = neg_log10_transform(
+            metadata["dto_empirical_pvalue"]
+        )
+
         return create_distribution_plot(
-            metadata, "dto_empirical_pvalue", "DTO Empirical P-value"
+            metadata, "dto_empirical_pvalue", "-log10(DTO Empirical P-value)"
         )
