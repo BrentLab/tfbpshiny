@@ -87,4 +87,4 @@ def create_distribution_plot(
         color_discrete_map=color_discrete_map,
     )
 
-    return plot_formatter(fig, y_axis_title, **kwargs)
+    return plot_formatter(fig, "Binding Data Source", y_axis_title, **kwargs)
