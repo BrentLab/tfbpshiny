@@ -82,6 +82,7 @@ def create_distribution_plot(
         y=y_column,
         color="binding_source",
         facet_col="expression_source",
+        facet_col_spacing=0.04,
         points="outliers",
         category_orders=category_orders,
         color_discrete_map=color_discrete_map,
