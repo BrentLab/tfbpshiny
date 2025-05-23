@@ -62,13 +62,6 @@ def all_regulator_compare_ui():
                         "response/non-response. ",
                         "The distribution shows the proportion of genes labeled "
                         "as responsive among the top 25 most strongly bound. ",
-                        "See the original method described in ",
-                        ui.a(
-                            "Kang et al., 2020",
-                            href="https://genome.cshlp.org/content/30/3/459",
-                            target="_blank",
-                        ),
-                        ".",
                     ),
                     ui.tags.li(
                         ui.tags.b("DTO empirical p-value: "),
@@ -77,7 +70,14 @@ def all_regulator_compare_ui():
                         "thresholds that minimize ",
                         "the hypergeometric p-value of their overlap. The empirical "
                         "p-value reflects the rank overlap's extremity "
-                        "relative to a null distribution generated via permutation.",
+                        "relative to a null distribution generated via permutation. ",
+                        "See the original method described in ",
+                        ui.a(
+                            "Kang et al., 2020",
+                            href="https://genome.cshlp.org/content/30/3/459",
+                            target="_blank",
+                        ),
+                        ".",
                     ),
                     ui.tags.li(
                         ui.tags.b("Univariate p-value: "),
