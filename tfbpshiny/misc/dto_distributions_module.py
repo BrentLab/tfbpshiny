@@ -56,10 +56,10 @@ def dto_distributions_server(
                 "These will be removed from the plot:\n%s",
                 metadata.loc[na_mask, cols_to_show].drop_duplicates(),
             )
-            metadata = metadata.loc[~na_mask]
+            metadata = metadata.loc[~na_mask].copy()
 
-        metadata["dto_empirical_pvalue"] = neg_log10_transform(
-            metadata["dto_empirical_pvalue"]
+        metadata.loc[:, "dto_empirical_pvalue"] = neg_log10_transform(
+            metadata.loc[:, "dto_empirical_pvalue"]
         )
 
         return create_distribution_plot(
