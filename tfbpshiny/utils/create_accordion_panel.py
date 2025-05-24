@@ -32,9 +32,7 @@ def create_accordion_panel(
         logger.error(f"title must be a string: {title}")
         raise ValueError("title must be a string")
 
-    if not isinstance(content, (list, tuple)):
-        logger.error(f"content must be a list or tuple: {content}")
-        raise ValueError("content must be a list or tuple")
+# Removed redundant check for `content` being a list or tuple.
 
     for item in content:
         if not isinstance(item, ui.Tag):
