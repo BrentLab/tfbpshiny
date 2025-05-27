@@ -154,6 +154,12 @@ def rank_response_replicate_plot_server(
         logger.info("Dynamic UI prepared.")
         return containers
 
+    def register_plot_output(plot_id, fig):
+        @output(id=plot_id)
+        @render_plotly
+        def _():
+            return plot_formatter(fig)
+
     # Render dynamic UI
     @output
     @render.ui
@@ -189,25 +195,20 @@ def rank_response_replicate_plot_server(
                 plots_dict
             ).items():
                 plot_id = f"plot_{source}_{expression_id}"
-                # see note below
                 selected_promotersetsig_local = selected_promotersetsigs.get()
-                if selected_promotersetsig_local:
-                    if selected_promotersetsig_local:
-                        for trace in fig["data"]:
-                            logger.error(
-                                "trace[trace[name] in selected_promotersetsig: %s",
-                                trace["name"],
-                            )
-                            trace["visible"] = (
-                                True
-                                if trace["name"] in selected_promotersetsig_local
-                                else "legendonly"
-                            )
 
-                @output(id=plot_id)
-                @render_plotly
-                def render_plot(fig=fig):
-                    return plot_formatter(fig)
+                if selected_promotersetsig_local:
+                    for trace in fig["data"]:
+                        logger.error(
+                            "trace name: %s (%s)", trace["name"], type(trace["name"])
+                        )
+                        trace["visible"] = (
+                            True
+                            if int(trace["name"]) in selected_promotersetsig_local
+                            else "legendonly"
+                        )
+
+                register_plot_output(plot_id, fig)
 
         logger.info("Rank response plots rendered successfully.")
 
