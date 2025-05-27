@@ -14,6 +14,7 @@ from ..rank_response.replicate_table_module import (
     rank_response_replicate_table_server,
     rank_response_replicate_table_ui,
 )
+from ..utils.create_accordion_panel import create_accordion_panel
 
 _init_rr_choices = [
     "promotersetsig",
@@ -40,30 +41,60 @@ _init_bindingmanualqc_choices = [
 
 @module.ui
 def individual_regulator_compare_ui():
+    symbol_locus_tag_switch_panel = create_accordion_panel(
+        "Symbol/Locus Tag",
+        ui.input_switch(
+            "symbol_locus_tag_switch", label="Symbol/Locus Tag", value=False
+        ),
+    )
+
+    regulator_select_panel = create_accordion_panel(
+        "Regulator",
+        ui.input_select(
+            "regulator",
+            label="",
+            selectize=True,
+            selected=None,
+            choices=[],
+        ),
+    )
+
+    rr_columns_panel = create_accordion_panel(
+        "RR Replicate Columns",
+        ui.input_checkbox_group(
+            "rr_columns",
+            label="",
+            choices=_init_rr_choices,
+            selected=_init_rr_choices,
+        ),
+    )
+
+    bindingmanualqc_columns_panel = create_accordion_panel(
+        "BindingManualQC Columns",
+        ui.input_checkbox_group(
+            "bindingmanualqc_columns",
+            label="",
+            choices=_init_bindingmanualqc_choices,
+            selected=_init_bindingmanualqc_choices,
+        ),
+    )
+
+    option_panels = [
+        symbol_locus_tag_switch_panel,
+        regulator_select_panel,
+        rr_columns_panel,
+        bindingmanualqc_columns_panel,
+    ]
+
     return ui.layout_sidebar(
         ui.sidebar(
-            ui.input_switch(
-                "symbol_locus_tag_switch", label="Symbol/Locus Tag", value=False
+            ui.accordion(
+                *option_panels,
+                id=module.resolve_id("input_accordion"),
+                open=None,
+                multiple=True,
             ),
-            ui.input_select(
-                "regulator",
-                label="Regulator",
-                selectize=True,
-                selected=None,
-                choices=[],
-            ),
-            ui.input_checkbox_group(
-                "rr_columns",
-                "RR Replicate Columns",
-                choices=_init_rr_choices,
-                selected=_init_rr_choices,
-            ),
-            ui.input_checkbox_group(
-                "bindingmanualqc_columns",
-                "BindingManualQC columns",
-                choices=_init_bindingmanualqc_choices,
-                selected=_init_bindingmanualqc_choices,
-            ),
+            width="400px",
         ),
         ui.div(
             rank_response_replicate_plot_ui("rank_response_replicate_plot"),
