@@ -72,7 +72,7 @@ def compute_rank_response(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     :return: A DataFrame indexed by 'rank_bin' with columns for the
             number of responsive items in each bin ('n_responsive_in_rank'),
             cumulative number of successes ('n_successes'), response ratio
-            ('response_ratio'), p-value ('p_value'), and confidence interval
+            ('response_ratio'), p-value ('pvalue'), and confidence interval
             bounds ('ci_lower' and 'ci_upper').
 
     :examples:
