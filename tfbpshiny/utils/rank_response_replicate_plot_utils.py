@@ -36,17 +36,15 @@ def parse_binomtest_results(binomtest_obj: BinomTestResult, **kwargs):
         # Output: (0.5, <p-value>, <ci_lower>, <ci_upper>)
 
     """
+    binom_res = binomtest_obj.proportion_ci(
+        confidence_level=kwargs.get("confidence_level", 0.95),
+        method=kwargs.get("method", "exact"),
+    )
     return (
         binomtest_obj.statistic,
         binomtest_obj.pvalue,
-        binomtest_obj.proportion_ci(
-            confidence_level=kwargs.get("confidence_level", 0.95),
-            method=kwargs.get("method", "exact"),
-        ).low,
-        binomtest_obj.proportion_ci(
-            confidence_level=kwargs.get("confidence_level", 0.95),
-            method=kwargs.get("method", "exact"),
-        ).high,
+        binom_res.low,
+        binom_res.high,
     )
 
 

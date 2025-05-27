@@ -125,7 +125,7 @@ def individual_regulator_compare_server(
     return: None
 
     """
-    selected_promotersetsigs_reactive: reactive.value = reactive.Value(set())
+    selected_promotersetsigs_reactive: reactive.value[set] = reactive.Value(set())
 
     @reactive.effect
     def _():
