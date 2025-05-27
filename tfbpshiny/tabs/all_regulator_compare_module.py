@@ -45,7 +45,19 @@ ACCORDION_INPUT_CONFIG: list[AccordionItemConfig] = [
 
 @module.ui
 def all_regulator_compare_ui():
-    accordion_panels = []
+    data_source_panels = []
+
+    general_ui_panel = create_accordion_panel(
+        "General",
+        ui.input_switch(
+            "only_shared_regulators",
+            label="Only Show Shared Regulators",
+            value=True,
+        ),
+    )
+
+    data_source_panels.append(general_ui_panel)
+
     for config in ACCORDION_INPUT_CONFIG:
         # create the checkbox group that goes inside the panel
         checkbox_ui = ui.input_checkbox_group(
@@ -58,21 +70,17 @@ def all_regulator_compare_ui():
             config["panel_title"],
             checkbox_ui,
         )
-        accordion_panels.append(panel)
+        data_source_panels.append(panel)
 
     return ui.layout_sidebar(
         ui.sidebar(
             ui.accordion(
-                *accordion_panels,
-                id="data_filter_accordion",
-                open=False,
+                *data_source_panels,
+                id="general_accordion",
+                open=None,
                 multiple=True,
             ),
-            ui.input_switch(
-                "only_shared_regulators",
-                label="Only Show Shared Regulators",
-                value=True,
-            ),
+            width="400px",
         ),
         ui.row(
             ui.div(
