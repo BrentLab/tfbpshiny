@@ -202,10 +202,10 @@ def all_regulator_compare_server(
         """
         rr_local = rank_response_metadata.result()
         # Get the selected data sources from the accordion checkbox groups
-        binding_data_sources = input.get(ACCORDION_INPUT_CONFIG[0]["checkbox_id"])()
-        perturbation_response_data_sources = input.get(
+        binding_data_sources = input[ACCORDION_INPUT_CONFIG[0]["checkbox_id"]]()
+        perturbation_response_data_sources = input[
             ACCORDION_INPUT_CONFIG[1]["checkbox_id"]
-        )()
+        ]()
         only_shared_regulators = input.only_shared_regulators.get()
 
         logger.info(
