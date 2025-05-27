@@ -228,10 +228,8 @@ def individual_regulator_compare_server(
         # by right joining to rr_metadata on single_binding and composite_binding
         rr_metadata_local = rr_metadata.get()
         bindingmanualqc_local = bindingmanualqc_result.result()
+        # this is used in a query statement
         selected_promotersetsigs_local = selected_promotersetsigs()
-        logger.error(
-            "selected_promotersetsigs_local: %s", selected_promotersetsigs_local
-        )
 
         logger.debug("bindingmanualqc_subset_df: %s", bindingmanualqc_local)
         logger.debug("rr_metadata: %s", rr_metadata_local)
@@ -247,10 +245,14 @@ def individual_regulator_compare_server(
             )
             .drop_duplicates()
             .sort_values(by="promotersetsig", ascending=False)
-            # filter for only those that are in the selected promtoersetsigs
-            .query("promotersetsig in @selected_promotersetsigs_local")
-            .reset_index(drop=True)
         )
+
+        # Now filter using regular Python variable logic
+        bindingmanualqc_subset = bindingmanualqc_subset[
+            bindingmanualqc_subset["promotersetsig"].isin(
+                selected_promotersetsigs_local
+            )
+        ].reset_index(drop=True)
 
         logger.debug("bindingmanualqc_subset: %s", bindingmanualqc_subset)
 

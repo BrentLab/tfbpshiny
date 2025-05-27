@@ -182,9 +182,7 @@ def rank_response_replicate_plot_server(
 
     # Render plots dynamically
     @reactive.effect()
-    # @reactive.event(_plot_dict_by_source)
     def _():
-        # plots_by_source = _plot_dict_by_source.get()
         plots_by_source = update_plot_dict()
         if not plots_by_source:
             logger.warning("No rank response replicate plots to render.")
@@ -199,14 +197,18 @@ def rank_response_replicate_plot_server(
 
                 if selected_promotersetsig_local:
                     for trace in fig["data"]:
-                        logger.error(
-                            "trace name: %s (%s)", trace["name"], type(trace["name"])
-                        )
-                        trace["visible"] = (
-                            True
-                            if int(trace["name"]) in selected_promotersetsig_local
-                            else "legendonly"
-                        )
+                        if trace["meta"]:
+                            logger.debug(
+                                f"Setting visibility for trace {trace['name']} "
+                                f"based on selected promotersetsig: "
+                                f"{trace['meta']['promotersetsig']}"
+                            )
+                            trace["visible"] = (
+                                True
+                                if int(trace["meta"]["promotersetsig"])
+                                in selected_promotersetsig_local
+                                else "legendonly"
+                            )
 
                 register_plot_output(plot_id, fig)
 

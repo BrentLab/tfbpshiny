@@ -193,14 +193,15 @@ def prepare_rank_response_data(rr_dict: dict) -> dict:
         expression_id = str(row["expression"])
         promotersetsig_id = str(row["promotersetsig"])
 
-        plots.setdefault(expression_id, {}).update(
-            {promotersetsig_id: process_plot_data(data)}
-        )
+        plot_data = process_plot_data(data)
+        plot_data["datasource"] = row["binding_source"]
+
+        plots.setdefault(expression_id, {}).update({promotersetsig_id: plot_data})
 
     return plots
 
 
-def add_traces_to_plot(fig, sample_id, add_random, **kwargs):
+def add_traces_to_plot(fig, promotersetsig, add_random, **kwargs):
     """Add traces to a Plotly figure based on plot data."""
     # Add the main line for the promoterset signal
     fig.add_trace(
@@ -208,8 +209,11 @@ def add_traces_to_plot(fig, sample_id, add_random, **kwargs):
             x=kwargs["x"],
             y=kwargs["y"],
             mode="lines",
-            name=f"{sample_id}",
-            legendrank=int(sample_id),
+            name=f"{kwargs['datasource']}; {promotersetsig}",
+            legendrank=int(promotersetsig),
+            meta={
+                "promotersetsig": promotersetsig,
+            },
         )
     )
 

@@ -1,6 +1,6 @@
 from logging import Logger
 
-from shiny import Inputs, Outputs, Session, module, reactive, render, ui
+from shiny import Inputs, Outputs, Session, module, reactive, render, req, ui
 
 from ..utils.rename_dataframe_data_sources import rename_dataframe_data_sources
 from ..utils.safe_sci_notatation import safe_sci_notation
@@ -31,6 +31,8 @@ def rank_response_replicate_table_server(
 
     """
 
+    df_local_reactive = reactive.Value()  # type: ignore
+
     @render.data_frame
     def rank_response_replicate_table():
         df_local = rr_metadata().copy()  # type: ignore
@@ -55,16 +57,22 @@ def rank_response_replicate_table_server(
             safe_sci_notation
         )
 
+        df_local.reset_index(drop=True, inplace=True)
+
+        df_local_reactive.set(df_local)
+
         return render.DataGrid(
             df_local,
             selection_mode="rows",
         )
 
+    @reactive.calc
     def get_selected_promotersetsig():
+        req(df_local_reactive)
         selected_rows = rank_response_replicate_table.cell_selection()["rows"]
-        rr_local = rr_metadata()  # type: ignore
-        if not selected_rows or rr_local.empty:
+        df_local = df_local_reactive.get()  # type: ignore
+        if not selected_rows or df_local.empty:
             return set()
-        return set(rr_local.loc[list(selected_rows), "promotersetsig"])
+        return set(df_local.loc[list(selected_rows), "promotersetsig"])
 
     return get_selected_promotersetsig

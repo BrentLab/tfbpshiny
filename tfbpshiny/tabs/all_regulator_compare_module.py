@@ -222,10 +222,10 @@ def all_regulator_compare_server(
             perturbation_response_data_sources,
         )
 
-        fltr_df = rr_local.query(
-            "binding_source in @binding_data_sources and "
-            "expression_source in @perturbation_response_data_sources"
-        )
+        fltr_df = rr_local[
+            rr_local["binding_source"].isin(binding_data_sources)
+            & rr_local["expression_source"].isin(perturbation_response_data_sources)
+        ]
 
         if only_shared_regulators:
             regulator_sets = fltr_df.groupby(["binding_source", "expression_source"])[
