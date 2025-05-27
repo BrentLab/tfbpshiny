@@ -41,18 +41,15 @@ _init_bindingmanualqc_choices = [
 
 @module.ui
 def individual_regulator_compare_ui():
-    symbol_locus_tag_switch_panel = create_accordion_panel(
-        "Symbol/Locus Tag",
+
+    general_ui_panel = create_accordion_panel(
+        "General",
         ui.input_switch(
             "symbol_locus_tag_switch", label="Symbol/Locus Tag", value=False
         ),
-    )
-
-    regulator_select_panel = create_accordion_panel(
-        "Regulator",
         ui.input_select(
             "regulator",
-            label="",
+            label="Select Regulator",
             selectize=True,
             selected=None,
             choices=[],
@@ -80,8 +77,7 @@ def individual_regulator_compare_ui():
     )
 
     option_panels = [
-        symbol_locus_tag_switch_panel,
-        regulator_select_panel,
+        general_ui_panel,
         rr_columns_panel,
         bindingmanualqc_columns_panel,
     ]
