@@ -383,10 +383,16 @@ def rank_response_replicate_plot_server(
         metadata = rr_dict.get("metadata")
         rr_metadata.set(metadata)
         expression_sources = metadata["expression_source"].unique()
+        # Sort the expression sources alphabetically for consistent plot order
+        sorted_expression_sources = sorted(list(expression_sources))
+        logger.info(
+            "Derived and sorted expression_sources order: %s",
+            list(sorted_expression_sources),
+        )
 
         plot_dict_by_source = {}
         promotersetsig_set = set()
-        for source in expression_sources:
+        for source in sorted_expression_sources:  # Iterate over the sorted list
             filtered_metadata = metadata[metadata["expression_source"] == source]
             try:
                 promotersetsig_set.update(
