@@ -36,6 +36,4 @@ def bindingmanualqc_table_server(
         if df_local.empty:
             return pd.DataFrame()
 
-        return df_local
-
-    return None
+        return render.DataGrid(df_local, selection_mode="rows")

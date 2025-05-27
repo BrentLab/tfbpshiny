@@ -19,7 +19,7 @@ def rank_response_replicate_table_server(
     *,
     rr_metadata: reactive.calc,
     logger: Logger,
-):
+) -> reactive.calc:
     """
     This function produces the reactive/render functions necessary to producing the rank
     response replicate table. All arguments must be passed as keyword arguments.
@@ -55,4 +55,16 @@ def rank_response_replicate_table_server(
             safe_sci_notation
         )
 
-        return df_local
+        return render.DataGrid(
+            df_local,
+            selection_mode="rows",
+        )
+
+    def get_selected_promotersetsig():
+        selected_rows = rank_response_replicate_table.cell_selection()["rows"]
+        rr_local = rr_metadata()  # type: ignore
+        if not selected_rows or rr_local.empty:
+            return set()
+        return set(rr_local.loc[list(selected_rows), "promotersetsig"])
+
+    return get_selected_promotersetsig

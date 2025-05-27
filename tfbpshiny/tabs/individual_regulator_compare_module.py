@@ -98,6 +98,7 @@ def individual_regulator_compare_server(
     return: None
 
     """
+    selected_promotersetsigs_reactive: reactive.value = reactive.Value(set())
 
     @reactive.effect
     def _():
@@ -133,45 +134,25 @@ def individual_regulator_compare_server(
     rr_metadata = rank_response_replicate_plot_server(
         "rank_response_replicate_plot",
         selected_regulator=input.regulator,
+        selected_promotersetsigs=selected_promotersetsigs_reactive,
         logger=logger,
     )
-
-    @reactive.calc
-    def bindingmanualqc_subset_df():
-        # use the promotersetsig in rr_metadata to subset the bindingmanualqc table
-        # by right joining to rr_metadata on single_binding and composite_binding
-        rr_metadata_local = rr_metadata.get()
-        bindingmanualqc_local = bindingmanualqc_result.result()
-
-        logger.debug("bindingmanualqc_subset_df: %s", bindingmanualqc_local)
-        logger.debug("rr_metadata: %s", rr_metadata_local)
-
-        bindingmanualqc_subset = (
-            bindingmanualqc_local.merge(
-                rr_metadata_local[
-                    ["promotersetsig", "single_binding", "composite_binding"]
-                ],
-                how="right",
-                left_on=["single_binding", "composite_binding"],
-                right_on=["single_binding", "composite_binding"],
-            )
-            .drop_duplicates()
-            .sort_values(by="promotersetsig", ascending=False)
-        )
-
-        logger.debug("bindingmanualqc_subset: %s", bindingmanualqc_subset)
-
-        selected_bindingmanualqc_cols = list(input.bindingmanualqc_columns.get())
-        logger.debug(
-            f"bindingmanualqc selected columns: {selected_bindingmanualqc_cols}"
-        )
-        return bindingmanualqc_subset[selected_bindingmanualqc_cols]
 
     # update the rr_metadata column options
     @reactive.effect
     def _():
         rr_metadata_local = rr_metadata.get()
         cols = list(rr_metadata_local.columns)
+        # this is a messy way to ensure that these columns are always first
+        cols = [
+            "promotersetsig",
+            "binding_source",
+            "expression_source",
+        ] + [
+            col
+            for col in cols
+            if col not in ["promotersetsig", "binding_source", "expression_source"]
+        ]
         selected = list(input.rr_columns.get())
 
         ui.update_checkbox_group("rr_columns", choices=cols, selected=selected)
@@ -197,24 +178,63 @@ def individual_regulator_compare_server(
         )
         logger.debug(f"rr selected columns: {selected_rr_cols}")
 
-        return rr_metadata_local[selected_rr_cols]
+        df = rr_metadata_local[selected_rr_cols]
+        logger.debug(f"display rr metadata columns: {df.columns}")
+
+        return df
+
+    selected_promotersetsigs = rank_response_replicate_table_server(
+        "rank_response_replicate_table", rr_metadata=rr_display_table, logger=logger
+    )
+
+    @reactive.effect
+    def _():
+        selected_promotersetsigs_local = selected_promotersetsigs()
+        selected_promotersetsigs_reactive.set(selected_promotersetsigs_local)
+        logger.debug(
+            "selected_promotersetsigs_reactive: %s", selected_promotersetsigs_reactive()
+        )
 
     @reactive.calc
-    def bindingmanualqc_display_table():
+    def bindingmanualqc_subset_df():
+        # use the promotersetsig in rr_metadata to subset the bindingmanualqc table
+        # by right joining to rr_metadata on single_binding and composite_binding
+        rr_metadata_local = rr_metadata.get()
+        bindingmanualqc_local = bindingmanualqc_result.result()
+        selected_promotersetsigs_local = selected_promotersetsigs()
+        logger.error(
+            "selected_promotersetsigs_local: %s", selected_promotersetsigs_local
+        )
+
+        logger.debug("bindingmanualqc_subset_df: %s", bindingmanualqc_local)
+        logger.debug("rr_metadata: %s", rr_metadata_local)
+
+        bindingmanualqc_subset = (
+            bindingmanualqc_local.merge(
+                rr_metadata_local[
+                    ["promotersetsig", "single_binding", "composite_binding"]
+                ],
+                how="right",
+                left_on=["single_binding", "composite_binding"],
+                right_on=["single_binding", "composite_binding"],
+            )
+            .drop_duplicates()
+            .sort_values(by="promotersetsig", ascending=False)
+            # filter for only those that are in the selected promtoersetsigs
+            .query("promotersetsig in @selected_promotersetsigs_local")
+            .reset_index(drop=True)
+        )
+
+        logger.debug("bindingmanualqc_subset: %s", bindingmanualqc_subset)
+
         selected_bindingmanualqc_cols = list(input.bindingmanualqc_columns.get())
-        bindingmanualqc_metadata_local = bindingmanualqc_result.result()
         logger.debug(
             f"bindingmanualqc selected columns: {selected_bindingmanualqc_cols}"
         )
-
-        return bindingmanualqc_metadata_local[selected_bindingmanualqc_cols]
+        return bindingmanualqc_subset[selected_bindingmanualqc_cols]
 
     bindingmanualqc_table_server(
         "bindingmanualqc_table",
         bindingmanualqc_df=bindingmanualqc_subset_df,
         logger=logger,
-    )
-
-    rank_response_replicate_table_server(
-        "rank_response_replicate_table", rr_metadata=rr_display_table, logger=logger
     )
