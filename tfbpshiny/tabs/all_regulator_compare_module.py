@@ -62,7 +62,7 @@ def all_regulator_compare_ui():
         # create the checkbox group that goes inside the panel
         checkbox_ui = ui.input_checkbox_group(
             id=config["checkbox_id"],
-            label=config["checkbox_label"],
+            label="",
             choices=config["choices"],
             selected=config["selected"],
         )
