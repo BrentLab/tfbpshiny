@@ -110,7 +110,7 @@ def individual_regulator_compare_ui():
                     ui.tags.li(
                         ui.tags.b("Colored Lines: "),
                         "Each colored line represents a different binding dataset for "
-                        "the current selected regulator.",
+                        "the currently selected regulator.",
                     ),
                     ui.tags.li(
                         ui.tags.b("Random Lines: "),
