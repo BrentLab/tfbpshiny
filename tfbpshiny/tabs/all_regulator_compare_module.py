@@ -14,6 +14,8 @@ from ..rank_response.distributions_module import (
     rank_response_distributions_server,
     rank_response_distributions_ui,
 )
+from ..utils.accordion_item_config import AccordionItemConfig
+from ..utils.create_accordion_panel import create_accordion_panel
 from ..utils.rename_dataframe_data_sources import get_source_name_dict
 
 # these are used in the UI to set choices for the binding and perturbation response
@@ -23,25 +25,62 @@ binding_data_source_lookup = get_source_name_dict("binding")
 perturbation_response_source_lookup = get_source_name_dict("perturbation_response")
 
 
+ACCORDION_INPUT_CONFIG: list[AccordionItemConfig] = [
+    {
+        "panel_title": "Binding Data Sources",
+        "checkbox_id": "acc_binding_sources",
+        "checkbox_label": "Select binding sources:",
+        "choices": binding_data_source_lookup,
+        "selected": [],
+    },
+    {
+        "panel_title": "Perturbation Response Data Sources",
+        "checkbox_id": "acc_perturbation_sources",
+        "checkbox_label": "Select perturbation sources:",
+        "choices": perturbation_response_source_lookup,
+        "selected": [],
+    },
+]
+
+
 @module.ui
 def all_regulator_compare_ui():
+    data_source_panels = []
+
+    general_ui_panel = create_accordion_panel(
+        "General",
+        ui.input_switch(
+            "only_shared_regulators",
+            label="Only Show Shared Regulators",
+            value=True,
+        ),
+    )
+
+    data_source_panels.append(general_ui_panel)
+
+    for config in ACCORDION_INPUT_CONFIG:
+        # create the checkbox group that goes inside the panel
+        checkbox_ui = ui.input_checkbox_group(
+            id=config["checkbox_id"],
+            label="",
+            choices=config["choices"],
+            selected=config["selected"],
+        )
+        panel = create_accordion_panel(
+            config["panel_title"],
+            checkbox_ui,
+        )
+        data_source_panels.append(panel)
+
     return ui.layout_sidebar(
         ui.sidebar(
-            ui.input_checkbox_group(
-                "binding_data_sources",
-                label="Binding Data Sources",
-                choices=binding_data_source_lookup,
+            ui.accordion(
+                *data_source_panels,
+                id="general_accordion",
+                open=None,
+                multiple=True,
             ),
-            ui.input_checkbox_group(
-                "perturbation_response_data_sources",
-                label="Perturbation Response Data Sources",
-                choices=perturbation_response_source_lookup,
-            ),
-            ui.input_switch(
-                "only_shared_regulators",
-                label="Only Show Shared Regulators",
-                value=True,
-            ),
+            width="400px",
         ),
         ui.row(
             ui.div(
@@ -62,13 +101,6 @@ def all_regulator_compare_ui():
                         "response/non-response. ",
                         "The distribution shows the proportion of genes labeled "
                         "as responsive among the top 25 most strongly bound. ",
-                        "See the original method described in ",
-                        ui.a(
-                            "Kang et al., 2020",
-                            href="https://genome.cshlp.org/content/30/3/459",
-                            target="_blank",
-                        ),
-                        ".",
                     ),
                     ui.tags.li(
                         ui.tags.b("DTO empirical p-value: "),
@@ -77,7 +109,14 @@ def all_regulator_compare_ui():
                         "thresholds that minimize ",
                         "the hypergeometric p-value of their overlap. The empirical "
                         "p-value reflects the rank overlap's extremity "
-                        "relative to a null distribution generated via permutation.",
+                        "relative to a null distribution generated via permutation. ",
+                        "See the original method described in ",
+                        ui.a(
+                            "Kang et al., 2020",
+                            href="https://genome.cshlp.org/content/30/3/459",
+                            target="_blank",
+                        ),
+                        ".",
                     ),
                     ui.tags.li(
                         ui.tags.b("Univariate p-value: "),
@@ -170,11 +209,11 @@ def all_regulator_compare_server(
 
         """
         rr_local = rank_response_metadata.result()
-        # Get the selected data sources from the input
-        binding_data_sources = input.binding_data_sources.get()
-        perturbation_response_data_sources = (
-            input.perturbation_response_data_sources.get()
-        )
+        # Get the selected data sources from the accordion checkbox groups
+        binding_data_sources = input[ACCORDION_INPUT_CONFIG[0]["checkbox_id"]]()
+        perturbation_response_data_sources = input[
+            ACCORDION_INPUT_CONFIG[1]["checkbox_id"]
+        ]()
         only_shared_regulators = input.only_shared_regulators.get()
 
         logger.info(
@@ -183,10 +222,10 @@ def all_regulator_compare_server(
             perturbation_response_data_sources,
         )
 
-        fltr_df = rr_local.query(
-            "binding_source in @binding_data_sources and "
-            "expression_source in @perturbation_response_data_sources"
-        )
+        fltr_df = rr_local[
+            rr_local["binding_source"].isin(binding_data_sources)
+            & rr_local["expression_source"].isin(perturbation_response_data_sources)
+        ]
 
         if only_shared_regulators:
             regulator_sets = fltr_df.groupby(["binding_source", "expression_source"])[
@@ -200,7 +239,7 @@ def all_regulator_compare_server(
                 fltr_df = fltr_df[fltr_df["regulator_symbol"].isin(shared_regulators)]
                 logger.info(
                     "Filtered to only shared regulators. "
-                    "Resulting rows: {len(fltr_df)}"
+                    f"Resulting rows: {len(fltr_df)}"
                 )
             else:
                 # No valid data, return empty DataFrame with same structure

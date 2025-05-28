@@ -19,6 +19,8 @@ faicons = "^0.2.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
+ipykernel = "^6.29.5"
+nbformat = "^5.10.4"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
