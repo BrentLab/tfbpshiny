@@ -109,17 +109,19 @@ def individual_regulator_compare_ui():
                 ui.tags.ul(
                     ui.tags.li(
                         ui.tags.b("Colored Lines: "),
-                        "Each colored line represents a different binding dataset replicate for "
-                        "the currently selected regulator.",
+                        "Each colored line represents a different binding dataset "
+                        "replicate for the currently selected regulator.",
                     ),
                     ui.tags.li(
                         ui.tags.b("Random Lines: "),
-                        "The random expectation is calculated as the number of responsive target genes"
-                        "divided by the total number of target genes",
+                        "The random expectation is calculated as the number of "
+                        "responsive target genes divided by the total number of "
+                        "target genes.",
                     ),
                     ui.tags.li(
                         ui.tags.b("Gray Shaded Area: "),
-                        "This area represents the 95% binomial distribution confidence interval",
+                        "This area represents the 95% binomial distribution "
+                        "confidence interval.",
                     ),
                 ),
             ),
