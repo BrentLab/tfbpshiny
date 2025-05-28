@@ -114,9 +114,8 @@ def individual_regulator_compare_ui():
                     ),
                     ui.tags.li(
                         ui.tags.b("Random Lines: "),
-                        "This line shows the expected response ratio if there were no "
-                        "actual association between the regulator and the gene "
-                        "responsiveness.",
+                        "The random expectation is calculated as the number of responsive target genes"
+                        "divided by the total number of target genes",
                     ),
                     ui.tags.li(
                         ui.tags.b("Gray Shaded Area: "),
