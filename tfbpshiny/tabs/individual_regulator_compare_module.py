@@ -119,8 +119,7 @@ def individual_regulator_compare_ui():
                     ),
                     ui.tags.li(
                         ui.tags.b("Gray Shaded Area: "),
-                        "This area represents the statistical confidence interval "
-                        "for that random expectation.",
+                        "This area represents the 95% binomial distribution confidence interval",
                     ),
                 ),
             ),
