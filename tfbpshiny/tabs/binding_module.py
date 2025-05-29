@@ -86,9 +86,9 @@ def binding_ui():
                     ui.tags.li(
                         ui.tags.b("Calling Cards: "),
                         "An in vivo transposon-based TF method. ",
-                        "A transposase is tagged to a TF of interest while a "
+                        "A transposase is tagged to a TF of interest while an "
                         "enabling insertion events of a known transposon sequence "
-                        "near TF binding sites. This data is produced in both the"
+                        "near TF binding sites. This data is produced in both the "
                         "Brent and Mitra labs at Washington University. Most is not "
                         "publicly available yet.",
                     ),
