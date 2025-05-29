@@ -2,23 +2,21 @@ from logging import Logger
 
 from shiny import Inputs, Outputs, Session, module, reactive, req, ui
 
-from ..misc.bindingmanualqc_table_module import (
-    bindingmanualqc_table_server,
-    bindingmanualqc_table_ui,
+from ..rank_response.expression_source_table_module import (
+    expression_source_table_server,
+    expression_source_table_ui,
+)
+from ..rank_response.main_table_module import (
+    main_table_server,
+    main_table_ui,
 )
 from ..rank_response.replicate_plot_module import (
     rank_response_replicate_plot_server,
     rank_response_replicate_plot_ui,
 )
-from ..rank_response.replicate_table_module import (
-    rank_response_replicate_table_server,
-    rank_response_replicate_table_ui,
-)
 from ..utils.create_accordion_panel import create_accordion_panel
 
 _init_rr_choices = [
-    "promotersetsig",
-    "expression",
     "binding_source",
     "expression_source",
     "univariate_pvalue",
@@ -27,15 +25,6 @@ _init_rr_choices = [
     "dto_empirical_pvalue",
     "rank_25",
     "rank_50",
-    "genomic_inserts",
-    "mito_inserts",
-    "plasmid_inserts",
-]
-
-_init_bindingmanualqc_choices = [
-    "promotersetsig",
-    "dto_status",
-    "rank_response_status",
 ]
 
 
@@ -57,7 +46,7 @@ def individual_regulator_compare_ui():
     )
 
     rr_columns_panel = create_accordion_panel(
-        "RR Replicate Columns",
+        "Replicate Details Columns",
         ui.input_checkbox_group(
             "rr_columns",
             label="",
@@ -66,20 +55,9 @@ def individual_regulator_compare_ui():
         ),
     )
 
-    bindingmanualqc_columns_panel = create_accordion_panel(
-        "BindingManualQC Columns",
-        ui.input_checkbox_group(
-            "bindingmanualqc_columns",
-            label="",
-            choices=_init_bindingmanualqc_choices,
-            selected=_init_bindingmanualqc_choices,
-        ),
-    )
-
     option_panels = [
         general_ui_panel,
         rr_columns_panel,
-        bindingmanualqc_columns_panel,
     ]
 
     return ui.layout_sidebar(
@@ -96,15 +74,10 @@ def individual_regulator_compare_ui():
             ui.div(
                 ui.p(
                     "This page displays the rank response plots and associated "
-                    "Rank Response and Binding Manual Quality Control tables for a "
-                    "single regulator. Use the sidebar to select the regulator of "
-                    "interest, Rank Response columns, and Binding Manual Quality "
-                    "Control columns. "
-                    "Once the options are selected, the rank response plots and tables "
-                    "will be updated to display the data for the selected regulator. "
-                    "Select rows on the rank response table to highlight the "
-                    "corresponding data on the plots, and the Binding Manual Quality "
-                    "table will be filtered to show the corresponding rows."
+                    "tables for a single regulator. Use the sidebar to select the "
+                    "regulator of interest. "
+                    "Select rows in the main selection table to filter and highlight "
+                    "corresponding data in the replicate details tables and plots."
                 ),
                 ui.tags.ul(
                     ui.tags.li(
@@ -127,9 +100,59 @@ def individual_regulator_compare_ui():
             ),
             ui.div(
                 rank_response_replicate_plot_ui("rank_response_replicate_plot"),
-                rank_response_replicate_table_ui("rank_response_replicate_table"),
-                bindingmanualqc_table_ui("bindingmanualqc_table"),
                 style="max-width: 100%; overflow-x: auto;",
+            ),
+            ui.row(
+                ui.column(
+                    6,
+                    ui.card(
+                        ui.card_header("Main Selection Table"),
+                        main_table_ui("main_table"),
+                        ui.card_footer(
+                            ui.p(
+                                ui.tags.b("How to use: "),
+                                "Select rows in this table to filter and highlight "
+                                "corresponding data in the replicate details table "
+                                "and plots. "
+                                "Multiple rows can be selected by holding Ctrl/Cmd "
+                                "while clicking.",
+                                style="margin: 0; font-size: 0.9em; color: #666;",
+                            )
+                        ),
+                        style="height: 100%;",
+                    ),
+                ),
+                ui.column(
+                    6,
+                    ui.card(
+                        ui.card_header("Replicate Details"),
+                        ui.navset_tab(
+                            ui.nav_panel(
+                                "TFKO",
+                                expression_source_table_ui("tfko_table"),
+                            ),
+                            ui.nav_panel(
+                                "Overexpression",
+                                expression_source_table_ui("overexpression_table"),
+                            ),
+                            id="expression_source_tabs",
+                        ),
+                        ui.card_footer(
+                            ui.p(
+                                ui.tags.b("Note: "),
+                                "Rows corresponding to your main table selection are "
+                                "automatically highlighted in orange. "
+                                "This table shows detailed metrics for the selected "
+                                "expression source. "
+                                "Switch between tabs to view different expression "
+                                "conditions.",
+                                style="margin: 0; font-size: 0.9em; color: #666;",
+                            )
+                        ),
+                        style="height: 100%;",
+                    ),
+                ),
+                style="margin-top: 20px;",
             ),
         ),
     )
@@ -197,55 +220,47 @@ def individual_regulator_compare_server(
         logger=logger,
     )
 
-    # update the rr_metadata column options
+    # Update column choices for replicate details
     @reactive.effect
     def _():
+        req(rr_metadata)
         rr_metadata_local = rr_metadata.get()
         cols = list(rr_metadata_local.columns)
-        # this is a messy way to ensure that these columns are always first
-        cols = [
+
+        # Remove columns that are now in the main table
+        excluded_cols = [
+            "genomic_inserts",
+            "mito_inserts",
+            "plasmid_inserts",
             "promotersetsig",
-            "binding_source",
-            "expression_source",
-        ] + [
-            col
-            for col in cols
-            if col not in ["promotersetsig", "binding_source", "expression_source"]
         ]
+        cols = [col for col in cols if col not in excluded_cols]
+
+        # Ensure key columns are first
+        priority_cols = ["binding_source", "expression_source"]
+        cols = priority_cols + [col for col in cols if col not in priority_cols]
+
         selected = list(input.rr_columns.get())
+        selected = [col for col in selected if col not in excluded_cols]
 
         ui.update_checkbox_group("rr_columns", choices=cols, selected=selected)
 
-    # update the bindingmanualqc column options
-    @reactive.effect
-    def _():
-        bindingmanualqc_local = bindingmanualqc_result.result()
-        cols = list(bindingmanualqc_local.columns) + ["promotersetsig"]
-        selected = list(input.bindingmanualqc_columns.get())
-
-        ui.update_checkbox_group(
-            "bindingmanualqc_columns", choices=cols, selected=selected
-        )
-
+    # Update the reactive value when replicate details column selection changes
     @reactive.calc
-    def rr_display_table():
-        req(rr_metadata)
-        selected_rr_cols = list(input.rr_columns.get())
-        rr_metadata_local = rr_metadata.get()
-        rr_metadata_local.sort_values(
-            by="promotersetsig", ascending=False, inplace=True
-        )
-        logger.debug(f"rr selected columns: {selected_rr_cols}")
+    def selected_rr_columns():
+        req(input.rr_columns)
+        selected_cols = list(input.rr_columns.get())
+        return selected_cols
 
-        df = rr_metadata_local[selected_rr_cols]
-        logger.debug(f"display rr metadata columns: {df.columns}")
-
-        return df
-
-    selected_promotersetsigs = rank_response_replicate_table_server(
-        "rank_response_replicate_table", rr_metadata=rr_display_table, logger=logger
+    # Main table with selection capability
+    selected_promotersetsigs = main_table_server(
+        "main_table",
+        rr_metadata=rr_metadata,
+        bindingmanualqc_result=bindingmanualqc_result,
+        logger=logger,
     )
 
+    # Update the reactive value when main table selection changes
     @reactive.effect
     def _():
         selected_promotersetsigs_local = selected_promotersetsigs()
@@ -254,48 +269,21 @@ def individual_regulator_compare_server(
             "selected_promotersetsigs_reactive: %s", selected_promotersetsigs_reactive()
         )
 
-    @reactive.calc
-    def bindingmanualqc_subset_df():
-        # use the promotersetsig in rr_metadata to subset the bindingmanualqc table
-        # by right joining to rr_metadata on single_binding and composite_binding
-        rr_metadata_local = rr_metadata.get()
-        bindingmanualqc_local = bindingmanualqc_result.result()
-        # this is used in a query statement
-        selected_promotersetsigs_local = selected_promotersetsigs()
+    # Expression source tables
+    expression_source_table_server(
+        "tfko_table",
+        rr_metadata=rr_metadata,
+        expression_source="kemmeren_tfko",
+        selected_promotersetsigs=selected_promotersetsigs_reactive,
+        selected_columns=selected_rr_columns,
+        logger=logger,
+    )
 
-        logger.debug("bindingmanualqc_subset_df: %s", bindingmanualqc_local)
-        logger.debug("rr_metadata: %s", rr_metadata_local)
-
-        bindingmanualqc_subset = (
-            bindingmanualqc_local.merge(
-                rr_metadata_local[
-                    ["promotersetsig", "single_binding", "composite_binding"]
-                ],
-                how="right",
-                left_on=["single_binding", "composite_binding"],
-                right_on=["single_binding", "composite_binding"],
-            )
-            .drop_duplicates()
-            .sort_values(by="promotersetsig", ascending=False)
-        )
-
-        # Now filter using regular Python variable logic
-        bindingmanualqc_subset = bindingmanualqc_subset[
-            bindingmanualqc_subset["promotersetsig"].isin(
-                selected_promotersetsigs_local
-            )
-        ].reset_index(drop=True)
-
-        logger.debug("bindingmanualqc_subset: %s", bindingmanualqc_subset)
-
-        selected_bindingmanualqc_cols = list(input.bindingmanualqc_columns.get())
-        logger.debug(
-            f"bindingmanualqc selected columns: {selected_bindingmanualqc_cols}"
-        )
-        return bindingmanualqc_subset[selected_bindingmanualqc_cols]
-
-    bindingmanualqc_table_server(
-        "bindingmanualqc_table",
-        bindingmanualqc_df=bindingmanualqc_subset_df,
+    expression_source_table_server(
+        "overexpression_table",
+        rr_metadata=rr_metadata,
+        expression_source="mcisaac_oe",
+        selected_promotersetsigs=selected_promotersetsigs_reactive,
+        selected_columns=selected_rr_columns,
         logger=logger,
     )
