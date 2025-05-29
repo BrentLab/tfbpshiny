@@ -93,10 +93,44 @@ def individual_regulator_compare_ui():
             width="400px",
         ),
         ui.div(
-            rank_response_replicate_plot_ui("rank_response_replicate_plot"),
-            rank_response_replicate_table_ui("rank_response_replicate_table"),
-            bindingmanualqc_table_ui("bindingmanualqc_table"),
-            style="max-width: 100%; overflow-x: auto;",
+            ui.div(
+                ui.p(
+                    "This page displays the rank response plots and associated "
+                    "Rank Response and Binding Manual Quality Control tables for a "
+                    "single regulator. Use the sidebar to select the regulator of "
+                    "interest, Rank Response columns, and Binding Manual Quality "
+                    "Control columns. "
+                    "Once the options are selected, the rank response plots and tables "
+                    "will be updated to display the data for the selected regulator. "
+                    "Select rows on the rank response table to highlight the "
+                    "corresponding data on the plots, and the Binding Manual Quality "
+                    "table will be filtered to show the corresponding rows."
+                ),
+                ui.tags.ul(
+                    ui.tags.li(
+                        ui.tags.b("Colored Lines: "),
+                        "Each colored line represents a different binding dataset "
+                        "replicate for the currently selected regulator.",
+                    ),
+                    ui.tags.li(
+                        ui.tags.b("Random Lines: "),
+                        "The random expectation is calculated as the number of "
+                        "responsive target genes divided by the total number of "
+                        "target genes.",
+                    ),
+                    ui.tags.li(
+                        ui.tags.b("Gray Shaded Area: "),
+                        "This area represents the 95% binomial distribution "
+                        "confidence interval.",
+                    ),
+                ),
+            ),
+            ui.div(
+                rank_response_replicate_plot_ui("rank_response_replicate_plot"),
+                rank_response_replicate_table_ui("rank_response_replicate_table"),
+                bindingmanualqc_table_ui("bindingmanualqc_table"),
+                style="max-width: 100%; overflow-x: auto;",
+            ),
         ),
     )
 
