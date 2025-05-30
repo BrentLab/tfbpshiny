@@ -195,7 +195,9 @@ def prepare_rank_response_data(rr_dict: dict) -> dict:
         promotersetsig_id = str(row["promotersetsig"])
 
         plot_data = process_plot_data(data)
-        plot_data["datasource"] = source_name_dict.get(row["binding_source"], row["binding_source"])
+        plot_data["datasource"] = source_name_dict.get(
+            row["binding_source"], row["binding_source"]
+        )
 
         plots.setdefault(expression_id, {}).update({promotersetsig_id: plot_data})
 
