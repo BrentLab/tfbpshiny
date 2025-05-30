@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 from scipy.stats import binom, binomtest
 from scipy.stats._result_classes import BinomTestResult
 
+from tfbpshiny.utils.source_name_lookup import get_source_name_dict
+
 logger = logging.getLogger("shiny")
 
 
@@ -184,6 +186,7 @@ def prepare_rank_response_data(rr_dict: dict) -> dict:
 
     # Use list comprehension to generate plots
     plots: dict = {}
+    source_name_dict = get_source_name_dict()
     for _, row in metadata.iterrows():
         id = str(row["id"])
         data = data_dict.get(id)
@@ -192,7 +195,7 @@ def prepare_rank_response_data(rr_dict: dict) -> dict:
         promotersetsig_id = str(row["promotersetsig"])
 
         plot_data = process_plot_data(data)
-        plot_data["datasource"] = row["binding_source"]
+        plot_data["datasource"] = source_name_dict[row["binding_source"]]
 
         plots.setdefault(expression_id, {}).update({promotersetsig_id: plot_data})
 
