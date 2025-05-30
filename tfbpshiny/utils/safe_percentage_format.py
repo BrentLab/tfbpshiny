@@ -20,5 +20,5 @@ def safe_percentage_format(x: str | object) -> object | str:
         percentage = float(x) * 100  # type: ignore
         return f"{round(percentage)}%"
     except Exception:
-        logger.debug(f"Failed to convert {x} to float for percentage formatting.")
+        logger.warning(f"Failed to convert {x} to float for percentage formatting.")
         return x
