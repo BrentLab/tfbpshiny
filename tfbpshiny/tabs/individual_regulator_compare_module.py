@@ -53,6 +53,12 @@ def individual_regulator_compare_ui():
             choices=_init_rr_choices,
             selected=_init_rr_choices,
         ),
+        ui.input_action_button(
+            "update_table",
+            "Update Table",
+            class_="btn-primary mt-2",
+            style="width: 100%;",
+        ),
     )
 
     option_panels = [
@@ -220,6 +226,15 @@ def individual_regulator_compare_server(
         logger=logger,
     )
 
+    selected_rr_columns: reactive.value[list] = reactive.Value(_init_rr_choices)
+
+    # Reactive to check if there are changes in column selection
+    @reactive.calc
+    def has_column_changes():
+        current_selection = set(input.rr_columns.get() or [])
+        confirmed_selection = set(selected_rr_columns.get())
+        return current_selection != confirmed_selection
+
     # Update column choices for replicate details
     @reactive.effect
     def _():
@@ -245,12 +260,35 @@ def individual_regulator_compare_server(
 
         ui.update_checkbox_group("rr_columns", choices=cols, selected=selected)
 
-    # Update the reactive value when replicate details column selection changes
-    @reactive.calc
-    def selected_rr_columns():
+    # Update button appearance based on changes
+    @reactive.effect
+    def _():
+        has_changes = has_column_changes()
+
+        if has_changes:
+            # Active state
+            ui.update_action_button(
+                "update_table",
+                label="Update Table",
+                disabled=False,
+            )
+
+        else:
+            # Disabled state
+            ui.update_action_button(
+                "update_table",
+                label="Update Table",
+                disabled=True,
+            )
+
+    # Update the confirmed column selections when the button is clicked
+    @reactive.effect
+    @reactive.event(input.update_table)
+    def _():
         req(input.rr_columns)
         selected_cols = list(input.rr_columns.get())
-        return selected_cols
+        selected_rr_columns.set(selected_cols)
+        logger.debug("Updated table columns: %s", selected_cols)
 
     # Main table with selection capability
     selected_promotersetsigs = main_table_server(
