@@ -53,6 +53,12 @@ def individual_regulator_compare_ui():
             choices=_init_rr_choices,
             selected=_init_rr_choices,
         ),
+        ui.input_action_button(
+            "update_table",
+            "Update Table",
+            class_="btn-primary mt-2",
+            style="width: 100%;",
+        ),
     )
 
     option_panels = [
@@ -220,6 +226,8 @@ def individual_regulator_compare_server(
         logger=logger,
     )
 
+    selected_rr_columns: reactive.value[list] = reactive.Value(_init_rr_choices)
+
     # Update column choices for replicate details
     @reactive.effect
     def _():
@@ -245,12 +253,14 @@ def individual_regulator_compare_server(
 
         ui.update_checkbox_group("rr_columns", choices=cols, selected=selected)
 
-    # Update the reactive value when replicate details column selection changes
-    @reactive.calc
-    def selected_rr_columns():
+    # Update the confirmed column selections when the button is clicked
+    @reactive.effect
+    @reactive.event(input.update_table)
+    def _():
         req(input.rr_columns)
         selected_cols = list(input.rr_columns.get())
-        return selected_cols
+        selected_rr_columns.set(selected_cols)
+        logger.debug("Updated table columns: %s", selected_cols)
 
     # Main table with selection capability
     selected_promotersetsigs = main_table_server(
