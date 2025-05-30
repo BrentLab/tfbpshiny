@@ -228,6 +228,13 @@ def individual_regulator_compare_server(
 
     selected_rr_columns: reactive.value[list] = reactive.Value(_init_rr_choices)
 
+    # Reactive to check if there are changes in column selection
+    @reactive.calc
+    def has_column_changes():
+        current_selection = set(input.rr_columns.get() or [])
+        confirmed_selection = set(selected_rr_columns.get())
+        return current_selection != confirmed_selection
+
     # Update column choices for replicate details
     @reactive.effect
     def _():
@@ -252,6 +259,27 @@ def individual_regulator_compare_server(
         selected = [col for col in selected if col not in excluded_cols]
 
         ui.update_checkbox_group("rr_columns", choices=cols, selected=selected)
+
+    # Update button appearance based on changes
+    @reactive.effect
+    def _():
+        has_changes = has_column_changes()
+
+        if has_changes:
+            # Active state
+            ui.update_action_button(
+                "update_table",
+                label="Update Table",
+                disabled=False,
+            )
+
+        else:
+            # Disabled state
+            ui.update_action_button(
+                "update_table",
+                label="Update Table",
+                disabled=True,
+            )
 
     # Update the confirmed column selections when the button is clicked
     @reactive.effect
