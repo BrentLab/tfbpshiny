@@ -3,6 +3,7 @@ from logging import Logger
 from shiny import Inputs, Outputs, Session, module, reactive, render, req, ui
 
 from ..utils.rename_dataframe_data_sources import rename_dataframe_data_sources
+from ..utils.safe_percentage_format import safe_percentage_format
 from ..utils.safe_sci_notatation import safe_sci_notation
 
 
@@ -63,24 +64,36 @@ def expression_source_table_server(
 
         df_local = rename_dataframe_data_sources(df_local)
 
-        # Format numeric columns
-        cols_to_format = [
+        sci_notation_cols = [
             "univariate_pvalue",
             "univariate_rsquared",
             "dto_fdr",
             "dto_empirical_pvalue",
             "random_expectation",
+        ]
+
+        percentage_cols = [
             "rank_25",
             "rank_50",
         ]
 
-        existing_numeric_cols = [
-            col for col in cols_to_format if col in df_local.columns
+        # Format scientific notation columns
+        existing_sci_cols = [
+            col for col in sci_notation_cols if col in df_local.columns
         ]
-        if existing_numeric_cols:
-            df_local[existing_numeric_cols] = df_local[existing_numeric_cols].applymap(
+        if existing_sci_cols:
+            df_local[existing_sci_cols] = df_local[existing_sci_cols].applymap(
                 safe_sci_notation
             )
+
+        # Format percentage columns
+        existing_percentage_cols = [
+            col for col in percentage_cols if col in df_local.columns
+        ]
+        if existing_percentage_cols:
+            df_local[existing_percentage_cols] = df_local[
+                existing_percentage_cols
+            ].applymap(safe_percentage_format)
 
         df_local.reset_index(drop=True, inplace=True)
 
