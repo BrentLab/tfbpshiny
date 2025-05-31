@@ -2,6 +2,9 @@ from logging import Logger
 
 from shiny import Inputs, Outputs, Session, module, reactive, render, req, ui
 
+# note that this isn't part of the public API. Possibly unstable
+from shiny.render._data_frame_utils._types import StyleInfo
+
 from ..utils.rename_dataframe_data_sources import rename_dataframe_data_sources
 from ..utils.safe_percentage_format import safe_percentage_format
 from ..utils.safe_sci_notatation import safe_sci_notation
@@ -49,7 +52,7 @@ def expression_source_table_server(
         selected_promotersetsigs_local = selected_promotersetsigs.get()
 
         # Get selected columns from the accordion
-        selected_cols = selected_columns()
+        selected_cols = selected_columns()  # type: ignore
 
         # Always include promotersetsig (needed for highlighting logic)
         columns_to_show = ["promotersetsig"] + [
@@ -98,7 +101,7 @@ def expression_source_table_server(
         df_local.reset_index(drop=True, inplace=True)
 
         # Create styles for highlighting rows that match selection
-        styles = None
+        styles: StyleInfo | None = None
         if selected_promotersetsigs_local:
             matching_rows = df_local[
                 df_local["promotersetsig"].isin(selected_promotersetsigs_local)
@@ -114,5 +117,5 @@ def expression_source_table_server(
         return render.DataGrid(
             df_local,
             selection_mode="none",
-            styles=[styles] if styles else [],
+            styles=styles,
         )

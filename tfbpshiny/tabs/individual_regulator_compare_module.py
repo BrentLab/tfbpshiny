@@ -16,15 +16,81 @@ from ..rank_response.replicate_plot_module import (
 )
 from ..utils.create_accordion_panel import create_accordion_panel
 
-_init_rr_choices = [
-    "binding_source",
-    "expression_source",
-    "univariate_pvalue",
+# This sets, statically but with definitions that will appear as tooltips, the
+# selectable columns which may be displayed in the replicate details table
+_rr_column_metadata = {
+    "single_binding": (
+        "Single Binding",
+        "Unique ID for a single replicate; NA if composite.",
+    ),
+    "composite_binding": (
+        "Composite Binding",
+        "Unique ID for composite replicate; NA if single.",
+    ),
+    "expression_time": (
+        "Expression Time",
+        "Time point of McIsaac overexpression assay.",
+    ),
+    "univariate_rsquared": (
+        "R²",
+        "R² of model perturbed ~ binding.",
+    ),
+    "univariate_pvalue": (
+        "P-value",
+        "P-value of model perturbed ~ binding.",
+    ),
+    "binding_rank_threshold": (
+        "Binding Rank Threshold",
+        "binding rank with most significant DTO overlap.",
+    ),
+    "perturbation_rank_threshold": (
+        "Perturbation Rank Threshold",
+        "perturbation rank with most significant DTO overlap.",
+    ),
+    "binding_set_size": (
+        "Binding Set Size",
+        (
+            "Gene count in binding set in DTO overlap. "
+            "May be larger than rank due to ties."
+        ),
+    ),
+    "perturbation_set_size": (
+        "Perturbation Set Size",
+        (
+            "Gene count in perturbation set in DTO overlap. "
+            "May be larger than rank due to ties."
+        ),
+    ),
+    "dto_fdr": (
+        "DTO FDR",
+        "False discovery rate from DTO.",
+    ),
+    "dto_empirical_pvalue": (
+        "DTO Empirical P-value",
+        "Empirical p-value from DTO.",
+    ),
+    "rank_25": (
+        "Rank at 25",
+        "Responsive fraction in top 25 bound genes.",
+    ),
+    "rank_50": (
+        "Rank at 50",
+        "Responsive fraction in top 50 bound genes.",
+    ),
+}
+
+# Convert to dictionary: {value: HTML label}
+rr_choices_dict = {
+    key: ui.span(label, title=desc)
+    for key, (label, desc) in _rr_column_metadata.items()
+}
+
+# Initial selection for the replicate details table
+_init_rr_selected = [
     "univariate_rsquared",
     "dto_fdr",
     "dto_empirical_pvalue",
     "rank_25",
-    "rank_50",
 ]
 
 
@@ -49,9 +115,9 @@ def individual_regulator_compare_ui():
         "Replicate Details Columns",
         ui.input_checkbox_group(
             "rr_columns",
-            label="",
-            choices=_init_rr_choices,
-            selected=_init_rr_choices,
+            label="Replicate Metrics",
+            choices=rr_choices_dict,
+            selected=_init_rr_selected,
         ),
         ui.input_action_button(
             "update_table",
@@ -81,9 +147,15 @@ def individual_regulator_compare_ui():
                 ui.p(
                     "This page displays the rank response plots and associated "
                     "tables for a single regulator. Use the sidebar to select the "
-                    "regulator of interest. "
-                    "Select rows in the main selection table to filter and highlight "
-                    "corresponding data in the replicate details tables and plots."
+                    "regulator of interest and the columns to be displayed in the ",
+                    ui.tags.b("Replicate Details Tables"),
+                    ". Hover over any of the column names "
+                    "for information on what the column represents. ",
+                    "Select row(s) in the ",
+                    ui.tags.b("Main Selection Table"),
+                    " on the left "
+                    "to isolate a sample/samples in the plots and highlight the "
+                    "corresponding rows in the replicate details table.",
                 ),
                 ui.tags.ul(
                     ui.tags.li(
@@ -131,7 +203,7 @@ def individual_regulator_compare_ui():
                 ui.column(
                     6,
                     ui.card(
-                        ui.card_header("Replicate Details"),
+                        ui.card_header("Replicate Details Table"),
                         ui.navset_tab(
                             ui.nav_panel(
                                 "TFKO",
@@ -186,10 +258,19 @@ def individual_regulator_compare_server(
     :param logger: A logger object
 
     """
+    # this reactive stores the selected promotersetsigs from the main table server.
+    # This needs to be a reactive.value at the top in order to be shared across modules
+    # which must be coded before the main table server is called.
     selected_promotersetsigs_reactive: reactive.value[set] = reactive.Value(set())
+
+    # This reactive stores the columns selected from the side bar for
+    # the rank response table
+    selected_rr_columns: reactive.value[list] = reactive.Value(_init_rr_selected)
 
     @reactive.effect
     def _():
+        """Update the regulator ui drop down selector based on the
+        rank_response_metadata."""
         rank_response_metadata_local = rank_response_metadata.result()
 
         input_switch_value = input.symbol_locus_tag_switch.get()
@@ -214,11 +295,6 @@ def individual_regulator_compare_server(
 
         ui.update_select("regulator", choices=regulator_dict)
 
-    @reactive.effect
-    def _():
-        x = input.regulator.get()
-        logger.debug("regulator: %s", x)
-
     rr_metadata = rank_response_replicate_plot_server(
         "rank_response_replicate_plot",
         selected_regulator=input.regulator,
@@ -226,39 +302,19 @@ def individual_regulator_compare_server(
         logger=logger,
     )
 
-    selected_rr_columns: reactive.value[list] = reactive.Value(_init_rr_choices)
-
-    # Reactive to check if there are changes in column selection
     @reactive.calc
     def has_column_changes():
+        """Reactive to check if there are changes in column selection."""
         current_selection = set(input.rr_columns.get() or [])
         confirmed_selection = set(selected_rr_columns.get())
         return current_selection != confirmed_selection
 
-    # Update column choices for replicate details
     @reactive.effect
     def _():
-        req(rr_metadata)
-        rr_metadata_local = rr_metadata.get()
-        cols = list(rr_metadata_local.columns)
-
-        # Remove columns that are now in the main table
-        excluded_cols = [
-            "genomic_inserts",
-            "mito_inserts",
-            "plasmid_inserts",
-            "promotersetsig",
-        ]
-        cols = [col for col in cols if col not in excluded_cols]
-
-        # Ensure key columns are first
-        priority_cols = ["binding_source", "expression_source"]
-        cols = priority_cols + [col for col in cols if col not in priority_cols]
-
+        """Update column choices for replicate details."""
         selected = list(input.rr_columns.get())
-        selected = [col for col in selected if col not in excluded_cols]
 
-        ui.update_checkbox_group("rr_columns", choices=cols, selected=selected)
+        ui.update_checkbox_group("rr_columns", selected=selected)
 
     # Update button appearance based on changes
     @reactive.effect

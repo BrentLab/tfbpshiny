@@ -31,7 +31,7 @@ def main_table_server(
 
     """
 
-    df_local_reactive = reactive.Value()
+    df_local_reactive: reactive.value = reactive.Value()
 
     @render.data_frame
     def main_table():
@@ -92,6 +92,8 @@ def main_table_server(
 
     @reactive.calc
     def get_selected_promotersetsigs():
+        """A reactive calc that gets from the main table the selected rows, and returns
+        the set of promotersetsigs corresponding to those rows."""
         req(df_local_reactive)
         selected_rows = main_table.cell_selection()["rows"]
         df_local = df_local_reactive.get()
