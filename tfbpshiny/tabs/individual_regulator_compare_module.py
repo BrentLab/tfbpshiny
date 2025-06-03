@@ -3,10 +3,14 @@ from logging import Logger
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
 from ..rank_response.expression_source_table_module import (
+    DEFAULT_RR_COLUMNS,
+    RR_CHOICES_DICT,
     expression_source_table_server,
     expression_source_table_ui,
 )
 from ..rank_response.main_table_module import (
+    DEFAULT_MAIN_TABLE_COLUMNS,
+    MAIN_TABLE_CHOICES_DICT,
     main_table_server,
     main_table_ui,
 )
@@ -16,121 +20,6 @@ from ..rank_response.replicate_plot_module import (
     rank_response_replicate_plot_tfko_ui,
 )
 from ..utils.create_accordion_panel import create_accordion_panel
-
-# Main table column metadata for selection
-_main_table_column_metadata = {
-    "binding_source": (
-        "Binding Source",
-        "Source of the binding data.",
-    ),
-    "genomic_inserts": (
-        "Genomic Inserts",
-        "Number of genomic inserts.",
-    ),
-    "mito_inserts": (
-        "Mito Inserts",
-        "Number of mitochondrial inserts.",
-    ),
-    "plasmid_inserts": (
-        "Plasmid Inserts",
-        "Number of plasmid inserts.",
-    ),
-    "rank_response_status": (
-        "Rank Response Status",
-        "Quality control status for rank response analysis.",
-    ),
-    "dto_status": (
-        "DTO Status",
-        "Quality control status for DTO analysis.",
-    ),
-}
-
-# Replicate details table column metadata for selection
-_rr_column_metadata = {
-    "single_binding": (
-        "Single Binding",
-        "Unique ID for a single replicate; NA if composite.",
-    ),
-    "composite_binding": (
-        "Composite Binding",
-        "Unique ID for composite replicate; NA if single.",
-    ),
-    "expression_time": (
-        "Expression Time",
-        "Time point of McIsaac overexpression assay.",
-    ),
-    "univariate_rsquared": (
-        "R²",
-        "R² of model perturbed ~ binding.",
-    ),
-    "univariate_pvalue": (
-        "P-value",
-        "P-value of model perturbed ~ binding.",
-    ),
-    "binding_rank_threshold": (
-        "Binding Rank Threshold",
-        "binding rank with most significant DTO overlap.",
-    ),
-    "perturbation_rank_threshold": (
-        "Perturbation Rank Threshold",
-        "perturbation rank with most significant DTO overlap.",
-    ),
-    "binding_set_size": (
-        "Binding Set Size",
-        (
-            "Gene count in binding set in DTO overlap. "
-            "May be larger than rank due to ties."
-        ),
-    ),
-    "perturbation_set_size": (
-        "Perturbation Set Size",
-        (
-            "Gene count in perturbation set in DTO overlap. "
-            "May be larger than rank due to ties."
-        ),
-    ),
-    "dto_fdr": (
-        "DTO FDR",
-        "False discovery rate from DTO.",
-    ),
-    "dto_empirical_pvalue": (
-        "DTO Empirical P-value",
-        "Empirical p-value from DTO.",
-    ),
-    "rank_25": (
-        "Rank at 25",
-        "Responsive fraction in top 25 bound genes.",
-    ),
-    "rank_50": (
-        "Rank at 50",
-        "Responsive fraction in top 50 bound genes.",
-    ),
-}
-
-# Convert to dictionary: {value: HTML label}
-main_table_choices_dict = {
-    key: ui.span(label, title=desc)
-    for key, (label, desc) in _main_table_column_metadata.items()
-}
-
-rr_choices_dict = {
-    key: ui.span(label, title=desc)
-    for key, (label, desc) in _rr_column_metadata.items()
-}
-
-# Initial selection
-_init_main_table_selected = [
-    "binding_source",
-    "rank_response_status",
-    "dto_status",
-]
-
-_init_rr_selected = [
-    "univariate_rsquared",
-    "dto_fdr",
-    "dto_empirical_pvalue",
-    "rank_25",
-]
 
 
 @module.ui
@@ -155,8 +44,8 @@ def individual_regulator_compare_ui():
         ui.input_checkbox_group(
             "main_table_columns",
             label="QC and Insert Metrics",
-            choices=main_table_choices_dict,
-            selected=_init_main_table_selected,
+            choices=MAIN_TABLE_CHOICES_DICT,
+            selected=DEFAULT_MAIN_TABLE_COLUMNS,
         ),
     )
 
@@ -165,8 +54,8 @@ def individual_regulator_compare_ui():
         ui.input_checkbox_group(
             "rr_columns",
             label="Replicate Metrics",
-            choices=rr_choices_dict,
-            selected=_init_rr_selected,
+            choices=RR_CHOICES_DICT,
+            selected=DEFAULT_RR_COLUMNS,
         ),
     )
 
@@ -340,12 +229,12 @@ def individual_regulator_compare_server(
 
     # This reactive stores the columns selected from the side bar for
     # the rank response table
-    selected_rr_columns: reactive.value[list] = reactive.Value(_init_rr_selected)
+    selected_rr_columns: reactive.value[list] = reactive.Value(DEFAULT_RR_COLUMNS)
 
     # This reactive stores the columns selected from the side bar for
     # the main table
     selected_main_table_columns: reactive.value[list] = reactive.Value(
-        _init_main_table_selected
+        DEFAULT_MAIN_TABLE_COLUMNS
     )
 
     # Create reactive.calc versions for the table modules

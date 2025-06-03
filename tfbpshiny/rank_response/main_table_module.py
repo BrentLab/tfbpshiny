@@ -2,7 +2,49 @@ from logging import Logger
 
 from shiny import Inputs, Outputs, Session, module, reactive, render, req, ui
 
+from ..utils.apply_column_names import apply_column_names
 from ..utils.rename_dataframe_data_sources import rename_dataframe_data_sources
+
+# Main table column metadata for selection
+MAIN_TABLE_COLUMN_METADATA = {
+    "binding_source": (
+        "Binding Source",
+        "Source of the binding data.",
+    ),
+    "genomic_inserts": (
+        "Genomic Inserts",
+        "Number of genomic inserts.",
+    ),
+    "mito_inserts": (
+        "Mito Inserts",
+        "Number of mitochondrial inserts.",
+    ),
+    "plasmid_inserts": (
+        "Plasmid Inserts",
+        "Number of plasmid inserts.",
+    ),
+    "rank_response_status": (
+        "Rank Response Status",
+        "Quality control status for rank response analysis.",
+    ),
+    "dto_status": (
+        "DTO Status",
+        "Quality control status for DTO analysis.",
+    ),
+}
+
+# Convert to dictionary: {value: HTML label}
+MAIN_TABLE_CHOICES_DICT = {
+    key: ui.span(label, title=desc)
+    for key, (label, desc) in MAIN_TABLE_COLUMN_METADATA.items()
+}
+
+# Default selection for main table columns
+DEFAULT_MAIN_TABLE_COLUMNS = [
+    "binding_source",
+    "rank_response_status",
+    "dto_status",
+]
 
 
 @module.ui
@@ -85,6 +127,10 @@ def main_table_server(
             main_df = main_df[available_columns]
 
         main_df = rename_dataframe_data_sources(main_df)
+
+        # Apply friendly column names from metadata
+        main_df = apply_column_names(main_df, MAIN_TABLE_COLUMN_METADATA)
+
         main_df.reset_index(drop=True, inplace=True)
 
         df_local_reactive.set(main_df)
@@ -103,6 +149,9 @@ def main_table_server(
         df_local = df_local_reactive.get()
         if not selected_rows or df_local.empty:
             return set()
-        return set(df_local.loc[list(selected_rows), "promotersetsig"])
+        promotersetsig_col = "Promoter Set Signature"
+        if promotersetsig_col in df_local.columns:
+            return set(df_local.loc[list(selected_rows), promotersetsig_col])
+        return set()
 
     return get_selected_promotersetsigs
