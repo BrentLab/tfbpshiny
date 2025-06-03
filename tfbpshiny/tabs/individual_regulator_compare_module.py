@@ -482,6 +482,21 @@ def individual_regulator_compare_server(
         logger=logger,
     )
 
+    # Synchronize plot tabs and expression source table tabs
+    @reactive.effect
+    def _():
+        """Update expression source table tab when plot tab changes."""
+        plot_tab = input.plot_tabs()
+        if plot_tab:
+            ui.update_navs("expression_source_tabs", selected=plot_tab)
+
+    @reactive.effect
+    def _():
+        """Update plot tab when expression source table tab changes."""
+        table_tab = input.expression_source_tabs()
+        if table_tab:
+            ui.update_navs("plot_tabs", selected=table_tab)
+
     # Render plots for different expression sources
     @render.ui
     def tfko_plots():
