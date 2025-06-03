@@ -1,6 +1,6 @@
 from logging import Logger
 
-from shiny import Inputs, Outputs, Session, module, reactive, req, ui
+from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
 from ..rank_response.expression_source_table_module import (
     expression_source_table_server,
@@ -11,13 +11,41 @@ from ..rank_response.main_table_module import (
     main_table_ui,
 )
 from ..rank_response.replicate_plot_module import (
+    rank_response_replicate_plot_overexpression_ui,
     rank_response_replicate_plot_server,
-    rank_response_replicate_plot_ui,
+    rank_response_replicate_plot_tfko_ui,
 )
 from ..utils.create_accordion_panel import create_accordion_panel
 
-# This sets, statically but with definitions that will appear as tooltips, the
-# selectable columns which may be displayed in the replicate details table
+# Main table column metadata for selection
+_main_table_column_metadata = {
+    "binding_source": (
+        "Binding Source",
+        "Source of the binding data.",
+    ),
+    "genomic_inserts": (
+        "Genomic Inserts",
+        "Number of genomic inserts.",
+    ),
+    "mito_inserts": (
+        "Mito Inserts",
+        "Number of mitochondrial inserts.",
+    ),
+    "plasmid_inserts": (
+        "Plasmid Inserts",
+        "Number of plasmid inserts.",
+    ),
+    "rank_response_status": (
+        "Rank Response Status",
+        "Quality control status for rank response analysis.",
+    ),
+    "dto_status": (
+        "DTO Status",
+        "Quality control status for DTO analysis.",
+    ),
+}
+
+# Replicate details table column metadata for selection
 _rr_column_metadata = {
     "single_binding": (
         "Single Binding",
@@ -80,12 +108,23 @@ _rr_column_metadata = {
 }
 
 # Convert to dictionary: {value: HTML label}
+main_table_choices_dict = {
+    key: ui.span(label, title=desc)
+    for key, (label, desc) in _main_table_column_metadata.items()
+}
+
 rr_choices_dict = {
     key: ui.span(label, title=desc)
     for key, (label, desc) in _rr_column_metadata.items()
 }
 
-# Initial selection for the replicate details table
+# Initial selection
+_init_main_table_selected = [
+    "binding_source",
+    "rank_response_status",
+    "dto_status",
+]
+
 _init_rr_selected = [
     "univariate_rsquared",
     "dto_fdr",
@@ -111,6 +150,16 @@ def individual_regulator_compare_ui():
         ),
     )
 
+    main_table_columns_panel = create_accordion_panel(
+        "Main Table Columns",
+        ui.input_checkbox_group(
+            "main_table_columns",
+            label="QC and Insert Metrics",
+            choices=main_table_choices_dict,
+            selected=_init_main_table_selected,
+        ),
+    )
+
     rr_columns_panel = create_accordion_panel(
         "Replicate Details Columns",
         ui.input_checkbox_group(
@@ -119,9 +168,12 @@ def individual_regulator_compare_ui():
             choices=rr_choices_dict,
             selected=_init_rr_selected,
         ),
+    )
+
+    update_button_ui = (
         ui.input_action_button(
-            "update_table",
-            "Update Table",
+            "update_tables",
+            "Update Tables",
             class_="btn-primary mt-2",
             style="width: 100%;",
         ),
@@ -129,6 +181,7 @@ def individual_regulator_compare_ui():
 
     option_panels = [
         general_ui_panel,
+        main_table_columns_panel,
         rr_columns_panel,
     ]
 
@@ -140,6 +193,7 @@ def individual_regulator_compare_ui():
                 open=None,
                 multiple=True,
             ),
+            update_button_ui,
             width="400px",
         ),
         ui.div(
@@ -148,12 +202,14 @@ def individual_regulator_compare_ui():
                     "This page displays the rank response plots and associated "
                     "tables for a single regulator. Use the sidebar to select the "
                     "regulator of interest and the columns to be displayed in the ",
+                    ui.tags.b("Main Selection Table"),
+                    " and ",
                     ui.tags.b("Replicate Details Tables"),
                     ". Hover over any of the column names "
                     "for information on what the column represents. ",
                     "Select row(s) in the ",
                     ui.tags.b("Main Selection Table"),
-                    " on the left "
+                    " on the right "
                     "to isolate a sample/samples in the plots and highlight the "
                     "corresponding rows in the replicate details table.",
                 ),
@@ -176,13 +232,33 @@ def individual_regulator_compare_ui():
                     ),
                 ),
             ),
-            ui.div(
-                rank_response_replicate_plot_ui("rank_response_replicate_plot"),
-                style="max-width: 100%; overflow-x: auto;",
-            ),
             ui.row(
                 ui.column(
-                    6,
+                    8,
+                    ui.card(
+                        ui.card_header("Rank Response Plots"),
+                        ui.navset_tab(
+                            ui.nav_panel(
+                                "TFKO",
+                                ui.div(
+                                    ui.output_ui("tfko_plots"),
+                                    style="max-width: 100%; overflow-x: auto;",
+                                ),
+                            ),
+                            ui.nav_panel(
+                                "Overexpression",
+                                ui.div(
+                                    ui.output_ui("overexpression_plots"),
+                                    style="max-width: 100%; overflow-x: auto;",
+                                ),
+                            ),
+                            id="plot_tabs",
+                        ),
+                        style="height: 600px;",
+                    ),
+                ),
+                ui.column(
+                    4,
                     ui.card(
                         ui.card_header("Main Selection Table"),
                         main_table_ui("main_table"),
@@ -197,38 +273,37 @@ def individual_regulator_compare_ui():
                                 style="margin: 0; font-size: 0.9em; color: #666;",
                             )
                         ),
-                        style="height: 100%;",
+                        style="height: 600px;",
                     ),
                 ),
-                ui.column(
-                    6,
-                    ui.card(
-                        ui.card_header("Replicate Details Table"),
-                        ui.navset_tab(
-                            ui.nav_panel(
-                                "TFKO",
-                                expression_source_table_ui("tfko_table"),
-                            ),
-                            ui.nav_panel(
-                                "Overexpression",
-                                expression_source_table_ui("overexpression_table"),
-                            ),
-                            id="expression_source_tabs",
+            ),
+            ui.div(
+                ui.card(
+                    ui.card_header("Replicate Details Table"),
+                    ui.navset_tab(
+                        ui.nav_panel(
+                            "TFKO",
+                            expression_source_table_ui("tfko_table"),
                         ),
-                        ui.card_footer(
-                            ui.p(
-                                ui.tags.b("Note: "),
-                                "Rows corresponding to your main table selection are "
-                                "automatically highlighted in orange. "
-                                "This table shows detailed metrics for the selected "
-                                "expression source. "
-                                "Switch between tabs to view different expression "
-                                "conditions.",
-                                style="margin: 0; font-size: 0.9em; color: #666;",
-                            )
+                        ui.nav_panel(
+                            "Overexpression",
+                            expression_source_table_ui("overexpression_table"),
                         ),
-                        style="height: 100%;",
+                        id="expression_source_tabs",
                     ),
+                    ui.card_footer(
+                        ui.p(
+                            ui.tags.b("Note: "),
+                            "Rows corresponding to your main table selection are "
+                            "automatically highlighted in aqua. "
+                            "This table shows detailed metrics for the selected "
+                            "expression source. "
+                            "Switch between tabs to view different expression "
+                            "conditions.",
+                            style="margin: 0; font-size: 0.9em; color: #666;",
+                        )
+                    ),
+                    style="height: 400px;",
                 ),
                 style="margin-top: 20px;",
             ),
@@ -266,6 +341,21 @@ def individual_regulator_compare_server(
     # This reactive stores the columns selected from the side bar for
     # the rank response table
     selected_rr_columns: reactive.value[list] = reactive.Value(_init_rr_selected)
+
+    # This reactive stores the columns selected from the side bar for
+    # the main table
+    selected_main_table_columns: reactive.value[list] = reactive.Value(
+        _init_main_table_selected
+    )
+
+    # Create reactive.calc versions for the table modules
+    @reactive.calc
+    def selected_main_table_columns_calc():
+        return selected_main_table_columns.get()
+
+    @reactive.calc
+    def selected_rr_columns_calc():
+        return selected_rr_columns.get()
 
     @reactive.effect
     def _():
@@ -305,9 +395,23 @@ def individual_regulator_compare_server(
     @reactive.calc
     def has_column_changes():
         """Reactive to check if there are changes in column selection."""
-        current_selection = set(input.rr_columns.get() or [])
-        confirmed_selection = set(selected_rr_columns.get())
-        return current_selection != confirmed_selection
+        current_main_selection = set(input.main_table_columns.get() or [])
+        confirmed_main_selection = set(selected_main_table_columns.get())
+
+        current_rr_selection = set(input.rr_columns.get() or [])
+        confirmed_rr_selection = set(selected_rr_columns.get())
+
+        return (
+            current_rr_selection != confirmed_rr_selection
+            or current_main_selection != confirmed_main_selection
+        )
+
+    @reactive.effect
+    def _():
+        """Update column choices for main table."""
+        selected = list(input.main_table_columns.get())
+
+        ui.update_checkbox_group("main_table_columns", selected=selected)
 
     @reactive.effect
     def _():
@@ -321,36 +425,32 @@ def individual_regulator_compare_server(
     def _():
         has_changes = has_column_changes()
 
-        if has_changes:
-            # Active state
-            ui.update_action_button(
-                "update_table",
-                label="Update Table",
-                disabled=False,
-            )
-
-        else:
-            # Disabled state
-            ui.update_action_button(
-                "update_table",
-                label="Update Table",
-                disabled=True,
-            )
+        ui.update_action_button(
+            "update_tables",
+            label="Update Tables",
+            disabled=not has_changes,
+        )
 
     # Update the confirmed column selections when the button is clicked
     @reactive.effect
-    @reactive.event(input.update_table)
+    @reactive.event(input.update_tables)
     def _():
-        req(input.rr_columns)
-        selected_cols = list(input.rr_columns.get())
-        selected_rr_columns.set(selected_cols)
-        logger.debug("Updated table columns: %s", selected_cols)
+
+        selected_rr_cols = list(input.rr_columns.get())
+        selected_rr_columns.set(selected_rr_cols)
+
+        selected_main_cols = list(input.main_table_columns.get())
+        selected_main_table_columns.set(selected_main_cols)
+
+        logger.debug("Updated replicate details columns: %s", selected_rr_cols)
+        logger.debug("Updated main table columns: %s", selected_main_cols)
 
     # Main table with selection capability
     selected_promotersetsigs = main_table_server(
         "main_table",
         rr_metadata=rr_metadata,
         bindingmanualqc_result=bindingmanualqc_result,
+        selected_columns=selected_main_table_columns_calc,
         logger=logger,
     )
 
@@ -369,7 +469,7 @@ def individual_regulator_compare_server(
         rr_metadata=rr_metadata,
         expression_source="kemmeren_tfko",
         selected_promotersetsigs=selected_promotersetsigs_reactive,
-        selected_columns=selected_rr_columns,
+        selected_columns=selected_rr_columns_calc,
         logger=logger,
     )
 
@@ -378,6 +478,19 @@ def individual_regulator_compare_server(
         rr_metadata=rr_metadata,
         expression_source="mcisaac_oe",
         selected_promotersetsigs=selected_promotersetsigs_reactive,
-        selected_columns=selected_rr_columns,
+        selected_columns=selected_rr_columns_calc,
         logger=logger,
     )
+
+    # Render plots for different expression sources
+    @render.ui
+    def tfko_plots():
+        # Return the plots filtered for TFKO expression source
+        return rank_response_replicate_plot_tfko_ui("rank_response_replicate_plot")
+
+    @render.ui
+    def overexpression_plots():
+        # Return the plots filtered for overexpression source
+        return rank_response_replicate_plot_overexpression_ui(
+            "rank_response_replicate_plot"
+        )
