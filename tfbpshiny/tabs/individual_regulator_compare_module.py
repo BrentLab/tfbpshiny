@@ -165,11 +165,10 @@ def individual_regulator_compare_ui():
                                 style="margin: 0; font-size: 0.9em; color: #666;",
                             )
                         ),
-                        style="display: flex; flex-direction: column;"
-                        "height: 100%; min-height: 0;",
+                        style="display: flex; flex-direction: column; min-height: 0;",
                     ),
                 ),
-                style="height: 500px",
+                style="min-height: 600px; margin-bottom: 20px;",
             ),
             ui.div(
                 ui.card(
@@ -197,9 +196,8 @@ def individual_regulator_compare_ui():
                             style="margin: 0; font-size: 0.9em; color: #666;",
                         )
                     ),
-                    style="height: 400px;",
+                    style="min-height: 400px;",
                 ),
-                style="margin-top: 20px;",
             ),
         ),
     )
