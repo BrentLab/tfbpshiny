@@ -21,17 +21,17 @@ from ..rank_response.replicate_plot_module import (
 )
 from ..utils.create_accordion_panel import create_accordion_panel
 
-    def rr_plot_panel(label, output_id):
-        """
-        Create a panel for rank response plots with a specific label and output ID.
-        """
-        return ui.nav_panel(
-            label,
-            ui.div(
-                ui.output_ui(output_id),
-                style="max-width: 100%; overflow-x: auto;",
-            ),
-        )
+
+def rr_plot_panel(label: str, output_id: str) -> ui.nav_panel:
+    """Create a panel for rank response plots with a specific label and output ID."""
+    return ui.nav_panel(
+        label,
+        ui.div(
+            ui.output_ui(output_id),
+            style="max-width: 100%; overflow-x: auto;",
+        ),
+    )
+
 
 @module.ui
 def individual_regulator_compare_ui():
@@ -150,9 +150,9 @@ def individual_regulator_compare_ui():
                     5,
                     ui.card(
                         ui.card_header("Main Selection Table"),
-                            ui.div(
-                                main_table_ui("main_table"),
-                                style="overflow: auto; width: 100%;",
+                        ui.div(
+                            main_table_ui("main_table"),
+                            style="overflow: auto; width: 100%;",
                         ),
                         ui.card_footer(
                             ui.p(
@@ -165,7 +165,8 @@ def individual_regulator_compare_ui():
                                 style="margin: 0; font-size: 0.9em; color: #666;",
                             )
                         ),
-                        style="display: flex; flex-direction: column; height: 100%; min-height: 0;",
+                        style="display: flex; flex-direction: column;"
+                        "height: 100%; min-height: 0;",
                     ),
                 ),
                 style="height: 500px",
