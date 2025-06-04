@@ -149,7 +149,10 @@ def individual_regulator_compare_ui():
                     5,
                     ui.card(
                         ui.card_header("Main Selection Table"),
-                        main_table_ui("main_table"),
+                            ui.div(
+                                main_table_ui("main_table"),
+                                style="overflow: auto; width: 100%;",
+                        ),
                         ui.card_footer(
                             ui.p(
                                 ui.tags.b("How to use: "),
