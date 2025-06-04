@@ -147,7 +147,7 @@ def individual_regulator_compare_ui():
                     ),
                 ),
                 ui.column(
-                    4,
+                    5,
                     ui.card(
                         ui.card_header("Main Selection Table"),
                         main_table_ui("main_table"),
