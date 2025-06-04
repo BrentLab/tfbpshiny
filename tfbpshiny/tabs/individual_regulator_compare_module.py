@@ -138,20 +138,10 @@ def individual_regulator_compare_ui():
                     ui.card(
                         ui.card_header("Rank Response Plots"),
                         ui.navset_tab(
-                            ui.nav_panel(
-                                "TFKO",
-                                ui.div(
-                                    ui.output_ui("tfko_plots"),
-                                    style="max-width: 100%; overflow-x: auto;",
-                                ),
-                            ),
-                            ui.nav_panel(
-                                "Overexpression",
-                                ui.div(
-                                    ui.output_ui("overexpression_plots"),
-                                    style="max-width: 100%; overflow-x: auto;",
-                                ),
-                            ),
+                            *[
+                                rr_plot_panel("TFKO", "tfko_plots"),
+                                rr_plot_panel("Overexpression", "overexpression_plots"),
+                            ],
                             id="plot_tabs",
                         ),
                     ),
