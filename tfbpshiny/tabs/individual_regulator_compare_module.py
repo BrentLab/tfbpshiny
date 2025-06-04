@@ -164,7 +164,7 @@ def individual_regulator_compare_ui():
                                 style="margin: 0; font-size: 0.9em; color: #666;",
                             )
                         ),
-                        style="height: 600px;",
+                        style="display: flex; flex-direction: column; height: 100%; min-height: 0;",
                     ),
                 ),
                 style="height: 500px",
