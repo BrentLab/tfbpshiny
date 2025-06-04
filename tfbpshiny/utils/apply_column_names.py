@@ -4,7 +4,7 @@ import pandas as pd
 def apply_column_names(
     df: pd.DataFrame,
     metadata_dict: dict,
-    promotersetsig_name: str = "Promoter Set Signature",
+    promotersetsig_name: str = "id",
 ) -> pd.DataFrame:
     """
     Apply friendly column names from metadata to dataframe columns.
