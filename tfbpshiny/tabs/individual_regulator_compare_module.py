@@ -83,7 +83,7 @@ def individual_regulator_compare_ui():
                 multiple=True,
             ),
             update_button_ui,
-            width="400px",
+            width="300px",
         ),
         ui.div(
             ui.div(
