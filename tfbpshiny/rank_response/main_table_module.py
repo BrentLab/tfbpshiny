@@ -149,7 +149,7 @@ def main_table_server(
         df_local = df_local_reactive.get()
         if not selected_rows or df_local.empty:
             return set()
-        promotersetsig_col = "Promoter Set Signature"
+        promotersetsig_col = "id"
         if promotersetsig_col in df_local.columns:
             return set(df_local.loc[list(selected_rows), promotersetsig_col])
         return set()

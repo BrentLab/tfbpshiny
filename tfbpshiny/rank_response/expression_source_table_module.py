@@ -182,7 +182,7 @@ def expression_source_table_server(
         # Create styles for highlighting rows that match selection
         styles: StyleInfo | None = None
         if selected_promotersetsigs_local:
-            promotersetsig_col = "Promoter Set Signature"
+            promotersetsig_col = "id"
             if promotersetsig_col in df_local.columns:
                 matching_rows = df_local[
                     df_local[promotersetsig_col].isin(selected_promotersetsigs_local)
