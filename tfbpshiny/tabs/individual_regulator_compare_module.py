@@ -164,6 +164,7 @@ def individual_regulator_compare_ui():
                         style="height: 600px;",
                     ),
                 ),
+                style="height: 500px",
             ),
             ui.div(
                 ui.card(
