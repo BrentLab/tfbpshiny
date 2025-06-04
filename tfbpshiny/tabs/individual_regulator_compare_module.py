@@ -21,6 +21,17 @@ from ..rank_response.replicate_plot_module import (
 )
 from ..utils.create_accordion_panel import create_accordion_panel
 
+    def rr_plot_panel(label, output_id):
+        """
+        Create a panel for rank response plots with a specific label and output ID.
+        """
+        return ui.nav_panel(
+            label,
+            ui.div(
+                ui.output_ui(output_id),
+                style="max-width: 100%; overflow-x: auto;",
+            ),
+        )
 
 @module.ui
 def individual_regulator_compare_ui():
