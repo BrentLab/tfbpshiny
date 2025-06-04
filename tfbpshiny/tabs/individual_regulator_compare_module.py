@@ -143,7 +143,6 @@ def individual_regulator_compare_ui():
                             ),
                             id="plot_tabs",
                         ),
-                        style="height: 600px;",
                     ),
                 ),
                 ui.column(
