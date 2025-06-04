@@ -123,7 +123,7 @@ def individual_regulator_compare_ui():
             ),
             ui.row(
                 ui.column(
-                    8,
+                    7,
                     ui.card(
                         ui.card_header("Rank Response Plots"),
                         ui.navset_tab(
