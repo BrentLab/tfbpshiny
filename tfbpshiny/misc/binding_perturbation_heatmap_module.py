@@ -234,7 +234,7 @@ def heatmap_comparison_server(
         text_list: list[list[str]] = []
         for row in matrix_masked:
             matrix_row: list[float | None] = []
-            text_row: list[str] = []
+            text_row = []
             for val in row:
                 if np.isnan(val):
                     matrix_row.append(None)
