@@ -141,37 +141,28 @@ def heatmap_comparison_server(
         # Initialize matrix
         matrix = np.zeros((n_sources, n_sources))
 
-        if comparison_type == "regulators":
-            # Fill with regulator overlap counts
-            for i, source1 in enumerate(sources):
-                for j, source2 in enumerate(sources):
-                    if i == j:
-                        # Diagonal: total regulators in single dataset
-                        matrix[i, j] = len(source_regulators[source1])
-                    elif i > j:
-                        # Off-diagonal: common regulators (lower triangular)
-                        common = len(
-                            source_regulators[source1] & source_regulators[source2]
-                        )
-                        matrix[i, j] = common
-                    else:
-                        matrix[i, j] = np.nan
-
-        elif comparison_type == "correlation" and correlation_data is not None:
-            # Fill with correlation data
-            for i, source1 in enumerate(sources):
-                for j, source2 in enumerate(sources):
-                    if i == j:
-                        # Diagonal: perfect self-correlation
-                        matrix[i, j] = 1.0
-                    elif i > j:
-                        # Off-diagonal: median correlation between datasets
-                        corr_val = calculate_median_correlation(
+        # Fill the matrix based on whether the comparison is by regulators
+        # or correlation
+        for i, source1 in enumerate(sources):
+            for j, source2 in enumerate(sources):
+                if i == j:
+                    # Diagonal: total regulators in single dataset
+                    matrix[i, j] = (
+                        len(source_regulators[source1])
+                        if comparison_type == "regulators"
+                        else 1.0
+                    )
+                elif i > j:
+                    # Off-diagonal: common regulators (lower triangular)
+                    matrix[i, j] = (
+                        len(source_regulators[source1] & source_regulators[source2])
+                        if comparison_type == "regulators"
+                        else calculate_median_correlation(
                             source1, source2, source_regulators, correlation_data
                         )
-                        matrix[i, j] = corr_val
-                    else:
-                        matrix[i, j] = np.nan
+                    )
+                else:
+                    matrix[i, j] = np.nan
 
         # Convert to DataFrame with explicit ordering
         # index controls row order (top to bottom)
