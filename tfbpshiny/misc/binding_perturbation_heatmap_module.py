@@ -71,7 +71,7 @@ def heatmap_comparison_server(
     *,
     metadata_result: reactive.ExtendedTask,
     source_name_dict: dict[str, str],
-    data_type: Literal["binding","perturbation"]
+    data_type: Literal["binding", "perturbation"],
     correlation_data: pd.DataFrame | None = None,
     logger: Logger,
 ) -> reactive.Value:
@@ -192,23 +192,15 @@ def heatmap_comparison_server(
 
         return np.median(correlations) if correlations else 0.0
 
-    @reactive.calc
-    def heatmap_title_text():
-        """Generate title based on comparison type."""
+    @render.text
+    def heatmap_title():
         comp_type = input.comparison_type()
         data_name = data_type.replace("_", " ").title()
-
         if comp_type == "regulators":
             return f"{data_name} Dataset Overlap: Number of Common Regulators"
         else:
             return f"{data_name} Dataset Correlation: Median Rank Correlations"
 
-    @output
-    @render.text
-    def heatmap_title():
-        return heatmap_title_text()
-
-    @output(id="comparison_heatmap")
     @render_widget
     def comparison_heatmap():
         matrix_df = comparison_matrix()
@@ -242,48 +234,7 @@ def heatmap_comparison_server(
             matrix_list.append(matrix_row)
             text_list.append(text_row)
 
-        # Create overlay of scatter points for click events - DEFINE VARIABLES FIRST
-        x_vals = []
-        y_vals = []
-        cell_data = []  # Store cell metadata for click handling
-
-        for i, y in enumerate(matrix_df.index):
-            for j, x in enumerate(matrix_df.columns):
-                if matrix_list[i][j] is not None:  # Only add points for non-None cells
-                    x_vals.append(x)
-                    y_vals.append(y)
-                    cell_data.append(
-                        {
-                            "x": x,
-                            "y": y,
-                            "value": matrix_list[i][j],
-                            "row_idx": i,
-                            "col_idx": j,
-                        }
-                    )
-
-        # Create the scatter trace FIRST (now that variables are defined)
-        scatter = go.Scatter(
-            x=x_vals,
-            y=y_vals,
-            mode="markers",
-            marker=dict(
-                opacity=0.8,  # Highly visible
-                size=40,  # Medium size, easy to see
-                color="red",  # Bright red for contrast
-                symbol="circle",  # Circle shape
-                line=dict(width=2, color="darkred"),
-            ),
-            showlegend=True,  # Show in legend for now
-            hoverinfo="text",  # Show hover info
-            hovertext=[
-                f"Cell: {cell['x']} vs {cell['y']}<br>Value: {cell['value']}"
-                for cell in cell_data
-            ],
-            name="Click Points (DEBUG)",
-        )
-
-        # Create the heatmap SECOND
+        # Create the heatmap
         heatmap = go.Heatmap(
             z=matrix_list,
             x=matrix_df.columns.tolist(),
@@ -294,17 +245,13 @@ def heatmap_comparison_server(
             text=text_list,
             texttemplate="%{text}",
             textfont={"size": 12},
-            hovertemplate="%{y} vs %{x}<br>Value: %{z}<br><i>Click to "
-            "select</i><extra></extra>",
+            hovertemplate="%{y} vs %{x}<br>Value: %{z}<extra></extra>",
             connectgaps=False,
-            customdata=matrix_df.columns.tolist(),
         )
 
-        # Add them in order: scatter first (bottom), heatmap second (top)
-        fig = go.Figure()
+        # Create figure with just the heatmap
+        fig = go.Figure(data=[heatmap])
 
-        fig.add_trace(scatter)  # Index 0
-        fig.add_trace(heatmap)  # Index 1
         # Update layout
         fig.update_layout(
             xaxis_title="Dataset",
@@ -315,75 +262,15 @@ def heatmap_comparison_server(
                 tickangle=45,
                 side="bottom",
                 autorange=True,
-                fixedrange=True,  # Disable zoom to prevent conflicts with clicks
             ),
             yaxis=dict(
                 autorange="reversed",  # This ensures rows go top to bottom correctly
-                fixedrange=True,  # Disable zoom to prevent conflicts with clicks
             ),
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="white",
-            showlegend=True,  # Show legend to see the debug trace
         )
 
-        # Enable click events for plotly widget - disable pan/zoom to prevent conflicts
-        fig.update_layout(
-            clickmode="event",
-            dragmode=False,  # Disable pan/zoom to allow clicking
-            uirevision="constant",  # Helps maintain UI state
-        )
-
-        # Convert to FigureWidget for interactive events
-        widget = go.FigureWidget(fig.data, fig.layout)
-
-        logger.info(f"Widget type: {type(widget)}")
-        logger.info(f"Widget traces: {len(widget.data)}")
-        logger.info(f"Created {len(x_vals)} clickable scatter points")
-
-        def on_point_click(trace, points, state):
-            logger.info("on_point_click fired!")
-            logger.info(f"Points: {points}")
-
-            if hasattr(points, "point_inds") and points.point_inds:
-                point_idx = points.point_inds[0]
-                logger.info(f"Clicked point index: {point_idx}")
-
-                # Get cell data from our stored metadata
-                if point_idx < len(cell_data):
-                    cell = cell_data[point_idx]
-                    logger.info(f"Cell data: {cell}")
-
-                    selected_cell.set(
-                        {
-                            "x": cell["x"],
-                            "y": cell["y"],
-                            "value": cell["value"],
-                            "comparison_type": input.comparison_type(),
-                        }
-                    )
-                    logger.info(
-                        f"Successfully updated selected_cell: {cell['x']} vs "
-                        f"{cell['y']}"
-                    )
-                else:
-                    logger.error(
-                        f"Point index {point_idx} out of range for cell_data "
-                        f"(len={len(cell_data)})"
-                    )
-            else:
-                logger.warning("No point_inds found in points object")
-
-        def on_point_hover(trace, points, state):
-            logger.info("on_point_HOVER fired!")
-            logger.info(f"Hover Points: {points}")
-
-        # Register both click and hover handlers on scatter (index 1)
-        widget.data[0].on_click(on_point_click)
-        widget.data[0].on_hover(on_point_hover)
-
-        logger.info("Attached both click and hover handlers to widget.data[1].")
-
-        return widget
+        return fig
 
     @render.ui
     def selection_details():
