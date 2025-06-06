@@ -70,7 +70,7 @@ def heatmap_comparison_server(
     *,
     metadata_result: reactive.ExtendedTask,
     source_name_dict: dict[str, str],
-    data_type: str,  # "binding" or "perturbation_response"
+    data_type: Literal["binding","perturbation"]
     correlation_data: pd.DataFrame | None = None,
     logger: Logger,
 ) -> reactive.Value:
