@@ -385,7 +385,6 @@ def heatmap_comparison_server(
 
         return widget
 
-    @output
     @render.ui
     def selection_details():
         """Generate details panel content based on selection."""
