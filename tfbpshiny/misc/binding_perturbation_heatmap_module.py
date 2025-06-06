@@ -212,6 +212,7 @@ def heatmap_comparison_server(
     @render_widget
     def comparison_heatmap():
         matrix_df = comparison_matrix()
+        comparison_type = input.comparison_type()
 
         if matrix_df.empty:
             return px.scatter(title="No data available")
