@@ -3,7 +3,10 @@ from logging import Logger
 import pandas as pd
 from shiny import Inputs, Outputs, Session, module, reactive, ui
 
-from ..misc.binding_perturbation_upset_module import upset_plot_server, upset_plot_ui
+from ..misc.binding_perturbation_heatmap_module import (
+    heatmap_comparison_server,
+    heatmap_comparison_ui,
+)
 from ..misc.correlation_plot_module import (
     correlation_matrix_server,
     correlation_matrix_ui,
@@ -17,7 +20,7 @@ def perturbation_response_ui():
         # First row: Description
         ui.div(
             ui.p(
-                "This page displays the UpSet plot and correlation matrix for "
+                "This page displays pairwise comparisons and correlation matrix for "
                 "TF perturbation response datasets. The current datasets include "
                 "data derived from gene deletions and overexpression methods."
             ),
@@ -121,46 +124,43 @@ def perturbation_response_ui():
             ),
             id="perturbation-description",
         ),
-        # Second row: Plot area container
+        # Second row: Heatmap comparison
         ui.div(
-            # Left: UpSet plot
-            ui.div(
-                ui.card(
-                    ui.card_header("Perturbation Response UpSet Plot"),
-                    ui.card_body(upset_plot_ui("perturbation_response_upset")),
-                    ui.card_footer(
-                        ui.p(
-                            "Click any one of the sets to show what proportion of "
-                            "the regulators in the selected set are also present "
-                            "in the other sets.",
-                            class_="text-muted",
-                        ),
+            ui.card(
+                ui.card_header("Perturbation Response Dataset Comparisons"),
+                ui.card_body(
+                    heatmap_comparison_ui("perturbation_heatmap"),
+                ),
+                ui.card_footer(
+                    ui.p(
+                        "Interactive heatmap showing pairwise comparisons between "
+                        "perturbation response datasets. Click cells to explore "
+                        "common regulators or correlation distributions.",
+                        class_="text-muted",
                     ),
                 ),
-                id="perturbation-upset-container",
             ),
-            # Right: Correlation matrix
-            ui.div(
-                ui.card(
-                    ui.card_header("Perturbation Response Correlation Matrix"),
-                    ui.card_body(
-                        ui.div(
-                            correlation_matrix_ui("perturbation_corr_matrix"),
-                            id="perturbation-corr-plot-wrapper",
-                        ),
-                        id="perturbation-corr-body",
-                    ),
-                    ui.card_footer(
-                        ui.p(
-                            "Click and drag to zoom in on a specific region of the "
-                            "correlation matrix. Double click to reset the zoom.",
-                            class_="text-muted",
-                        ),
+            style="margin-bottom: 2rem;",
+        ),
+        # Third row: Correlation matrix
+        ui.div(
+            ui.card(
+                ui.card_header("Perturbation Response Correlation Matrix"),
+                ui.card_body(
+                    ui.div(
+                        correlation_matrix_ui("perturbation_corr_matrix"),
+                        style="display: flex; justify-content: center; "
+                        "align-items: center; height: 500px;",
                     ),
                 ),
-                id="perturbation-corr-container",
+                ui.card_footer(
+                    ui.p(
+                        "Click and drag to zoom in on a specific region of the "
+                        "correlation matrix. Double click to reset the zoom.",
+                        class_="text-muted",
+                    ),
+                ),
             ),
-            id="perturbation-plot-row",
         ),
         # Add styles at the bottom
         ui.tags.style(
@@ -176,15 +176,6 @@ def perturbation_response_ui():
                 justify-content: center;
                 align-items: flex-start;
                 gap: 2rem;
-            }
-
-            #perturbation-upset-container {
-                flex: 1.2;
-                min-width: 0;
-                min-height: 500px;
-                display: flex;
-                flex-direction: column;
-                height: 100%;
             }
 
             #perturbation-corr-container {
@@ -236,39 +227,42 @@ def perturbation_response_server(
     *,
     pr_metadata_task: reactive.ExtendedTask,
     logger: Logger,
-) -> reactive.calc:
+) -> reactive.Value:
     """
     This function produces the reactive/render functions necessary to producing the
-    perturbation response upset plot and correlation matrix for the perturbation
+    perturbation response heatmap comparison and correlation matrix for the perturbation
     response data.
 
     :param pr_metadata_task: This is the result from a reactive.extended_task. Result
         can be retrieved with .result()
     :param logger: A logger object
-    :return: A reactive.calc with the metadata filtered for the selected upset plot sets
-        (note that this is not currently working b/c of something to do with the upset
-        plot server)
+    :return: A reactive.Value with the selected cell information from the heatmap
 
     """
 
     # TODO: retrieving the response should be from the db as a reactive.extended_task
     tf_pr_df = pd.read_csv("tmp/shiny_data/response_data.csv")
     tf_pr_df.set_index("target_symbol", inplace=True)
+
+    # Set up correlation matrix
     correlation_matrix_server(
         "perturbation_corr_matrix",
         tf_binding_df=tf_pr_df,
         logger=logger,
     )
 
-    selected_pr_sets = upset_plot_server(
-        "perturbation_response_upset",
+    # Set up heatmap comparison
+    selected_cell = heatmap_comparison_server(
+        "perturbation_heatmap",
         metadata_result=pr_metadata_task,
         source_name_dict=get_source_name_dict("perturbation_response"),
+        data_type="perturbation_response",
+        correlation_data=tf_pr_df,  # Pass correlation data for correlation comparisons
         logger=logger,
     )
 
     @reactive.effect
     def _():
-        logger.info(f"Selected perturbation response sets: {selected_pr_sets()}")
+        logger.info(f"Selected perturbation response cell: {selected_cell.get()}")
 
-    return selected_pr_sets
+    return selected_cell
