@@ -234,10 +234,11 @@ def heatmap_comparison_server(
                     text_row.append("")
                 else:
                     matrix_row.append(val)
-                    if input.comparison_type() == "regulators":
-                        text_row.append(f"{int(val)}")
-                    else:
-                        text_row.append(f"{val:.2f}")
+                    text_row.append(
+                        f"{int(val)}"
+                        if comparison_type == "regulators"
+                        else f"{val:.2f}"
+                    )
             matrix_list.append(matrix_row)
             text_list.append(text_row)
 
