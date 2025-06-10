@@ -199,58 +199,6 @@ def individual_regulator_compare_ui():
                     style="min-height: 400px;",
                 ),
             ),
-            ui.row(
-                ui.column(
-                    6,
-                    ui.card(
-                        ui.card_header("Main Selection Table"),
-                        main_table_ui("main_table"),
-                        ui.card_footer(
-                            ui.p(
-                                ui.tags.b("How to use: "),
-                                "Select rows in this table to filter and highlight "
-                                "corresponding data in the replicate details table "
-                                "and plots. "
-                                "Multiple rows can be selected by holding Ctrl/Cmd "
-                                "while clicking.",
-                                style="margin: 0; font-size: 0.9em; color: #666;",
-                            )
-                        ),
-                        style="height: 100%;",
-                    ),
-                ),
-                ui.column(
-                    6,
-                    ui.card(
-                        ui.card_header("Replicate Details Table"),
-                        ui.navset_tab(
-                            ui.nav_panel(
-                                "TFKO",
-                                expression_source_table_ui("tfko_table"),
-                            ),
-                            ui.nav_panel(
-                                "Overexpression",
-                                expression_source_table_ui("overexpression_table"),
-                            ),
-                            id="expression_source_tabs",
-                        ),
-                        ui.card_footer(
-                            ui.p(
-                                ui.tags.b("Note: "),
-                                "Rows corresponding to your main table selection are "
-                                "automatically highlighted in orange. "
-                                "This table shows detailed metrics for the selected "
-                                "expression source. "
-                                "Switch between tabs to view different expression "
-                                "conditions.",
-                                style="margin: 0; font-size: 0.9em; color: #666;",
-                            )
-                        ),
-                        style="height: 100%;",
-                    ),
-                ),
-                style="margin-top: 20px;",
-            ),
         ),
     )
 
