@@ -27,6 +27,16 @@ def rank_response_replicate_plot_ui():
     return ui.output_ui("dynamic_expression_containers")
 
 
+@module.ui
+def rank_response_replicate_plot_tfko_ui():
+    return ui.output_ui("tfko_expression_container")
+
+
+@module.ui
+def rank_response_replicate_plot_overexpression_ui():
+    return ui.output_ui("overexpression_expression_container")
+
+
 @module.server
 def rank_response_replicate_plot_server(
     input: Inputs,
@@ -154,6 +164,23 @@ def rank_response_replicate_plot_server(
         logger.info("Dynamic UI prepared.")
         return containers
 
+    # Prepare UI for specific expression source
+    def prepare_source_ui(expression_source):
+        plots_by_source = update_plot_dict()
+        if not plots_by_source or expression_source not in plots_by_source:
+            return ui.p("No data available.")
+
+        plots_dict = plots_by_source[expression_source]
+        widgets = [
+            output_widget(f"plot_{expression_source}_{expression_id}")
+            for expression_id in plots_dict.keys()
+        ]
+
+        if not widgets:
+            return ui.p("No plots available for this expression source.")
+
+        return ui.div(*widgets)
+
     def register_plot_output(plot_id, fig):
         @output(id=plot_id)
         @render_plotly
@@ -179,6 +206,18 @@ def rank_response_replicate_plot_server(
             ]
         )
         return ui_element
+
+    # Render UI for TFKO expression source
+    @output
+    @render.ui
+    def tfko_expression_container():
+        return prepare_source_ui("kemmeren_tfko")
+
+    # Render UI for overexpression source
+    @output
+    @render.ui
+    def overexpression_expression_container():
+        return prepare_source_ui("mcisaac_oe")
 
     # Render plots dynamically
     @reactive.effect()
