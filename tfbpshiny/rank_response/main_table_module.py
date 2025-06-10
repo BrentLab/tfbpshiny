@@ -2,7 +2,49 @@ from logging import Logger
 
 from shiny import Inputs, Outputs, Session, module, reactive, render, req, ui
 
+from ..utils.apply_column_names import apply_column_names
 from ..utils.rename_dataframe_data_sources import rename_dataframe_data_sources
+
+# Main table column metadata for selection
+MAIN_TABLE_COLUMN_METADATA = {
+    "binding_source": (
+        "Binding Source",
+        "Source of the binding data.",
+    ),
+    "genomic_inserts": (
+        "Genomic Inserts",
+        "Number of genomic inserts.",
+    ),
+    "mito_inserts": (
+        "Mito Inserts",
+        "Number of mitochondrial inserts.",
+    ),
+    "plasmid_inserts": (
+        "Plasmid Inserts",
+        "Number of plasmid inserts.",
+    ),
+    "rank_response_status": (
+        "Rank Response Status",
+        "Quality control status for rank response analysis.",
+    ),
+    "dto_status": (
+        "DTO Status",
+        "Quality control status for DTO analysis.",
+    ),
+}
+
+# Convert to dictionary: {value: HTML label}
+MAIN_TABLE_CHOICES_DICT = {
+    key: ui.span(label, title=desc)
+    for key, (label, desc) in MAIN_TABLE_COLUMN_METADATA.items()
+}
+
+# Default selection for main table columns
+DEFAULT_MAIN_TABLE_COLUMNS = [
+    "binding_source",
+    "rank_response_status",
+    "dto_status",
+]
 
 
 @module.ui
@@ -18,6 +60,7 @@ def main_table_server(
     *,
     rr_metadata: reactive.calc,
     bindingmanualqc_result: reactive.ExtendedTask,
+    selected_columns: reactive.calc,
     logger: Logger,
 ) -> reactive.calc:
     """
@@ -26,6 +69,7 @@ def main_table_server(
 
     :param rr_metadata: Complete rank response metadata
     :param bindingmanualqc_result: Binding manual QC data
+    :param selected_columns: Reactive calc containing selected columns to display
     :param logger: Logger object
     :return: Reactive calc returning selected promotersetsigs
 
@@ -36,6 +80,7 @@ def main_table_server(
     @render.data_frame
     def main_table():
         req(rr_metadata)
+        req(selected_columns)
         rr_df = rr_metadata().copy()  # type: ignore
 
         qc_df = bindingmanualqc_result.result()
@@ -67,20 +112,25 @@ def main_table_server(
                 qc_subset, on=["single_binding", "composite_binding"], how="left"
             )
 
-        # Reorder columns with promotersetsig first
-        display_columns = [
-            "promotersetsig",
-            "binding_source",
-            "genomic_inserts",
-            "mito_inserts",
-            "plasmid_inserts",
-            "rank_response_status",
-            "dto_status",
+        # Get selected columns from the sidebar
+        selected_cols = selected_columns()  # type: ignore
+
+        # Always include promotersetsig (needed for selection logic)
+        columns_to_show = ["promotersetsig"] + [
+            col for col in selected_cols if col != "promotersetsig"
         ]
-        existing_columns = [col for col in display_columns if col in main_df.columns]
-        main_df = main_df[existing_columns]
+
+        # Filter to only show columns that exist in the dataframe and are selected
+        available_columns = [col for col in columns_to_show if col in main_df.columns]
+
+        if available_columns:
+            main_df = main_df[available_columns]
 
         main_df = rename_dataframe_data_sources(main_df)
+
+        # Apply friendly column names from metadata
+        main_df = apply_column_names(main_df, MAIN_TABLE_COLUMN_METADATA)
+
         main_df.reset_index(drop=True, inplace=True)
 
         df_local_reactive.set(main_df)
@@ -99,6 +149,9 @@ def main_table_server(
         df_local = df_local_reactive.get()
         if not selected_rows or df_local.empty:
             return set()
-        return set(df_local.loc[list(selected_rows), "promotersetsig"])
+        promotersetsig_col = "id"
+        if promotersetsig_col in df_local.columns:
+            return set(df_local.loc[list(selected_rows), promotersetsig_col])
+        return set()
 
     return get_selected_promotersetsigs

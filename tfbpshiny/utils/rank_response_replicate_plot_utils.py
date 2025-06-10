@@ -213,7 +213,7 @@ def add_traces_to_plot(fig, promotersetsig, add_random, **kwargs):
             y=kwargs["y"],
             mode="lines",
             name=f"{kwargs['datasource']}; {promotersetsig}",
-            legendrank=int(promotersetsig),
+            legendrank=-int(promotersetsig),
             meta={
                 "promotersetsig": promotersetsig,
             },
@@ -229,7 +229,7 @@ def add_traces_to_plot(fig, promotersetsig, add_random, **kwargs):
                 mode="lines",
                 name="Random",
                 line=dict(dash="dash", color="black"),
-                legendrank=0,
+                legendrank=-(2**63),
             )
         )
 
