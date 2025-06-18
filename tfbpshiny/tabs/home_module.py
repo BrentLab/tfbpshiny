@@ -41,7 +41,7 @@ def home_ui():
                 ui.strong(
                     "Compare binding profiles to perturbation response profiles: "
                 ),
-                ("This tab focuses individual TFs."),
+                ("This tab focuses on individual TFs."),
             ),
         ),
         ui.h3("Getting Started"),
