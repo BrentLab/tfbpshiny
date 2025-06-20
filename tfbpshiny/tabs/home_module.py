@@ -27,7 +27,7 @@ def home_ui():
                 ui.strong("Perturbation Response: "),
                 (
                     "View transcriptional responses to TF perturbations "
-                    "(genedeletion, gene overexpression, and TF degradation) "
+                    "(gene deletion, gene overexpression, and TF degradation) "
                     "in multiple datasets and compare the datasets to each other."
                 ),
             ),
