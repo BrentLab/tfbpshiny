@@ -38,8 +38,18 @@ def individual_regulator_compare_ui():
 
     general_ui_panel = create_accordion_panel(
         "General",
-        ui.input_switch(
-            "symbol_locus_tag_switch", label="Symbol/Locus Tag", value=False
+        ui.tooltip(
+            ui.input_switch(
+                "symbol_locus_tag_switch",
+                label="Use Systematic Gene Names",
+                value=False,
+            ),
+            ui.tags.div(
+                "Switch to systematic gene names (e.g., locus tags) "
+                "for selecting the regulator.",
+                style="font-size: 1em; color: #ffffff; "
+                "line-height: 1.6; padding: 4px 0;",
+            ),
         ),
         ui.input_select(
             "regulator",
@@ -341,7 +351,7 @@ def individual_regulator_compare_server(
         logger.info("switch: %s", input_switch_value)
 
         regulator_col = (
-            "regulator_symbol" if input_switch_value else "regulator_locus_tag"
+            "regulator_symbol" if not input_switch_value else "regulator_locus_tag"
         )
 
         logger.info("regulator_col: %s", regulator_col)
