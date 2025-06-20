@@ -10,8 +10,8 @@ from ..utils.rename_dataframe_data_sources import rename_dataframe_data_sources
 from ..utils.safe_percentage_format import safe_percentage_format
 from ..utils.safe_sci_notatation import safe_sci_notation
 
-# Replicate details table column metadata for selection
-RR_COLUMN_METADATA = {
+# Summarized binding-perturbation comparison table column metadata for selection
+SUMMARIZED_BINDING_PERTURBATION_COLUMN_METADATA = {
     "single_binding": (
         "Single Binding",
         "Unique ID for a single replicate; NA if composite.",
@@ -73,12 +73,13 @@ RR_COLUMN_METADATA = {
 }
 
 # Convert to dictionary: {value: HTML label}
-RR_CHOICES_DICT = {
-    key: ui.span(label, title=desc) for key, (label, desc) in RR_COLUMN_METADATA.items()
+SUMMARIZED_BINDING_PERTURBATION_CHOICES_DICT = {
+    key: ui.span(label, title=desc)
+    for key, (label, desc) in SUMMARIZED_BINDING_PERTURBATION_COLUMN_METADATA.items()
 }
 
-# Default selection for replicate details table
-DEFAULT_RR_COLUMNS = [
+# Default selection for summarized binding-perturbation comparison table
+DEFAULT_SUMMARIZED_BINDING_PERTURBATION_COLUMNS = [
     "univariate_rsquared",
     "dto_fdr",
     "dto_empirical_pvalue",
@@ -87,12 +88,12 @@ DEFAULT_RR_COLUMNS = [
 
 
 @module.ui
-def expression_source_table_ui():
-    return ui.output_data_frame("expression_source_table")
+def summarized_binding_perturbation_comparison_ui():
+    return ui.output_data_frame("summarized_binding_perturbation_comparison")
 
 
 @module.server
-def expression_source_table_server(
+def summarized_binding_perturbation_comparison_server(
     input: Inputs,
     output: Outputs,
     session: Session,
@@ -104,7 +105,7 @@ def expression_source_table_server(
     logger: Logger,
 ) -> None:
     """
-    Server for expression source specific table.
+    Server for expression source specific summarized binding-perturbation comparison.
 
     :param rr_metadata: Complete rank response metadata
     :param expression_source: The specific expression source to filter for
@@ -115,7 +116,7 @@ def expression_source_table_server(
     """
 
     @render.data_frame
-    def expression_source_table():
+    def summarized_binding_perturbation_comparison():
         req(rr_metadata)
         req(selected_columns)
 
@@ -175,7 +176,9 @@ def expression_source_table_server(
             ].applymap(safe_percentage_format)
 
         # Apply friendly column names from metadata
-        df_local = apply_column_names(df_local, RR_COLUMN_METADATA)
+        df_local = apply_column_names(
+            df_local, SUMMARIZED_BINDING_PERTURBATION_COLUMN_METADATA
+        )
 
         df_local.reset_index(drop=True, inplace=True)
 
