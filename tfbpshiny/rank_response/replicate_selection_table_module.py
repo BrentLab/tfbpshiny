@@ -36,6 +36,18 @@ REPLICATE_SELECTION_TABLE_INSERT_COLUMN_METADATA = {
     ),
 }
 
+REPLICATE_SELECTION_TABLE_DATABASE_IDENTIFIER_COLUMN_METADATA = {
+    "single_binding": (
+        "Single binding",
+        "Number of single binding.",
+    ),
+    "composite_binding": (
+        "Composite binding",
+        "Number of composite binding.",
+    ),
+}
+
+
 # Convert to dictionary: {value: HTML label}
 REPLICATE_SELECTION_TABLE_GENERAL_QC_CHOICES_DICT = {
     key: ui.span(label, title=desc)
@@ -47,7 +59,18 @@ REPLICATE_SELECTION_TABLE_GENERAL_QC_CHOICES_DICT = {
 
 REPLICATE_SELECTION_TABLE_INSERT_CHOICES_DICT = {
     key: ui.span(label, title=desc)
-    for key, (label, desc) in REPLICATE_SELECTION_TABLE_INSERT_COLUMN_METADATA.items()
+    for key, (
+        label,
+        desc,
+    ) in REPLICATE_SELECTION_TABLE_INSERT_COLUMN_METADATA.items()
+}
+
+REPLICATE_SELECTION_TABLE_DATABASE_IDENTIFIER_CHOICES_DICT = {
+    key: ui.span(label, title=desc)
+    for key, (
+        label,
+        desc,
+    ) in REPLICATE_SELECTION_TABLE_DATABASE_IDENTIFIER_COLUMN_METADATA.items()
 }
 
 # Default selection for replicate selection table columns
@@ -144,6 +167,7 @@ def replicate_selection_table_server(
         REPLICATE_SELECTION_TABLE_COLUMN_METADATA = {
             **REPLICATE_SELECTION_TABLE_GENERAL_QC_COLUMN_METADATA,
             **REPLICATE_SELECTION_TABLE_INSERT_COLUMN_METADATA,
+            **REPLICATE_SELECTION_TABLE_DATABASE_IDENTIFIER_COLUMN_METADATA,
         }
 
         # Apply friendly column names from metadata
