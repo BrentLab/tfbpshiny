@@ -73,6 +73,21 @@ repositories:
         regulator_symbol:
           field: regulator_symbol
 
+  BrentLab/hu_2007_reimand_2010:
+      # binding
+      hu_2007_reimand_2010:
+        sample_id:
+          field: sample_id
+        carbon_source:
+          path: experimental_conditions.media.carbon_source.compoun
+        temperature_celsius:
+          path: experimental_conditions.temperature_celsius
+          dtype: numeric
+        regulator_locus_tag:
+          field: regulator_locus_tag
+        regulator_symbol:
+          field: regulator_symbol
+
 
   BrentLab/hughes_2006:
     dataset:
