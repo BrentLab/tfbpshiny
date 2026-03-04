@@ -59,24 +59,17 @@ sidebar and a workspace component.
 
 ### Analysis Configuration
 
-- **`analysis_config`** (`dict`) — controls analysis views (see below)
-
-`analysis_config` structure:
-
-```python
-{
-    "view": "table" | "correlation" | "summary" | "compare",
-    "selected_db_name": str,         # Dataset A
-    "comparison_db_name": str,       # Dataset B (pairwise)
-    "comparison_mode": bool,
-    "p_value": float,
-    "log2fc_threshold": float,
-    "correlation_value_column": str,
-    "correlation_group_by": str,
-    "page": int,
-    "page_size": int,
-}
-```
+- **`analysis_config`** (`dict`) — controls analysis views; contains:
+  - **`view`** (`"table" | "correlation" | "summary" | "compare"`) — active analysis view
+  - **`selected_db_name`** (`str`) — Dataset A
+  - **`comparison_db_name`** (`str`) — Dataset B (pairwise)
+  - **`comparison_mode`** (`bool`) — whether pairwise comparison is active
+  - **`p_value`** (`float`) — p-value threshold for filtering
+  - **`log2fc_threshold`** (`float`) — log2 fold-change threshold
+  - **`correlation_value_column`** (`str`) — column used for correlation values
+  - **`correlation_group_by`** (`str`) — grouping column for correlation view
+  - **`page`** (`int`) — current page index
+  - **`page_size`** (`int`) — number of rows per page
 
 ---
 
