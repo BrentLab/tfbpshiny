@@ -11,6 +11,7 @@ from typing import Any, Literal, cast
 
 from dotenv import load_dotenv
 from shiny import App, reactive, render, ui
+from tfbpapi import VirtualDB
 
 from configure_logger import configure_logger
 from tfbpshiny.data_service import (
@@ -95,6 +96,35 @@ app_ui = ui.page_fillable(
 )
 
 # ---------------------------------------------------------------------------
+# Initialize VirtualDB
+# ---------------------------------------------------------------------------
+
+# note that for testing purposes in development, or quick updates in production,
+# you can use the .env to direct tfbpshiny to an alternate YAML config
+# with env var `VDB_CONFIG_PATH=/path/to/alternate.yaml`
+_default_config = Path(__file__).parent / "brentlab_yeast_collection.yaml"
+config = os.getenv("VDB_CONFIG_PATH", str(_default_config))
+logger.info("VDB config path: %s", config)
+vdb = VirtualDB(config)
+# this will create the default views
+logger.info("VDB initialized with tables: %s", vdb.tables())
+
+# datasets has the structure {data_type:
+#                               {
+#                                 assay1: [db_name1, db_name2, ...],
+#                                 assay2: [db_name3, ...]
+#                               }
+#                             }
+# eg {'Binding': {"Calling Cards": ['2026 Calling cards'],
+#                 "ChIP-chip": ['2004 Harbison']},
+#     'Perturbation': {"Overexpression": ['2020 Hackett'], "TFKO": ['2014 Kemmeren']}}
+datasets: dict[str, dict[str, list]] = {}
+for db_name in vdb.get_datasets():
+    datatype = vdb.get_tags(db_name).get("data_type", "Unknown")
+    assay = vdb.get_tags(db_name).get("assay", "Unknown")
+    datasets.setdefault(datatype, {}).setdefault(assay, []).append(db_name)
+
+# ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
 
@@ -120,10 +150,6 @@ def app_server(
     # read by: selection_sidebar_server
     # updated in: initialization
     datasets_loading: reactive.Value[bool] = reactive.value(True)
-    # values: error string, or None
-    # read by: selection_sidebar_server
-    # updated in: initialization
-    datasets_error: reactive.Value[str | None] = reactive.value(None)
 
     # values: "intersect", "union"
     # read by: selection_sidebar_server, selection_matrix_server
@@ -209,15 +235,15 @@ def app_server(
         }
     )
 
-    # -- Initialization --
-    try:
-        datasets.set(get_datasets())
-        datasets_error.set(None)
-    except Exception as error:
-        datasets.set([])
-        datasets_error.set(str(error))
-    finally:
-        datasets_loading.set(False)
+    # # -- Initialization --
+    # try:
+    #     datasets.set(get_datasets())
+    #     datasets_error.set(None)
+    # except Exception as error:
+    #     datasets.set([])
+    #     datasets_error.set(str(error))
+    # finally:
+    #     datasets_loading.set(False)
 
     # -- Internal helpers --
     def _dataset_by_id(dataset_id: str) -> dict[str, Any] | None:
