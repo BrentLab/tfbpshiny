@@ -164,7 +164,7 @@ def resolve_analysis_module(type_a: str, type_b: str) -> str | None:
     if (type_a == "Binding" and type_b == "Perturbation") or (
         type_a == "Perturbation" and type_b == "Binding"
     ):
-        return "composite"
+        return "comparison"
     if type_a == "Expression" and type_b == "Binding":
         return "binding"
     if type_a == "Binding" and type_b == "Expression":
@@ -196,7 +196,7 @@ def render_intersection_detail_modal(details: dict[str, Any]) -> ui.Tag:
     target_labels = {
         "binding": "Binding Analysis",
         "perturbation": "Perturbation Analysis",
-        "composite": "Binding & Perturbation",
+        "comparison": "Binding & Perturbation",
     }
     target_label = (
         target_labels.get(target_module, "Analysis") if target_module else "Analysis"

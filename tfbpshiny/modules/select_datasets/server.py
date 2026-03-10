@@ -10,6 +10,8 @@ from typing import Any
 import faicons as fa
 from shiny import module, reactive, render, ui
 
+from tfbpshiny.modals import resolve_analysis_module
+
 
 @module.server
 def selection_sidebar_server(
@@ -20,14 +22,15 @@ def selection_sidebar_server(
     logic_mode: reactive.Value[str],
     datasets_loading: reactive.Value[bool],
     intersection_loading: reactive.Value[bool],
-    on_configure: Callable[[str], None] | None = None,
-    on_refresh: Callable[[], None] | None = None,
+    intersection_cells: reactive.Value[list[dict[str, Any]]],
+    has_loaded_intersection: reactive.Value[bool],
     on_clear_all_filters: Callable[[], None] | None = None,
-) -> None:
-    """Wire sidebar controls to shared Active Set state."""
+) -> reactive.Value[str | None]:
+    """Wire sidebar controls; return active_config_dataset_id for modal rendering."""
 
     collapsed: reactive.Value[bool] = reactive.value(False)
     configure_clicks: reactive.Value[dict[str, int]] = reactive.value({})
+    active_config_dataset_id: reactive.Value[str | None] = reactive.value(None)
 
     def _dataset_input_id(prefix: str, ds_id: Any) -> str:
         raw = str(ds_id)
@@ -77,22 +80,31 @@ def selection_sidebar_server(
             if clicks > previous:
                 current_counts[str(dataset["id"])] = clicks
                 configure_clicks.set(current_counts)
-                if on_configure:
-                    on_configure(str(dataset["id"]))
+                active_config_dataset_id.set(str(dataset["id"]))
                 break
 
     @reactive.effect
     @reactive.event(input.refresh)
     def _refresh_matrix() -> None:
-        summary = _selected_summary()
-        if (
-            summary["selected_count"] <= 0
-            or datasets_loading()
-            or intersection_loading()
-        ):
+        selected = [e for e in datasets() if e.get("selected")]
+        if not selected or datasets_loading() or intersection_loading():
             return
-        if on_refresh:
-            on_refresh()
+        # #MOCK — diagonal + pairwise counts derived from tf_count
+        cells: list[dict[str, Any]] = [
+            {
+                "row": a["db_name"],
+                "col": b["db_name"],
+                "count": (
+                    a["tf_count"]
+                    if a["db_name"] == b["db_name"]
+                    else min(a["tf_count"], b["tf_count"]) // 2
+                ),
+            }
+            for a in selected
+            for b in selected
+        ]
+        intersection_cells.set(cells)
+        has_loaded_intersection.set(True)
 
     @render.ui
     def sidebar_panel() -> ui.Tag:
@@ -278,6 +290,8 @@ def selection_sidebar_server(
             ),
         )
 
+    return active_config_dataset_id
+
 
 @module.server
 def selection_matrix_server(
@@ -290,10 +304,11 @@ def selection_matrix_server(
     has_loaded_intersection: reactive.Value[bool],
     intersection_loading: reactive.Value[bool],
     intersection_error: reactive.Value[str | None],
-    on_cell_click: Callable[[dict[str, Any]], None] | None = None,
-) -> None:
-    """Render matrix states and emit cell-click payloads."""
+) -> tuple[reactive.Value[dict[str, Any] | None], reactive.Value[str | None]]:
+    """Render matrix; return (intersection_detail, navigate_to) reactives."""
 
+    intersection_detail: reactive.Value[dict[str, Any] | None] = reactive.value(None)
+    navigate_to: reactive.Value[str | None] = reactive.value(None)
     cell_click_counts: reactive.Value[dict[str, int]] = reactive.value({})
 
     def _cell_key(row_db: str, col_db: str) -> str:
@@ -383,25 +398,30 @@ def selection_matrix_server(
                     current_counts[button_id] = clicks
                     cell_click_counts.set(current_counts)
 
-                    if on_cell_click:
-                        payload = {
+                    row_type = row_dataset.get("type", "Expression")
+                    col_type = col_dataset.get("type", "Expression")
+                    intersection_detail.set(
+                        {
                             "rowDataset": {
                                 "id": row_id,
                                 "db_name": row_db,
-                                "type": row_dataset.get("type", "Expression"),
+                                "type": row_type,
                                 "name": row_dataset.get("name", row_db),
                                 "tf_count": int(row_dataset.get("tf_count") or 0),
                             },
                             "colDataset": {
                                 "id": col_id,
                                 "db_name": col_db,
-                                "type": col_dataset.get("type", "Expression"),
+                                "type": col_type,
                                 "name": col_dataset.get("name", col_db),
                                 "tf_count": int(col_dataset.get("tf_count") or 0),
                             },
                             "intersectionCount": int(value),
                         }
-                        on_cell_click(payload)
+                    )
+                    navigate_to.set(
+                        resolve_analysis_module(str(row_type), str(col_type))
+                    )
                     return
 
     @render.ui
@@ -559,5 +579,44 @@ def selection_matrix_server(
             ),
         )
 
+    return intersection_detail, navigate_to
 
-__all__ = ["selection_sidebar_server", "selection_matrix_server"]
+
+def select_datasets_server(
+    datasets: reactive.Value[list[dict[str, Any]]],
+) -> tuple[
+    reactive.Value[str | None],
+    reactive.Value[dict[str, Any] | None],
+    reactive.Value[str | None],
+]:
+    """Wire both select_datasets module servers; return (active_config_dataset_id,
+    intersection_detail, navigate_to)."""
+    intersection_cells: reactive.Value[list[dict[str, Any]]] = reactive.value([])
+    has_loaded_intersection: reactive.Value[bool] = reactive.value(False)
+
+    active_config_dataset_id = selection_sidebar_server(
+        "sel_sidebar",
+        datasets=datasets,
+        logic_mode=reactive.value("intersect"),
+        datasets_loading=reactive.value(False),
+        intersection_loading=reactive.value(False),
+        intersection_cells=intersection_cells,
+        has_loaded_intersection=has_loaded_intersection,
+    )
+    intersection_detail, navigate_to = selection_matrix_server(
+        "sel_matrix",
+        datasets=datasets,
+        logic_mode=reactive.value("intersect"),
+        intersection_cells=intersection_cells,
+        has_loaded_intersection=has_loaded_intersection,
+        intersection_loading=reactive.value(False),
+        intersection_error=reactive.value(None),
+    )
+    return active_config_dataset_id, intersection_detail, navigate_to
+
+
+__all__ = [
+    "select_datasets_server",
+    "selection_sidebar_server",
+    "selection_matrix_server",
+]

@@ -1,4 +1,4 @@
-"""UI functions for the Comparison (DTO) analysis page."""
+"""UI functions for the Comparison (DTO) comparison page."""
 
 # #DUPLICATE: modules/binding/ui.py, modules/perturbation/ui.py
 
@@ -10,9 +10,9 @@ from tfbpshiny.modules.module_template import sidebar_shell, workspace_shell
 
 
 @module.ui
-def analysis_sidebar_ui(label: str = "Analysis") -> ui.Tag:
+def comparison_sidebar_ui(label: str = "Comparison") -> ui.Tag:
     return sidebar_shell(
-        "analysis-sidebar",
+        "comparison-sidebar",
         header=ui.div(
             ui.h2(label),
             ui.div({"class": "subtitle"}, "Controls will appear here"),
@@ -25,16 +25,16 @@ def analysis_sidebar_ui(label: str = "Analysis") -> ui.Tag:
 
 
 @module.ui
-def analysis_workspace_ui(label: str = "Analysis") -> ui.Tag:
+def comparison_workspace_ui(label: str = "Comparison") -> ui.Tag:
     return workspace_shell(
-        "analysis-workspace",
+        "comparison-workspace",
         header=ui.h1(label),
         body=ui.div(
             {"class": "empty-state"},
             ui.h3("Coming soon"),
-            ui.p("Analysis content will be implemented here."),
+            ui.p("Comparison content will be implemented here."),
         ),
     )
 
 
-__all__ = ["analysis_sidebar_ui", "analysis_workspace_ui"]
+__all__ = ["comparison_sidebar_ui", "comparison_workspace_ui"]

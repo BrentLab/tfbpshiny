@@ -15,20 +15,29 @@ from configure_logger import configure_logger
 from tfbpshiny.modals import (
     render_dataset_config_modal,
     render_intersection_detail_modal,
-    resolve_analysis_module,
 )
 from tfbpshiny.modules.binding.server import (
-    analysis_sidebar_server,
-    analysis_workspace_server,
+    binding_sidebar_server,
+    binding_workspace_server,
 )
-from tfbpshiny.modules.binding.ui import (
-    analysis_sidebar_ui,
-    analysis_workspace_ui,
+from tfbpshiny.modules.binding.ui import binding_sidebar_ui, binding_workspace_ui
+from tfbpshiny.modules.comparison.server import (
+    comparison_sidebar_server,
+    comparison_workspace_server,
 )
-from tfbpshiny.modules.select_datasets.server import (
-    selection_matrix_server,
-    selection_sidebar_server,
+from tfbpshiny.modules.comparison.ui import (
+    comparison_sidebar_ui,
+    comparison_workspace_ui,
 )
+from tfbpshiny.modules.perturbation.server import (
+    perturbation_sidebar_server,
+    perturbation_workspace_server,
+)
+from tfbpshiny.modules.perturbation.ui import (
+    perturbation_sidebar_ui,
+    perturbation_workspace_ui,
+)
+from tfbpshiny.modules.select_datasets.server import select_datasets_server
 from tfbpshiny.modules.select_datasets.ui import (
     selection_matrix_ui,
     selection_sidebar_ui,
@@ -149,11 +158,9 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         list(_MOCK_DATASETS)
     )
 
-    intersection_cells: reactive.Value[list[dict[str, Any]]] = reactive.value([])
-    has_loaded_intersection: reactive.Value[bool] = reactive.value(False)
-
-    active_config_dataset_id: reactive.Value[str | None] = reactive.value(None)
-    intersection_detail: reactive.Value[dict[str, Any] | None] = reactive.value(None)
+    (active_config_dataset_id, intersection_detail, navigate_to) = (
+        select_datasets_server(datasets)
+    )
 
     # -- Helpers --
     def _dataset_by_id(dataset_id: str) -> dict[str, Any] | None:
@@ -171,37 +178,6 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         if changed:
             datasets.set(list(current))
 
-    def _handle_open_config(dataset_id: str) -> None:
-        active_config_dataset_id.set(dataset_id)
-
-    def _handle_refresh_intersection() -> None:
-        selected = [e for e in datasets() if e.get("selected")]
-        # #MOCK — diagonal + pairwise counts derived from tf_count
-        cells: list[dict[str, Any]] = [
-            {
-                "row": a["db_name"],
-                "col": b["db_name"],
-                "count": (
-                    a["tf_count"]
-                    if a["db_name"] == b["db_name"]
-                    else min(a["tf_count"], b["tf_count"]) // 2
-                ),
-            }
-            for a in selected
-            for b in selected
-        ]
-        intersection_cells.set(cells)
-        has_loaded_intersection.set(True)
-
-    def _handle_matrix_cell_click(payload: dict[str, Any]) -> None:
-        intersection_detail.set(payload)
-
-    _ANALYSIS_LABELS: dict[str, str] = {
-        "binding": "Binding Analysis",
-        "perturbation": "Perturbation Analysis",
-        "composite": "Comparison Analysis",
-    }
-
     # -- Region renders --
     @render.ui
     def sidebar_region() -> ui.Tag:
@@ -210,9 +186,13 @@ def app_server(input: Any, output: Any, session: Any) -> None:
             return ui.span()
         if mod == "selection":
             return selection_sidebar_ui("sel_sidebar")
-        return analysis_sidebar_ui(
-            "ana_sidebar", label=_ANALYSIS_LABELS.get(mod, "Analysis")
-        )
+        if mod == "binding":
+            return binding_sidebar_ui("module_sidebar")
+        if mod == "perturbation":
+            return perturbation_sidebar_ui("module_sidebar")
+        if mod == "comparison":
+            return comparison_sidebar_ui("module_sidebar")
+        return ui.span()
 
     @render.ui
     def workspace_region() -> ui.Tag:
@@ -221,9 +201,13 @@ def app_server(input: Any, output: Any, session: Any) -> None:
             return splash_ui()
         if mod == "selection":
             return selection_matrix_ui("sel_matrix")
-        return analysis_workspace_ui(
-            "ana_workspace", label=_ANALYSIS_LABELS.get(mod, "Analysis")
-        )
+        if mod == "binding":
+            return binding_workspace_ui("module_workspace")
+        if mod == "perturbation":
+            return perturbation_workspace_ui("module_workspace")
+        if mod == "comparison":
+            return comparison_workspace_ui("module_workspace")
+        return ui.span()
 
     @render.ui
     def modal_layer() -> ui.Tag:
@@ -280,15 +264,11 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     @reactive.effect
     @reactive.event(input.modal_open_analysis)
     def _navigate_from_modal() -> None:
-        details = intersection_detail()
-        if not details:
-            return
-        row_type = str(details.get("rowDataset", {}).get("type", ""))
-        col_type = str(details.get("colDataset", {}).get("type", ""))
-        target = resolve_analysis_module(row_type, col_type)
+        target = navigate_to()
         if target:
             active_module.set(target)
         intersection_detail.set(None)
+        navigate_to.set(None)
 
     # -- Nav rail --
     _NAV_ITEMS = [
@@ -296,7 +276,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         {"id": "selection", "tag": "Select Datasets"},
         {"id": "binding", "tag": "Binding"},
         {"id": "perturbation", "tag": "Perturbation"},
-        {"id": "composite", "tag": "Comparison"},
+        {"id": "comparison", "tag": "Comparison"},
     ]
 
     @render.ui
@@ -335,35 +315,17 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         active_module.set("perturbation")
 
     @reactive.effect
-    @reactive.event(input.composite, ignore_init=True)
-    def _nav_composite() -> None:
-        active_module.set("composite")
+    @reactive.event(input.comparison, ignore_init=True)
+    def _nav_comparison() -> None:
+        active_module.set("comparison")
 
     # -- Module servers --
-    selection_sidebar_server(
-        "sel_sidebar",
-        datasets=datasets,
-        logic_mode=reactive.value("intersect"),
-        datasets_loading=reactive.value(False),
-        intersection_loading=reactive.value(False),
-        on_configure=_handle_open_config,
-        on_refresh=_handle_refresh_intersection,
-        on_clear_all_filters=lambda: None,
-    )
-
-    selection_matrix_server(
-        "sel_matrix",
-        datasets=datasets,
-        logic_mode=reactive.value("intersect"),
-        intersection_cells=intersection_cells,
-        has_loaded_intersection=has_loaded_intersection,
-        intersection_loading=reactive.value(False),
-        intersection_error=reactive.value(None),
-        on_cell_click=_handle_matrix_cell_click,
-    )
-
-    analysis_sidebar_server("ana_sidebar", active_module=active_module)
-    analysis_workspace_server("ana_workspace", active_module=active_module)
+    binding_sidebar_server("module_sidebar", active_module=active_module)
+    binding_workspace_server("module_workspace", active_module=active_module)
+    perturbation_sidebar_server("module_sidebar", active_module=active_module)
+    perturbation_workspace_server("module_workspace", active_module=active_module)
+    comparison_sidebar_server("module_sidebar", active_module=active_module)
+    comparison_workspace_server("module_workspace", active_module=active_module)
 
 
 # ---------------------------------------------------------------------------

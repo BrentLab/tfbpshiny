@@ -1,4 +1,4 @@
-"""UI functions for the Binding analysis page."""
+"""UI functions for the Binding binding page."""
 
 # #DUPLICATE: modules/perturbation/ui.py, modules/comparison/ui.py
 
@@ -10,9 +10,9 @@ from tfbpshiny.modules.module_template import sidebar_shell, workspace_shell
 
 
 @module.ui
-def analysis_sidebar_ui(label: str = "Analysis") -> ui.Tag:
+def binding_sidebar_ui(label: str = "Binding") -> ui.Tag:
     return sidebar_shell(
-        "analysis-sidebar",
+        "binding-sidebar",
         header=ui.div(
             ui.h2(label),
             ui.div({"class": "subtitle"}, "Controls will appear here"),
@@ -25,16 +25,16 @@ def analysis_sidebar_ui(label: str = "Analysis") -> ui.Tag:
 
 
 @module.ui
-def analysis_workspace_ui(label: str = "Analysis") -> ui.Tag:
+def binding_workspace_ui(label: str = "Binding") -> ui.Tag:
     return workspace_shell(
-        "analysis-workspace",
+        "binding-workspace",
         header=ui.h1(label),
         body=ui.div(
             {"class": "empty-state"},
             ui.h3("Coming soon"),
-            ui.p("Analysis content will be implemented here."),
+            ui.p("Binding content will be implemented here."),
         ),
     )
 
 
-__all__ = ["analysis_sidebar_ui", "analysis_workspace_ui"]
+__all__ = ["binding_sidebar_ui", "binding_workspace_ui"]

@@ -89,32 +89,15 @@ def server(input: Any, output: Any, session: Any) -> None:
     intersection_cells: reactive.Value[list[dict[str, Any]]] = reactive.value([])
     has_loaded_intersection: reactive.Value[bool] = reactive.value(False)
 
-    def _handle_refresh() -> None:
-        selected = [e for e in datasets() if e.get("selected")]
-        cells: list[dict[str, Any]] = [
-            {
-                "row": a["db_name"],
-                "col": b["db_name"],
-                "count": (
-                    a["tf_count"]
-                    if a["db_name"] == b["db_name"]
-                    else min(a["tf_count"], b["tf_count"]) // 2
-                ),
-            }
-            for a in selected
-            for b in selected
-        ]
-        intersection_cells.set(cells)
-        has_loaded_intersection.set(True)
-
     selection_sidebar_server(
         "sel_sidebar",
         datasets=datasets,
         logic_mode=reactive.value("intersect"),
         datasets_loading=reactive.value(False),
         intersection_loading=reactive.value(False),
-        on_configure=lambda id: None,
-        on_refresh=_handle_refresh,
+        intersection_cells=intersection_cells,
+        has_loaded_intersection=has_loaded_intersection,
+        on_configure=lambda ds_id: None,
         on_clear_all_filters=lambda: None,
     )
 
