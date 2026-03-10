@@ -11,18 +11,19 @@ repositories:
     dataset:
       2026_analysis_set:
         tags:
-          data_type: Binding
+          data_type: binding
           assay: CallingCards
           display_name: "2026 Calling Cards"
         db_name: callingcards
         sample_id:
-          field: gm_id
+          field: id
 
   BrentLab/harbison_2004:
     dataset:
+      # binding
       harbison_2004:
         tags:
-          data_type: Binding
+          data_type: binding
           assay: ChIP-chip
           display_name: "2004 ChIP-chip (harbison)"
         db_name: harbison
@@ -41,6 +42,7 @@ repositories:
           field: regulator_symbol
 
   BrentLab/rossi_2021:
+    # binding
     carbon_source:
       path: experimental_conditions.media.carbon_source.compound
     temperature_celsius:
@@ -48,10 +50,30 @@ repositories:
     dataset:
       rossi_2021_af_combined:
         tags:
-          data_type: Binding
+          data_type: binding
           assay: ChIPexo
           display_name: "2021 ChIP-exo (rossi)"
         db_name: rossi
+        sample_id:
+          field: sample_id
+        regulator_locus_tag:
+          field: regulator_locus_tag
+        target_locus_tag:
+          field: target_locus_tag
+
+  BrentLab/hu_2007_reimand_2010:
+    # perturbation
+    carbon_source:
+      path: experimental_conditions.media.carbon_source.compound
+    temperature_celsius:
+      path: experimental_conditions.temperature_celsius
+    dataset:
+      hu_2007_reimand_2010:
+        tags:
+          data_type: perturbation
+          assay: TFKO
+          display_name: "2007 TFKO (Hu)"
+        db_name: hu_reimand
         sample_id:
           field: sample_id
         regulator_locus_tag:
@@ -63,11 +85,12 @@ repositories:
     temperature_celsius:
       path: experimental_conditions.temperature_celsius
     dataset:
+      # binding
       chec_mahendrawada_m2025_af_combined:
         tags:
-          data_type: Binding
-          assay: ChEC-seq
-          display_name: "2025 ChEC-seq (mahendrawada)"
+          data_type: binding
+          assay: ChIPexo
+          display_name: "2025 CHEC-seq (mahendrawada)"
         db_name: chec_m2025
         sample_id:
           field: sample_id
@@ -75,10 +98,11 @@ repositories:
           field: regulator_locus_tag
         regulator_symbol:
           field: regulator_symbol
+      # perturbation
       rnaseq_reprocessed:
         tags:
-          data_type: Perturbation
-          assay: degron
+          data_type: perturbation
+          assay: ChIPexo
           display_name: "2025 Degron RNA-seq (mahendrawada)"
         db_name: degron
         sample_id:
@@ -90,10 +114,11 @@ repositories:
 
   BrentLab/hughes_2006:
     dataset:
+      # perturbation
       overexpression:
         tags:
-          data_type: Perturbation
-          assay: Overexpression
+          data_type: perturbation
+          assay: overexpression
           display_name: "2006 Overexpression (hughes)"
         db_name: hughes_overexpression
         sample_id:
@@ -106,10 +131,11 @@ repositories:
           field: regulator_locus_tag
         regulator_symbol:
           field: regulator_symbol
+      # perturbation
       knockout:
         tags:
-          data_type: Perturbation
-          assay: TKFO
+          data_type: perturbation
+          assay: TFKO
           display_name: "2006 Knockout (hughes)"
         db_name: hughes_knockout
         sample_id:
@@ -125,9 +151,10 @@ repositories:
 
   BrentLab/kemmeren_2014:
     dataset:
+      # perturbation
       kemmeren_2014:
         tags:
-          data_type: Perturbation
+          data_type: perturbation
           assay: TFKO
           display_name: "2014 TFKO (kemmeren)"
         db_name: kemmeren
@@ -144,11 +171,12 @@ repositories:
 
   BrentLab/hackett_2020:
     dataset:
+      # perturbation
       hackett_2020:
         tags:
-          data_type: Perturbation
-          assay: Overexpression
-          display_name: "2020 TFKO (hackett)"
+          data_type: perturbation
+          assay: overexpression
+          display_name: "2020 Overexpression (hackett)"
         db_name: hackett
         sample_id:
           field: sample_id
@@ -175,7 +203,9 @@ repositories:
         links:
           binding_id:
             - [BrentLab/harbison_2004, harbison_2004]
-            - [BrentLab/callingcards, 2026_analysis_set]
+            - [BrentLab/callingcards, annotated_features]
+            - [BrentLab/callingcards, annotated_features_combined]
+            - [BrentLab/callingcards, annotated_features_orig_reprocess]
             - [BrentLab/rossi_2021, rossi_2021_af_combined]
             - [BrentLab/mahendrawada_2025, chec_mahendrawada_m2025_af_combined]
           perturbation_id:
