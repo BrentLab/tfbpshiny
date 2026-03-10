@@ -270,28 +270,23 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         intersection_detail.set(None)
         navigate_to.set(None)
 
-    # -- Nav rail --
-    _NAV_ITEMS = [
-        {"id": "home", "tag": "Home"},
-        {"id": "selection", "tag": "Select Datasets"},
-        {"id": "binding", "tag": "Binding"},
-        {"id": "perturbation", "tag": "Perturbation"},
-        {"id": "comparison", "tag": "Comparison"},
-    ]
-
+    # -- Nav --
     @render.ui
     def nav_buttons() -> ui.Tag:
         current = active_module()
+
+        def btn(id: str, tag: str) -> ui.Tag:
+            return ui.input_action_button(
+                id, tag, class_=f"nav-btn{' active' if id == current else ''}"
+            )
+
         return ui.div(
             {"class": "nav-tags"},
-            *[
-                ui.input_action_button(
-                    item["id"],
-                    item["tag"],
-                    class_=f"nav-btn{' active' if item['id'] == current else ''}",
-                )
-                for item in _NAV_ITEMS
-            ],
+            btn("home", "Home"),
+            btn("selection", "Select Datasets"),
+            btn("binding", "Binding"),
+            btn("perturbation", "Perturbation"),
+            btn("comparison", "Comparison"),
         )
 
     @reactive.effect
