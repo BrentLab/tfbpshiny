@@ -26,7 +26,7 @@
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
 
-    --nav-width: 96px;
+    --nav-height: 52px;
     --sidebar-width: 380px;
     --transition-fast: 150ms ease;
 }
@@ -42,54 +42,46 @@ body {
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
-/* --- App container (3-region flex) -------------------------------------- */
+/* --- App container (top-nav + body row) --------------------------------- */
 .app-container {
     display: flex;
+    flex-direction: column;
     height: 100vh;
     width: 100%;
     overflow: hidden;
 }
 
-/* --- Nav rail ----------------------------------------------------------- */
-.nav-rail {
-    width: var(--nav-width);
-    min-width: var(--nav-width);
-    background: var(--color-surface);
-    border-right: 1px solid var(--color-border);
+.app-body {
     display: flex;
-    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* --- Top nav bar -------------------------------------------------------- */
+.nav-bar {
+    height: var(--nav-height);
+    min-height: var(--nav-height);
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
     align-items: center;
-    padding: 14px 0;
-    gap: 8px;
+    padding: 0 16px;
+    gap: 12px;
     z-index: 10;
 }
 
-.nav-rail .nav-logo {
-    width: 36px;
-    height: 36px;
-    border-radius: var(--radius-sm);
-    background: var(--color-primary);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 14px;
-    margin-bottom: 8px;
+.nav-bar > .shiny-html-output {
+    display: contents;
 }
 
-.nav-rail .nav-tags {
-    width: 100%;
+.nav-bar .nav-tags {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding: 0 8px;
+    gap: 6px;
 }
 
-.nav-rail .nav-btn {
-    width: 100%;
-    min-height: 36px;
+.nav-bar .nav-btn {
+    height: 32px;
     border: 1px solid var(--color-border);
     border-radius: 999px;
     background: #F8FAFC;
@@ -99,23 +91,21 @@ body {
     align-items: center;
     justify-content: center;
     transition: background var(--transition-fast), color var(--transition-fast);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    padding: 6px 8px;
-    line-height: 1.1;
-    text-align: center;
-    white-space: normal;
+    padding: 0 14px;
+    white-space: nowrap;
 }
 
-.nav-rail .nav-btn:hover {
+.nav-bar .nav-btn:hover {
     background: var(--color-primary-light);
     color: var(--color-primary);
     border-color: #BEE3F8;
 }
 
-.nav-rail .nav-btn.active {
+.nav-bar .nav-btn.active {
     background: var(--color-primary);
     color: #fff;
     border-color: var(--color-primary);
