@@ -16,7 +16,7 @@ repositories:
           display_name: "2026 Calling Cards"
         db_name: callingcards
         sample_id:
-          field: id
+          field: gm_id
 
   BrentLab/harbison_2004:
     dataset:

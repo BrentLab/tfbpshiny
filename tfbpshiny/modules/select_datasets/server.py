@@ -10,7 +10,7 @@ from typing import Any
 import faicons as fa
 from shiny import module, reactive, render, ui
 
-from tfbpshiny.modals import resolve_analysis_module
+from tfbpshiny.modal import resolve_analysis_module
 
 
 @module.server

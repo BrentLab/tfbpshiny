@@ -10,9 +10,10 @@ from typing import Any, Literal, cast
 
 from dotenv import load_dotenv
 from shiny import App, reactive, render, ui
+from tfbpapi import VirtualDB
 
 from configure_logger import configure_logger
-from tfbpshiny.modals import (
+from tfbpshiny.modal import (
     render_dataset_config_modal,
     render_intersection_detail_modal,
 )
@@ -64,6 +65,13 @@ configure_logger(
     handler_type=handler_type,
     log_file=log_file,
 )
+
+# ---------------------------------------------------------------------------
+# VirtualDB instantiation
+# ---------------------------------------------------------------------------
+virtualdb_config = Path(__file__).parent / "brentlab_yeast_collection.yaml"
+logger.info(f"Loading VirtualDB with config: {virtualdb_config.resolve()}")
+vdb = VirtualDB(virtualdb_config.resolve())
 
 # ---------------------------------------------------------------------------
 # #MOCK — inline dataset catalog
@@ -131,7 +139,18 @@ app_ui = ui.page_fillable(
         ui.div(
             {"class": "nav-bar"},
             ui.div({"class": "nav-logo"}, "TF\nBinding & Perturbation\nExplorer"),
-            ui.output_ui("nav_buttons"),
+            ui.div(
+                {"class": "nav-tags"},
+                ui.input_action_button("home", "Home", class_="nav-btn"),
+                ui.input_action_button(
+                    "selection", "Select Datasets", class_="nav-btn"
+                ),
+                ui.input_action_button("binding", "Binding", class_="nav-btn"),
+                ui.input_action_button(
+                    "perturbation", "Perturbation", class_="nav-btn"
+                ),
+                ui.input_action_button("comparison", "Comparison", class_="nav-btn"),
+            ),
         ),
         ui.div(
             {"class": "app-body"},
@@ -271,24 +290,6 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         navigate_to.set(None)
 
     # -- Nav --
-    @render.ui
-    def nav_buttons() -> ui.Tag:
-        current = active_module()
-
-        def btn(id: str, tag: str) -> ui.Tag:
-            return ui.input_action_button(
-                id, tag, class_=f"nav-btn{' active' if id == current else ''}"
-            )
-
-        return ui.div(
-            {"class": "nav-tags"},
-            btn("home", "Home"),
-            btn("selection", "Select Datasets"),
-            btn("binding", "Binding"),
-            btn("perturbation", "Perturbation"),
-            btn("comparison", "Comparison"),
-        )
-
     @reactive.effect
     @reactive.event(input.home, ignore_init=True)
     def _nav_home() -> None:
