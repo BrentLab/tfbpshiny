@@ -1,5 +1,3 @@
-"""TF Binding and Perturbation – Shiny app shell and module orchestration."""
-
 from __future__ import annotations
 
 import logging
@@ -42,10 +40,6 @@ from tfbpshiny.modules.select_datasets.ui import (
     selection_sidebar_ui,
 )
 
-# -------------------------------------------------------------------------
-# Environment / logging
-# -------------------------------------------------------------------------
-
 if not os.getenv("DOCKER_ENV"):
     load_dotenv(dotenv_path=Path(".env"))
 
@@ -63,17 +57,13 @@ configure_logger(
     log_file=log_file,
 )
 
-# -------------------------------------------------------------------------
-# VirtualDB instantiation
-# -------------------------------------------------------------------------
+# instantiate the virtualDB
 virtualdb_config = Path(__file__).parent / "brentlab_yeast_collection.yaml"
 logger.info(f"Loading VirtualDB with config: {virtualdb_config.resolve()}")
 vdb = VirtualDB(virtualdb_config.resolve())
 
-# -------------------------------------------------------------------------
-# UI
-# -------------------------------------------------------------------------
-
+# this is for the github badge in the navbar. it links to the repo and displays
+# the current version
 try:
     _version = version("tfbpshiny")
 except PackageNotFoundError:
@@ -152,10 +142,6 @@ app_ui = ui.page_fillable(
     padding=0,
     gap=0,
 )
-
-# -------------------------------------------------------------------------
-# Server
-# -------------------------------------------------------------------------
 
 
 def app_server(input: Any, output: Any, session: Any) -> None:
@@ -238,9 +224,5 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     comparison_sidebar_server("module_sidebar", active_module=active_module)
     comparison_workspace_server("module_workspace", active_module=active_module)
 
-
-# -------------------------------------------------------------------------
-# App instance
-# -------------------------------------------------------------------------
 
 app = App(ui=app_ui, server=app_server)
