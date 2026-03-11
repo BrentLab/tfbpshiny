@@ -13,10 +13,7 @@ from shiny import App, reactive, render, ui
 from tfbpapi import VirtualDB
 
 from configure_logger import configure_logger
-from tfbpshiny.modal import (
-    render_dataset_config_modal,
-    render_intersection_detail_modal,
-)
+from tfbpshiny.modal import render_intersection_detail_modal
 from tfbpshiny.modules.binding.server import (
     binding_sidebar_server,
     binding_workspace_server,
@@ -74,61 +71,6 @@ logger.info(f"Loading VirtualDB with config: {virtualdb_config.resolve()}")
 vdb = VirtualDB(virtualdb_config.resolve())
 
 # ---------------------------------------------------------------------------
-# #MOCK — inline dataset catalog
-# ---------------------------------------------------------------------------
-
-_MOCK_DATASETS: list[dict[str, Any]] = [
-    {
-        "id": "mock::harbison",
-        "db_name": "harbison",
-        "name": "2004 Harbison ChIP-chip",
-        "type": "Binding",
-        "group": "binding",
-        "type_badge": "BD",
-        "sample_count": 203,
-        "sample_count_known": True,
-        "column_count": 5,
-        "tf_count": 203,
-        "tf_count_known": True,
-        "selected": True,
-        "selectable": True,
-        "metadata_configs": [],
-    },
-    {
-        "id": "mock::kemmeren",
-        "db_name": "kemmeren",
-        "name": "2014 Kemmeren TFKO",
-        "type": "Perturbation",
-        "group": "perturbation",
-        "type_badge": "PR",
-        "sample_count": 1484,
-        "sample_count_known": True,
-        "column_count": 6,
-        "tf_count": 1484,
-        "tf_count_known": True,
-        "selected": True,
-        "selectable": True,
-        "metadata_configs": [],
-    },
-    {
-        "id": "mock::hackett",
-        "db_name": "hackett",
-        "name": "2020 Hackett OE",
-        "type": "Perturbation",
-        "group": "perturbation",
-        "type_badge": "PR",
-        "sample_count": 93,
-        "sample_count_known": True,
-        "column_count": 4,
-        "tf_count": 93,
-        "tf_count_known": True,
-        "selected": False,
-        "selectable": True,
-        "metadata_configs": [],
-    },
-]
-
-# ---------------------------------------------------------------------------
 # UI
 # ---------------------------------------------------------------------------
 
@@ -173,87 +115,57 @@ def app_server(input: Any, output: Any, session: Any) -> None:
 
     # -- Shared reactive values --
     active_module: reactive.Value[str] = reactive.value("home")
-    datasets: reactive.Value[list[dict[str, Any]]] = reactive.value(
-        list(_MOCK_DATASETS)
-    )
 
     (active_config_dataset_id, intersection_detail, navigate_to) = (
-        select_datasets_server(datasets)
+        select_datasets_server(vdb, logger)
     )
-
-    # -- Helpers --
-    def _dataset_by_id(dataset_id: str) -> dict[str, Any] | None:
-        return next((e for e in datasets() if str(e["id"]) == dataset_id), None)
-
-    def _set_dataset_selected(dataset_id: str, selected: bool) -> None:
-        current = datasets()
-        changed = False
-        for entry in current:
-            if str(entry["id"]) != dataset_id:
-                continue
-            if bool(entry.get("selected")) != bool(selected):
-                entry["selected"] = bool(selected)
-                changed = True
-        if changed:
-            datasets.set(list(current))
 
     # -- Region renders --
     @render.ui
     def sidebar_region() -> ui.Tag:
-        mod = active_module()
-        if mod == "home":
+        selected_module = active_module()
+        logger.debug(f"Rendering sidebar for active module: {selected_module}")
+        if selected_module == "home":
+            # no sidebar for home module
             return ui.span()
-        if mod == "selection":
+        if selected_module == "selection":
             return selection_sidebar_ui("sel_sidebar")
-        if mod == "binding":
+        if selected_module == "binding":
             return binding_sidebar_ui("module_sidebar")
-        if mod == "perturbation":
+        if selected_module == "perturbation":
             return perturbation_sidebar_ui("module_sidebar")
-        if mod == "comparison":
+        if selected_module == "comparison":
             return comparison_sidebar_ui("module_sidebar")
-        return ui.span()
+        logger.error(f"No sidebar for active module: {selected_module}")
+        return ui.span(ui.p("ERROR: No sidebar for: " + selected_module))
 
     @render.ui
     def workspace_region() -> ui.Tag:
-        mod = active_module()
-        if mod == "home":
+        selected_module = active_module()
+        logger.debug(f"Rendering workspace for active module: {selected_module}")
+        if selected_module == "home":
             return splash_ui()
-        if mod == "selection":
+        if selected_module == "selection":
             return selection_matrix_ui("sel_matrix")
-        if mod == "binding":
+        if selected_module == "binding":
             return binding_workspace_ui("module_workspace")
-        if mod == "perturbation":
+        if selected_module == "perturbation":
             return perturbation_workspace_ui("module_workspace")
-        if mod == "comparison":
+        if selected_module == "comparison":
             return comparison_workspace_ui("module_workspace")
-        return ui.span()
+        logger.error(f"No workspace for active module: {selected_module}")
+        return ui.span(ui.p("ERROR: No workspace for: " + selected_module))
 
     @render.ui
     def modal_layer() -> ui.Tag:
-        active_dataset_id = active_config_dataset_id()
-        if active_dataset_id:
-            dataset = _dataset_by_id(active_dataset_id)
-            if not dataset:
-                return ui.span()
-            return render_dataset_config_modal(dataset=dataset)
-
+        # #TODO: active_config_dataset_id will trigger
+        # when sidebar configure is wired up
         details = intersection_detail()
         if details:
             return render_intersection_detail_modal(details)
-
         return ui.span()
 
     # -- Config modal effects --
-    @reactive.effect
-    def _sync_modal_include_toggle() -> None:
-        dataset_id = active_config_dataset_id()
-        if not dataset_id:
-            return
-        try:
-            _set_dataset_selected(dataset_id, bool(input.modal_include_dataset()))
-        except Exception:
-            pass
-
     @reactive.effect
     @reactive.event(input.modal_close_config)
     def _close_config_modal_from_header() -> None:

@@ -103,7 +103,7 @@ repositories:
         tags:
           data_type: perturbation
           assay: ChIPexo
-          display_name: "2025 Degron RNA-seq (mahendrawada)"
+          display_name: "2025 Degron (mahendrawada)"
         db_name: degron
         sample_id:
           field: sample_id

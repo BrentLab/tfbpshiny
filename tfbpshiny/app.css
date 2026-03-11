@@ -28,6 +28,7 @@
 
     --nav-height: 52px;
     --sidebar-width: 380px;
+    --sidebar-font-size: 0.8125rem;
     --transition-fast: 150ms ease;
 }
 
@@ -329,6 +330,7 @@ body {
     color: var(--color-text-muted);
     padding: 12px 0 2px;
     margin-top: 4px;
+    margin-bottom: 12px;
 }
 
 .group-description {
@@ -584,6 +586,36 @@ body {
 
 .selection-sidebar {
     transition: width var(--transition-fast);
+}
+
+/* Single unified text style for all sidebar body content.
+   Adjust --sidebar-font-size in :root to rescale everything at once. */
+.selection-sidebar .sidebar-text {
+    font-size: var(--sidebar-font-size);
+    color: var(--color-text);
+}
+
+/* Dataset row: toggle + label + filter button on one line */
+.selection-sidebar .dataset-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.125rem 0;
+}
+
+.selection-sidebar .dataset-row-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.selection-sidebar .btn-filter-dataset {
+    flex-shrink: 0;
+    font-size: 0.7rem;
+    padding: 0.125rem 0.4rem;
+    line-height: 1.4;
+    border-radius: 3px;
 }
 
 .selection-sidebar.collapsed {
