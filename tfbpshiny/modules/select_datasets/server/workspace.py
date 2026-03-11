@@ -372,7 +372,7 @@ def select_datasets_server(
     intersection_cells: reactive.Value[list[dict[str, Any]]] = reactive.value([])
     has_loaded_intersection: reactive.Value[bool] = reactive.value(False)
 
-    filter_modal_open_for, active_binding_datasets, active_perturbation_datasets = (
+    active_binding_datasets, active_perturbation_datasets, filter_dict = (
         selection_sidebar_server("sel_sidebar", vdb=vdb, logger=logger)
     )
     intersection_detail, navigate_to = selection_matrix_server(
@@ -384,7 +384,8 @@ def select_datasets_server(
         intersection_loading=reactive.value(False),
         intersection_error=reactive.value(None),
     )
-    return filter_modal_open_for, intersection_detail, navigate_to
+    # TODO: fix typing issue and remove type: ignore
+    return intersection_detail, navigate_to  # type: ignore
 
 
 __all__ = ["select_datasets_server", "selection_matrix_server"]

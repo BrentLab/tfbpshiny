@@ -8,9 +8,12 @@ Run with:
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
 from typing import Any
 
 from shiny import App, reactive, ui
+from tfbpapi import VirtualDB
 
 from tfbpshiny.modules.select_datasets.server import (
     selection_matrix_server,
@@ -21,7 +24,12 @@ from tfbpshiny.modules.select_datasets.ui import (
     selection_sidebar_ui,
 )
 
-# #MOCK datasets
+logger = logging.getLogger("shiny")
+vdb = VirtualDB(
+    (Path(__file__).parents[3] / "brentlab_yeast_collection.yaml").resolve()
+)
+
+# #MOCK datasets — used by selection_matrix_server
 _DATASETS: list[dict[str, Any]] = [
     {
         "id": "mock::harbison",
@@ -89,17 +97,7 @@ def server(input: Any, output: Any, session: Any) -> None:
     intersection_cells: reactive.Value[list[dict[str, Any]]] = reactive.value([])
     has_loaded_intersection: reactive.Value[bool] = reactive.value(False)
 
-    selection_sidebar_server(
-        "sel_sidebar",
-        datasets=datasets,
-        logic_mode=reactive.value("intersect"),
-        datasets_loading=reactive.value(False),
-        intersection_loading=reactive.value(False),
-        intersection_cells=intersection_cells,
-        has_loaded_intersection=has_loaded_intersection,
-        on_configure=lambda ds_id: None,
-        on_clear_all_filters=lambda: None,
-    )
+    selection_sidebar_server("sel_sidebar", vdb=vdb, logger=logger)
 
     selection_matrix_server(
         "sel_matrix",

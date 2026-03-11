@@ -42,9 +42,9 @@ from tfbpshiny.modules.select_datasets.ui import (
 )
 from tfbpshiny.splash import splash_ui
 
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Environment / logging
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
 if not os.getenv("DOCKER_ENV"):
     load_dotenv(dotenv_path=Path(".env"))
@@ -63,16 +63,16 @@ configure_logger(
     log_file=log_file,
 )
 
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # VirtualDB instantiation
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 virtualdb_config = Path(__file__).parent / "brentlab_yeast_collection.yaml"
 logger.info(f"Loading VirtualDB with config: {virtualdb_config.resolve()}")
 vdb = VirtualDB(virtualdb_config.resolve())
 
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # UI
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
 app_ui = ui.page_fillable(
     ui.include_css((Path(__file__).parent / "app.css").resolve()),
@@ -105,22 +105,22 @@ app_ui = ui.page_fillable(
     gap=0,
 )
 
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Server
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
 
 def app_server(input: Any, output: Any, session: Any) -> None:
     """Create shared reactive state and call all module servers."""
 
-    # -- Shared reactive values --
+    # Shared reactive values
     active_module: reactive.Value[str] = reactive.value("home")
 
-    (active_config_dataset_id, intersection_detail, navigate_to) = (
-        select_datasets_server(vdb, logger)
-    )
+    # TODO: fix typing issue and remove type: ignore
+    intersection_detail, navigate_to = select_datasets_server(vdb, logger)  # type: ignore # noqa: E501
 
-    # -- Region renders --
+    # The page is always divided into a sidebar region and workspace region
+    # this renders the sidebar region according to the active module
     @render.ui
     def sidebar_region() -> ui.Tag:
         selected_module = active_module()
@@ -139,6 +139,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         logger.error(f"No sidebar for active module: {selected_module}")
         return ui.span(ui.p("ERROR: No sidebar for: " + selected_module))
 
+    # this renders the workspace region according to the active module
     @render.ui
     def workspace_region() -> ui.Tag:
         selected_module = active_module()
@@ -158,30 +159,12 @@ def app_server(input: Any, output: Any, session: Any) -> None:
 
     @render.ui
     def modal_layer() -> ui.Tag:
-        # #TODO: active_config_dataset_id will trigger
-        # when sidebar configure is wired up
         details = intersection_detail()
         if details:
             return render_intersection_detail_modal(details)
         return ui.span()
 
-    # -- Config modal effects --
-    @reactive.effect
-    @reactive.event(input.modal_close_config)
-    def _close_config_modal_from_header() -> None:
-        active_config_dataset_id.set(None)
-
-    @reactive.effect
-    @reactive.event(input.modal_cancel_filters)
-    def _close_config_modal_from_cancel() -> None:
-        active_config_dataset_id.set(None)
-
-    @reactive.effect
-    @reactive.event(input.modal_apply_filters)
-    def _close_config_modal_from_apply() -> None:
-        active_config_dataset_id.set(None)
-
-    # -- Intersection modal effects --
+    # Intersection modal effects
     @reactive.effect
     @reactive.event(input.modal_close_intersection)
     def _close_intersection_modal_from_header() -> None:
@@ -201,7 +184,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         intersection_detail.set(None)
         navigate_to.set(None)
 
-    # -- Nav --
+    # Nav
     @reactive.effect
     @reactive.event(input.home, ignore_init=True)
     def _nav_home() -> None:
@@ -227,7 +210,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     def _nav_comparison() -> None:
         active_module.set("comparison")
 
-    # -- Module servers --
+    # Module servers
     binding_sidebar_server("module_sidebar", active_module=active_module)
     binding_workspace_server("module_workspace", active_module=active_module)
     perturbation_sidebar_server("module_sidebar", active_module=active_module)
@@ -236,8 +219,8 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     comparison_workspace_server("module_workspace", active_module=active_module)
 
 
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # App instance
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 
 app = App(ui=app_ui, server=app_server)
