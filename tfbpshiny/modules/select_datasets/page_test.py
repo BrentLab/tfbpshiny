@@ -12,13 +12,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from shiny import App, reactive, ui
+from shiny import App, ui
 from tfbpapi import VirtualDB
 
-from tfbpshiny.modules.select_datasets.server import (
-    selection_matrix_server,
-    selection_sidebar_server,
-)
+from tfbpshiny.modules.select_datasets.server import select_datasets_server
 from tfbpshiny.modules.select_datasets.ui import (
     selection_matrix_ui,
     selection_sidebar_ui,
@@ -28,58 +25,6 @@ logger = logging.getLogger("shiny")
 vdb = VirtualDB(
     (Path(__file__).parents[3] / "brentlab_yeast_collection.yaml").resolve()
 )
-
-# #MOCK datasets — used by selection_matrix_server
-_DATASETS: list[dict[str, Any]] = [
-    {
-        "id": "mock::harbison",
-        "db_name": "harbison",
-        "name": "2004 Harbison ChIP-chip",
-        "type": "Binding",
-        "group": "binding",
-        "type_badge": "BD",
-        "sample_count": 203,
-        "sample_count_known": True,
-        "column_count": 5,
-        "tf_count": 203,
-        "tf_count_known": True,
-        "selected": True,
-        "selectable": True,
-        "metadata_configs": [],
-    },
-    {
-        "id": "mock::kemmeren",
-        "db_name": "kemmeren",
-        "name": "2014 Kemmeren TFKO",
-        "type": "Perturbation",
-        "group": "perturbation",
-        "type_badge": "PR",
-        "sample_count": 1484,
-        "sample_count_known": True,
-        "column_count": 6,
-        "tf_count": 1484,
-        "tf_count_known": True,
-        "selected": True,
-        "selectable": True,
-        "metadata_configs": [],
-    },
-    {
-        "id": "mock::hackett",
-        "db_name": "hackett",
-        "name": "2020 Hackett OE",
-        "type": "Perturbation",
-        "group": "perturbation",
-        "type_badge": "PR",
-        "sample_count": 93,
-        "sample_count_known": True,
-        "column_count": 4,
-        "tf_count": 93,
-        "tf_count_known": True,
-        "selected": False,
-        "selectable": True,
-        "metadata_configs": [],
-    },
-]
 
 app_ui = ui.page_fillable(
     ui.div(
@@ -93,21 +38,7 @@ app_ui = ui.page_fillable(
 
 
 def server(input: Any, output: Any, session: Any) -> None:
-    datasets: reactive.Value[list[dict[str, Any]]] = reactive.value(list(_DATASETS))
-    intersection_cells: reactive.Value[list[dict[str, Any]]] = reactive.value([])
-    has_loaded_intersection: reactive.Value[bool] = reactive.value(False)
-
-    selection_sidebar_server("sel_sidebar", vdb=vdb, logger=logger)
-
-    selection_matrix_server(
-        "sel_matrix",
-        datasets=datasets,
-        logic_mode=reactive.value("intersect"),
-        intersection_cells=intersection_cells,
-        has_loaded_intersection=has_loaded_intersection,
-        intersection_loading=reactive.value(False),
-        intersection_error=reactive.value(None),
-    )
+    select_datasets_server(vdb=vdb, logger=logger)
 
 
 app = App(ui=app_ui, server=server)

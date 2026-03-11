@@ -2,77 +2,21 @@
 
 from __future__ import annotations
 
-import hashlib
 from logging import Logger
 from typing import Any
 
 from shiny import module, reactive, render, ui
 from tfbpapi import VirtualDB
 
-from tfbpshiny.modal import resolve_analysis_module
+from tfbpshiny.modules.select_datasets.queries import (
+    regulator_locus_tags_query,
+    sample_count_query,
+)
 from tfbpshiny.modules.select_datasets.server.sidebar import selection_sidebar_server
-
-# #MOCK — inline dataset catalog (temporary; will come from VirtualDB)
-_MOCK_DATASETS: list[dict[str, Any]] = [
-    {
-        "id": "mock::harbison",
-        "db_name": "harbison",
-        "name": "2004 Harbison ChIP-chip",
-        "type": "Binding",
-        "group": "binding",
-        "type_badge": "BD",
-        "sample_count": 203,
-        "sample_count_known": True,
-        "column_count": 5,
-        "tf_count": 203,
-        "tf_count_known": True,
-        "selected": True,
-        "selectable": True,
-        "metadata_configs": [],
-    },
-    {
-        "id": "mock::kemmeren",
-        "db_name": "kemmeren",
-        "name": "2014 Kemmeren TFKO",
-        "type": "Perturbation",
-        "group": "perturbation",
-        "type_badge": "PR",
-        "sample_count": 1484,
-        "sample_count_known": True,
-        "column_count": 6,
-        "tf_count": 1484,
-        "tf_count_known": True,
-        "selected": True,
-        "selectable": True,
-        "metadata_configs": [],
-    },
-    {
-        "id": "mock::hackett",
-        "db_name": "hackett",
-        "name": "2020 Hackett OE",
-        "type": "Perturbation",
-        "group": "perturbation",
-        "type_badge": "PR",
-        "sample_count": 93,
-        "sample_count_known": True,
-        "column_count": 4,
-        "tf_count": 93,
-        "tf_count_known": True,
-        "selected": False,
-        "selectable": True,
-        "metadata_configs": [],
-    },
-]
-
-
-def _cell_key(row_db: str, col_db: str) -> str:
-    return f"{row_db}::{col_db}"
-
-
-def _cell_button_id(row_id: str, col_id: str) -> str:
-    raw = f"{row_id}::{col_id}"
-    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
-    return f"matrix_cell_{digest}"
+from tfbpshiny.modules.select_datasets.ui import (
+    diagonal_cell_modal_ui,
+    off_diagonal_cell_modal_ui,
+)
 
 
 @module.server
@@ -80,312 +24,250 @@ def selection_matrix_server(
     input: Any,
     output: Any,
     session: Any,
-    datasets: reactive.Value[list[dict[str, Any]]],
-    logic_mode: reactive.Value[str],
-    intersection_cells: reactive.Value[list[dict[str, Any]]],
-    has_loaded_intersection: reactive.Value[bool],
-    intersection_loading: reactive.Value[bool],
-    intersection_error: reactive.Value[str | None],
-) -> tuple[reactive.Value[dict[str, Any] | None], reactive.Value[str | None]]:
-    """Render matrix; return (intersection_detail, navigate_to) reactives."""
+    active_binding_datasets: reactive.calc,
+    active_perturbation_datasets: reactive.calc,
+    filter_dict: reactive.Value[dict[str, Any]],
+    vdb: VirtualDB,
+    logger: Logger,
+) -> None:
+    """Render the sample-count matrix for all active datasets."""
 
-    intersection_detail: reactive.Value[dict[str, Any] | None] = reactive.value(None)
-    navigate_to: reactive.Value[str | None] = reactive.value(None)
-    cell_click_counts: reactive.Value[dict[str, int]] = reactive.value({})
-
-    @reactive.calc
-    def _active_datasets() -> list[dict[str, Any]]:
-        return [entry for entry in datasets() if entry.get("selected")]
+    display_names: dict[str, str] = {
+        db_name: vdb.get_tags(db_name).get("display_name", db_name)
+        for db_name in vdb.get_datasets()
+    }
 
     @reactive.calc
-    def _cell_map() -> dict[str, int | None]:
-        cells = intersection_cells()
-        mapping: dict[str, int | None] = {}
-
-        for cell in cells:
-            row = str(cell.get("row"))
-            col = str(cell.get("col"))
-            count = cell.get("count")
-            normalized_count = int(count) if isinstance(count, (int, float)) else None
-            mapping[_cell_key(row, col)] = normalized_count
-            mapping[_cell_key(col, row)] = normalized_count
-
-        return mapping
+    def _active_datasets() -> list[str]:
+        return active_binding_datasets() + active_perturbation_datasets()
 
     @reactive.calc
-    def _diagonal_tf_map() -> dict[str, int]:
-        diagonal: dict[str, int] = {}
-        for cell in intersection_cells():
-            row = str(cell.get("row"))
-            col = str(cell.get("col"))
-            count = cell.get("count")
-            if row == col and isinstance(count, (int, float)):
-                diagonal[row] = int(count)
-        return diagonal
+    def _matrix_data() -> dict[str, Any]:
+        """
+        Compute per-dataset regulator/sample counts and pairwise common-regulator counts
+        with restricted sample counts.
 
-    @reactive.calc
-    def _max_off_diagonal() -> int:
+        :return: Dict with keys: ``"diagonal"`` — ``{db_name: {"regulators": int,
+            "samples": int}}`` ``"cross_dataset"`` — ``{(db_i, db_j):
+            {"common_regulators": int, "samples_a": int, "samples_b": int}}``
+
+        """
         active = _active_datasets()
-        cell_map = _cell_map()
+        filters = filter_dict()
 
-        values: list[int] = []
-        for i, row_dataset in enumerate(active):
-            row_db = str(row_dataset.get("db_name"))
-            for j, col_dataset in enumerate(active):
-                if j <= i:
-                    continue
-                col_db = str(col_dataset.get("db_name"))
-                value = cell_map.get(_cell_key(row_db, col_db))
-                if isinstance(value, int):
-                    values.append(value)
+        # --- diagonal pass: regulator sets + sample counts per dataset ---
+        regulator_sets: dict[str, set[str]] = {}
+        diagonal: dict[str, dict[str, int]] = {}
 
-        return max(values) if values else 1
+        for db_name in active:
+            db_filters = filters.get(db_name)
+
+            sql, params = regulator_locus_tags_query(db_name, db_filters)
+            reg_df = vdb.query(sql, **params)
+            regulators = set(reg_df["regulator_locus_tag"].dropna().astype(str))
+            regulator_sets[db_name] = regulators
+
+            sql, params = sample_count_query(db_name, db_filters)
+            n_samples = int(vdb.query(sql, **params).iloc[0, 0])
+
+            diagonal[db_name] = {"regulators": len(regulators), "samples": n_samples}
+
+        # --- off-diagonal pass: common regulators + restricted sample counts ---
+        cross_dataset: dict[tuple[str, str], dict[str, int]] = {}
+
+        for i, db_a in enumerate(active):
+            for db_b in active[i + 1 :]:
+                common = regulator_sets[db_a] & regulator_sets[db_b]
+                common_list = list(common)
+
+                sql_a, params_a = sample_count_query(
+                    db_a, filters.get(db_a), restrict_to_regulators=common_list
+                )
+                sql_b, params_b = sample_count_query(
+                    db_b, filters.get(db_b), restrict_to_regulators=common_list
+                )
+                n_a = int(vdb.query(sql_a, **params_a).iloc[0, 0])
+                n_b = int(vdb.query(sql_b, **params_b).iloc[0, 0])
+
+                cross_dataset[(db_a, db_b)] = {
+                    "common_regulators": len(common),
+                    "samples_a": n_a,
+                    "samples_b": n_b,
+                }
+
+        return {"diagonal": diagonal, "cross_dataset": cross_dataset}
+
+    def _make_diagonal_effect(db_name: str) -> None:
+        """Register a per-dataset click effect for a diagonal cell button."""
+        btn_id = f"diag_{db_name}"
+
+        @reactive.effect
+        @reactive.event(input[btn_id])
+        def _on_click() -> None:
+            ui.modal_show(diagonal_cell_modal_ui())
+
+    def _make_off_diagonal_effect(db_a: str, db_b: str) -> None:
+        """Register per-pair click and modal-action effects for an off-diagonal cell."""
+        btn_id = f"offdiag_{db_a}__{db_b}"
+        apply_btn_id = "modal_select_common_regulators"
+
+        @reactive.effect
+        @reactive.event(input[btn_id])
+        def _on_click() -> None:
+            data = _matrix_data()
+            info = data["cross_dataset"].get((db_a, db_b), {})
+            n_common = info.get("common_regulators", 0)
+            ui.modal_show(
+                off_diagonal_cell_modal_ui(
+                    display_names.get(db_a, db_a),
+                    display_names.get(db_b, db_b),
+                    n_common,
+                )
+            )
+
+        @reactive.effect
+        @reactive.event(input[apply_btn_id])
+        def _on_apply_common_regulators() -> None:
+            reg_sets = {}
+            filters = filter_dict()
+            for db_name in (db_a, db_b):
+                sql, params = regulator_locus_tags_query(db_name, filters.get(db_name))
+                reg_df = vdb.query(sql, **params)
+                reg_sets[db_name] = set(
+                    reg_df["regulator_locus_tag"].dropna().astype(str)
+                )
+            common = sorted(reg_sets[db_a] & reg_sets[db_b])
+            if not common:
+                ui.modal_remove()
+                return
+            current = dict(filter_dict())
+            for db_name in (db_a, db_b):
+                ds_filters = dict(current.get(db_name, {}))
+                ds_filters["regulator_locus_tag"] = {
+                    "type": "categorical",
+                    "value": common,
+                }
+                current[db_name] = ds_filters
+            filter_dict.set(current)
+            ui.modal_remove()
+
+    # Track which cell effects have already been registered to avoid duplicates
+    # when active_datasets changes but some datasets remain.
+    _registered_effects: set[str] = set()
 
     @reactive.effect
-    def _watch_cell_clicks() -> None:
+    def _register_cell_effects() -> None:
         active = _active_datasets()
-        cell_map = _cell_map()
-        current_counts = dict(cell_click_counts())
-
-        for row_index, row_dataset in enumerate(active):
-            row_id = str(row_dataset.get("id"))
-            row_db = str(row_dataset.get("db_name"))
-
-            for col_index, col_dataset in enumerate(active):
-                if col_index <= row_index:
-                    continue
-
-                col_id = str(col_dataset.get("id"))
-                col_db = str(col_dataset.get("db_name"))
-                value = cell_map.get(_cell_key(row_db, col_db))
-                if value is None:
-                    continue
-
-                button_id = _cell_button_id(row_id, col_id)
-                try:
-                    clicks = int(input[button_id]())
-                except Exception:
-                    continue
-
-                prev_clicks = int(current_counts.get(button_id, 0))
-                if clicks > prev_clicks:
-                    current_counts[button_id] = clicks
-                    cell_click_counts.set(current_counts)
-
-                    row_type = row_dataset.get("type", "Expression")
-                    col_type = col_dataset.get("type", "Expression")
-                    intersection_detail.set(
-                        {
-                            "rowDataset": {
-                                "id": row_id,
-                                "db_name": row_db,
-                                "type": row_type,
-                                "name": row_dataset.get("name", row_db),
-                                "tf_count": int(row_dataset.get("tf_count") or 0),
-                            },
-                            "colDataset": {
-                                "id": col_id,
-                                "db_name": col_db,
-                                "type": col_type,
-                                "name": col_dataset.get("name", col_db),
-                                "tf_count": int(col_dataset.get("tf_count") or 0),
-                            },
-                            "intersectionCount": int(value),
-                        }
-                    )
-                    navigate_to.set(
-                        resolve_analysis_module(str(row_type), str(col_type))
-                    )
-                    return
+        for db_name in active:
+            if db_name not in _registered_effects:
+                _make_diagonal_effect(db_name)
+                _registered_effects.add(db_name)
+        for i, db_a in enumerate(active):
+            for db_b in active[i + 1 :]:
+                pair_id = f"{db_a}__{db_b}"
+                if pair_id not in _registered_effects:
+                    _make_off_diagonal_effect(db_a, db_b)
+                    _registered_effects.add(pair_id)
 
     @render.ui
     def matrix_content() -> ui.Tag:
         active = _active_datasets()
 
-        if intersection_loading() and not has_loaded_intersection():
-            return ui.div(
-                {"class": "empty-state"},
-                ui.h3("Downloading selected datasets..."),
-            )
-
         if not active:
-            return ui.div(
-                {"class": "empty-state"},
-                ui.h3("No datasets selected"),
-                ui.p("Select datasets from the sidebar to view intersections."),
+            return ui.card(
+                ui.card_body(
+                    ui.p(
+                        "Select datasets from the sidebar to view sample counts.",
+                        class_="text-muted",
+                    )
+                )
             )
 
-        if intersection_error():
-            return ui.div(
-                {"class": "empty-state"},
-                ui.h3("Failed to load selection data"),
-                ui.p(str(intersection_error())),
-            )
+        data = _matrix_data()
+        diagonal = data["diagonal"]
+        cross_dataset = data["cross_dataset"]
 
-        if not has_loaded_intersection():
-            return ui.div(
-                {"class": "empty-state"},
-                ui.h3("Dataset metadata is ready"),
-                ui.p(
-                    "Click Refresh Matrix to preload files and compute intersections."
-                ),
-            )
-
-        cell_map = _cell_map()
-        diagonal_tf_map = _diagonal_tf_map()
-        max_value = _max_off_diagonal()
-
-        def _bucket(value: int | None) -> int:
-            if value is None:
-                return 0
-            if max_value <= 0:
-                return 1
-            scaled = int((value / max_value) * 5)
-            return max(1, min(5, scaled))
-
-        header_cells = [
-            ui.tags.th(
-                {"class": "matrix-row-header"},
-                "Dataset Pair",
-            )
-        ]
-
-        for dataset in active:
-            db_name = str(dataset.get("db_name"))
-            tf_count = int(diagonal_tf_map.get(db_name, 0))
+        # --- header row ---
+        header_cells = [ui.tags.th({"class": "matrix-row-header"}, "Dataset")]
+        for db_name in active:
+            label = display_names.get(db_name, db_name)
             header_cells.append(
                 ui.tags.th(
                     {"class": "matrix-col-header"},
-                    ui.div(
-                        {"class": "matrix-header-name"},
-                        str(dataset.get("name", db_name)),
-                    ),
-                    ui.div({"class": "matrix-header-meta"}, f"{tf_count:,} TFs"),
+                    ui.div({"class": "matrix-header-name"}, label),
                 )
             )
 
+        # --- body rows ---
         body_rows: list[ui.Tag] = []
-        for row_index, row_dataset in enumerate(active):
-            row_name = str(row_dataset.get("name", "Dataset"))
-            row_db = str(row_dataset.get("db_name"))
-            row_id = str(row_dataset.get("id"))
-
+        for row_i, db_row in enumerate(active):
             cells: list[ui.Tag] = [
                 ui.tags.td(
-                    {"class": "matrix-row-label"},
-                    row_name,
+                    {"class": "matrix-row-label"}, display_names.get(db_row, db_row)
                 )
             ]
 
-            for col_index, col_dataset in enumerate(active):
-                col_db = str(col_dataset.get("db_name"))
-                col_id = str(col_dataset.get("id"))
-
-                if col_index < row_index:
+            for col_i, db_col in enumerate(active):
+                if col_i < row_i:
+                    # lower triangle — empty
                     cells.append(ui.tags.td({"class": "matrix-cell-empty"}, ""))
                     continue
 
-                value = cell_map.get(_cell_key(row_db, col_db))
-                is_diagonal = row_index == col_index
-
-                if is_diagonal:
+                if col_i == row_i:
+                    # diagonal — regulator count + sample count
+                    info = diagonal.get(db_row, {})
                     cells.append(
                         ui.tags.td(
                             {"class": "matrix-cell-diagonal"},
-                            ("N/A" if value is None else f"{value:,}"),
+                            ui.input_action_button(
+                                f"diag_{db_row}",
+                                f"{info.get('regulators', 0):,} regulators / "
+                                f"{info.get('samples', 0):,} samples",
+                                class_="matrix-cell-button",
+                            ),
                         )
                     )
-                    continue
-
-                if value is None:
+                else:
+                    # upper triangle — common regulators only
+                    key = (db_row, db_col)
+                    info = cross_dataset.get(key, {})
                     cells.append(
                         ui.tags.td(
-                            {"class": "matrix-cell-na"},
-                            "N/A",
+                            {"class": "matrix-cell-interactive"},
+                            ui.input_action_button(
+                                f"offdiag_{db_row}__{db_col}",
+                                f"{info.get('common_regulators', 0):,} "
+                                "common regulators",
+                                class_="matrix-cell-button",
+                            ),
                         )
                     )
-                    continue
-
-                button_id = _cell_button_id(row_id, col_id)
-                cells.append(
-                    ui.tags.td(
-                        {"class": "matrix-cell-interactive"},
-                        ui.input_action_button(
-                            button_id,
-                            f"{value:,}",
-                            class_=(
-                                "matrix-cell-button"
-                                f" matrix-intensity-{_bucket(value)}"
-                            ),
-                        ),
-                    )
-                )
 
             body_rows.append(ui.tags.tr(*cells))
 
-        refresh_badge = (
-            ui.div({"class": "matrix-refreshing-badge"}, "Refreshing...")
-            if intersection_loading() and has_loaded_intersection()
-            else ui.span()
+        return ui.tags.table(
+            {"class": "matrix-summary-table"},
+            ui.tags.thead(ui.tags.tr(*header_cells)),
+            ui.tags.tbody(*body_rows),
         )
-
-        return ui.div(
-            {"class": "card intersection-summary-card"},
-            ui.div(
-                {"class": "intersection-summary-header"},
-                ui.div(
-                    ui.h2("Intersection Summary"),
-                    ui.div(
-                        {"class": "intersection-summary-subtitle"},
-                        f"{len(active)} datasets · "
-                        f"{'AND' if logic_mode() == 'intersect' else 'OR'} mode",
-                    ),
-                ),
-                refresh_badge,
-            ),
-            ui.div(
-                {"class": "matrix-table-wrap"},
-                ui.tags.table(
-                    {"class": "matrix-table matrix-summary-table"},
-                    ui.tags.thead(ui.tags.tr(*header_cells)),
-                    ui.tags.tbody(*body_rows),
-                ),
-            ),
-        )
-
-    return intersection_detail, navigate_to
 
 
 def select_datasets_server(
     vdb: VirtualDB,
     logger: Logger,
-) -> tuple[
-    reactive.Value[str | None],
-    reactive.Value[dict[str, Any] | None],
-    reactive.Value[str | None],
-]:
-    """Wire both select_datasets module servers; return (active_config_dataset_id,
-    intersection_detail, navigate_to)."""
-    datasets: reactive.Value[list[dict[str, Any]]] = reactive.value(
-        list(_MOCK_DATASETS)
-    )
-    intersection_cells: reactive.Value[list[dict[str, Any]]] = reactive.value([])
-    has_loaded_intersection: reactive.Value[bool] = reactive.value(False)
-
+) -> None:
+    """Wire both select_datasets module servers."""
     active_binding_datasets, active_perturbation_datasets, filter_dict = (
         selection_sidebar_server("sel_sidebar", vdb=vdb, logger=logger)
     )
-    intersection_detail, navigate_to = selection_matrix_server(
+    selection_matrix_server(
         "sel_matrix",
-        datasets=datasets,
-        logic_mode=reactive.value("intersect"),
-        intersection_cells=intersection_cells,
-        has_loaded_intersection=has_loaded_intersection,
-        intersection_loading=reactive.value(False),
-        intersection_error=reactive.value(None),
+        active_binding_datasets=active_binding_datasets,
+        active_perturbation_datasets=active_perturbation_datasets,
+        filter_dict=filter_dict,
+        vdb=vdb,
+        logger=logger,
     )
-    # TODO: fix typing issue and remove type: ignore
-    return intersection_detail, navigate_to  # type: ignore
 
 
 __all__ = ["select_datasets_server", "selection_matrix_server"]

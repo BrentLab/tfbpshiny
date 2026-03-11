@@ -8,6 +8,7 @@ repositories:
       path: experimental_conditions.media.carbon_source.compound
     temperature_celsius:
       path: experimental_conditions.temperature_celsius
+      dtype: string
     dataset:
       2026_analysis_set:
         tags:
@@ -35,7 +36,7 @@ repositories:
         temperature_celsius:
           field: condition
           path: temperature_celsius
-          dtype: numeric
+          dtype: string
         regulator_locus_tag:
           field: regulator_locus_tag
         regulator_symbol:
@@ -47,6 +48,7 @@ repositories:
       path: experimental_conditions.media.carbon_source.compound
     temperature_celsius:
       path: experimental_conditions.temperature_celsius
+      dtype: string
     dataset:
       rossi_2021_af_combined:
         tags:
@@ -58,8 +60,6 @@ repositories:
           field: sample_id
         regulator_locus_tag:
           field: regulator_locus_tag
-        target_locus_tag:
-          field: target_locus_tag
 
   BrentLab/hu_2007_reimand_2010:
     # perturbation
@@ -67,6 +67,7 @@ repositories:
       path: experimental_conditions.media.carbon_source.compound
     temperature_celsius:
       path: experimental_conditions.temperature_celsius
+      dtype: string
     dataset:
       hu_2007_reimand_2010:
         tags:
@@ -78,19 +79,18 @@ repositories:
           field: sample_id
         regulator_locus_tag:
           field: regulator_locus_tag
-        target_locus_tag:
-          field: target_locus_tag
 
   BrentLab/mahendrawada_2025:
     temperature_celsius:
       path: experimental_conditions.temperature_celsius
+      dtype: string
     dataset:
       # binding
       chec_mahendrawada_m2025_af_combined:
         tags:
           data_type: binding
-          assay: ChIPexo
-          display_name: "2025 CHEC-seq (mahendrawada)"
+          assay: ChEC-seq
+          display_name: "2025 ChEC-seq (mahendrawada)"
         db_name: chec_m2025
         sample_id:
           field: sample_id
@@ -127,6 +127,7 @@ repositories:
           path: experimental_conditions.media.carbon_source.compound
         temperature_celsius:
           path: experimental_conditions.temperature_celsius
+          dtype: string
         regulator_locus_tag:
           field: regulator_locus_tag
         regulator_symbol:
@@ -144,6 +145,7 @@ repositories:
           path: experimental_conditions.media.carbon_source.compound
         temperature_celsius:
           path: experimental_conditions.temperature_celsius
+          dtype: string
         regulator_locus_tag:
           field: regulator_locus_tag
         regulator_symbol:
@@ -164,6 +166,7 @@ repositories:
           path: experimental_conditions.media.carbon_source.compound
         temperature_celsius:
           path: experimental_conditions.temperature_celsius
+          dtype: string
         regulator_locus_tag:
           field: regulator_locus_tag
         regulator_symbol:
@@ -184,7 +187,7 @@ repositories:
           path: experimental_conditions.media.carbon_source.compound
         temperature_celsius:
           path: experimental_conditions.temperature_celsius
-          dtype: numeric
+          dtype: string
         regulator_locus_tag:
           field: regulator_locus_tag
         regulator_symbol:

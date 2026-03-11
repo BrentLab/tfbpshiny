@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -13,7 +14,7 @@ from shiny import App, reactive, render, ui
 from tfbpapi import VirtualDB
 
 from configure_logger import configure_logger
-from tfbpshiny.modal import render_intersection_detail_modal
+from tfbpshiny.home.ui import home_ui
 from tfbpshiny.modules.binding.server import (
     binding_sidebar_server,
     binding_workspace_server,
@@ -40,7 +41,6 @@ from tfbpshiny.modules.select_datasets.ui import (
     selection_matrix_ui,
     selection_sidebar_ui,
 )
-from tfbpshiny.splash import splash_ui
 
 # -------------------------------------------------------------------------
 # Environment / logging
@@ -74,6 +74,54 @@ vdb = VirtualDB(virtualdb_config.resolve())
 # UI
 # -------------------------------------------------------------------------
 
+try:
+    _version = version("tfbpshiny")
+except PackageNotFoundError:
+    _version = "dev"
+
+_GITHUB_URL = "https://github.com/BrentLab/tfbpshiny"
+
+
+def github_badge() -> ui.Tag:
+    """GitHub repo link with version pill, suitable for the navbar."""
+    return ui.a(
+        {"class": "github-badge", "href": _GITHUB_URL, "target": "_blank"},
+        ui.tags.svg(
+            {
+                "xmlns": "http://www.w3.org/2000/svg",
+                "width": "16",
+                "height": "16",
+                "viewBox": "0 0 16 16",
+                "fill": "currentColor",
+                "style": "vertical-align:middle; margin-right:5px;",
+            },
+            ui.Tag(
+                "path",
+                # this is the SVG path data for the GitHub logo
+                # see https://simpleicons.org/icons/github.svg
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 "
+                "7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-"
+                "2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 "
+                "1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-"
+                "1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-"
+                "1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 "
+                "1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56"
+                ".82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 "
+                "0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 "
+                "8c0-4.42-3.58-8-8-8z",
+            ),
+        ),
+        ui.tags.span(
+            {"style": "vertical-align:middle; margin-right:6px;"},
+            "BrentLab/tfbpshiny",
+        ),
+        ui.tags.span(
+            {"class": "github-badge-version"},
+            f"v{_version}",
+        ),
+    )
+
+
 app_ui = ui.page_fillable(
     ui.include_css((Path(__file__).parent / "app.css").resolve()),
     ui.div(
@@ -93,6 +141,7 @@ app_ui = ui.page_fillable(
                 ),
                 ui.input_action_button("comparison", "Comparison", class_="nav-btn"),
             ),
+            github_badge(),
         ),
         ui.div(
             {"class": "app-body"},
@@ -100,7 +149,6 @@ app_ui = ui.page_fillable(
             ui.output_ui("workspace_region"),
         ),
     ),
-    ui.output_ui("modal_layer"),
     padding=0,
     gap=0,
 )
@@ -116,8 +164,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     # Shared reactive values
     active_module: reactive.Value[str] = reactive.value("home")
 
-    # TODO: fix typing issue and remove type: ignore
-    intersection_detail, navigate_to = select_datasets_server(vdb, logger)  # type: ignore # noqa: E501
+    select_datasets_server(vdb, logger)
 
     # The page is always divided into a sidebar region and workspace region
     # this renders the sidebar region according to the active module
@@ -145,7 +192,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         selected_module = active_module()
         logger.debug(f"Rendering workspace for active module: {selected_module}")
         if selected_module == "home":
-            return splash_ui()
+            return home_ui()
         if selected_module == "selection":
             return selection_matrix_ui("sel_matrix")
         if selected_module == "binding":
@@ -156,33 +203,6 @@ def app_server(input: Any, output: Any, session: Any) -> None:
             return comparison_workspace_ui("module_workspace")
         logger.error(f"No workspace for active module: {selected_module}")
         return ui.span(ui.p("ERROR: No workspace for: " + selected_module))
-
-    @render.ui
-    def modal_layer() -> ui.Tag:
-        details = intersection_detail()
-        if details:
-            return render_intersection_detail_modal(details)
-        return ui.span()
-
-    # Intersection modal effects
-    @reactive.effect
-    @reactive.event(input.modal_close_intersection)
-    def _close_intersection_modal_from_header() -> None:
-        intersection_detail.set(None)
-
-    @reactive.effect
-    @reactive.event(input.modal_close_intersection_secondary)
-    def _close_intersection_modal_from_footer() -> None:
-        intersection_detail.set(None)
-
-    @reactive.effect
-    @reactive.event(input.modal_open_analysis)
-    def _navigate_from_modal() -> None:
-        target = navigate_to()
-        if target:
-            active_module.set(target)
-        intersection_detail.set(None)
-        navigate_to.set(None)
 
     # Nav
     @reactive.effect

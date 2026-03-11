@@ -60,12 +60,12 @@ tfbpshiny/
 ├── app.py              # Main application shell and orchestration
 ├── app.css             # Global styles
 ├── modules/            # Feature modules
+│   ├── home/           # The home page module (splash screen)
 │   ├── binding/        # TF binding data module
 │   ├── perturbation/   # Perturbation data module
 │   ├── comparison/     # Comparison analysis module
 │   └── select_datasets/# Dataset selection module
-├── utils/              # Shared utilities
-└── splash.py           # Home page UI
+└── utils/              # Shared utilities
 ```
 
 ### Module Pattern

@@ -11,7 +11,10 @@ import pandas as pd
 from shiny import module, reactive, render, ui
 from tfbpapi import VirtualDB
 
-from tfbpshiny.modules.select_datasets.queries import metadata_query
+from tfbpshiny.modules.select_datasets.queries import (
+    FIELD_TYPE_OVERRIDES,
+    metadata_query,
+)
 from tfbpshiny.modules.select_datasets.ui import dataset_filter_modal_ui
 
 
@@ -134,9 +137,14 @@ def selection_sidebar_server(
                 df = vdb.query(sql, **params)
                 modal_open_for.set(db_name)
                 modal_df.set(df)
+                display_name = dataset_dict[db_name].get("display_name", db_name)
                 ui.modal_show(
                     dataset_filter_modal_ui(
-                        db_name, df, existing_filters, common_fields
+                        db_name,
+                        df,
+                        existing_filters,
+                        common_fields,
+                        display_name=display_name,
                     )
                 )
 
@@ -186,14 +194,22 @@ def selection_sidebar_server(
             except Exception:
                 continue
 
-            if col.dtype == "bool":
-                if bool(value):
-                    field_filters[field] = {"type": "bool", "value": True}
+            type_override = FIELD_TYPE_OVERRIDES.get(
+                (db_name, field)
+            ) or FIELD_TYPE_OVERRIDES.get(("", field))
+            override_kind = type_override[0] if type_override else None
 
-            elif col.dtype.name in ("object", "category"):
+            if override_kind == "categorical" or col.dtype.name in (
+                "object",
+                "category",
+            ):
                 selected = list(value) if value else []
                 if selected:
                     field_filters[field] = {"type": "categorical", "value": selected}
+
+            elif col.dtype == "bool":
+                if bool(value):
+                    field_filters[field] = {"type": "bool", "value": True}
 
             elif col.dtype.name in ("float64", "int64", "float32", "int32"):
                 if isinstance(value, (list, tuple)) and len(value) == 2:
@@ -202,6 +218,10 @@ def selection_sidebar_server(
                         continue
                     data_min = float(non_null.min())
                     data_max = float(non_null.max())
+                    # single-value column: slider was artificially bumped in UI,
+                    # user cannot meaningfully filter it — skip
+                    if data_min == data_max:
+                        continue
                     s_min, s_max = float(value[0]), float(value[1])
                     if s_min != data_min or s_max != data_max:
                         field_filters[field] = {
@@ -209,7 +229,15 @@ def selection_sidebar_server(
                             "value": [s_min, s_max],
                         }
 
-        # split into common-field filters (apply to all datasets) and dataset-specific
+            # read per-field apply_to_all toggle for common fields
+            if field in common_fields and field in field_filters:
+                try:
+                    apply_to_all = bool(input[f"apply_to_all_{field}"]())
+                except Exception:
+                    apply_to_all = False
+                field_filters[field]["apply_to_all"] = apply_to_all
+
+        # split into common-field filters and dataset-specific
         common_filters = {f: v for f, v in field_filters.items() if f in common_fields}
         specific_filters = {
             f: v for f, v in field_filters.items() if f not in common_fields
@@ -218,17 +246,43 @@ def selection_sidebar_server(
         current = dict(filter_dict())
         all_db_names = [d for d, _ in binding_datasets + perturbation_datasets]
 
-        # apply common filters to every dataset
-        for ds in all_db_names:
-            ds_filters = dict(current.get(ds, {}))
-            # clear stale common-field entries then write new ones
-            for f in common_fields:
-                ds_filters.pop(f, None)
-            ds_filters.update(common_filters)
-            if ds_filters:
-                current[ds] = ds_filters
+        # apply each common filter according to its own apply_to_all flag
+        for f, spec in common_filters.items():
+            apply_to_all = spec.get("apply_to_all", True)
+            if apply_to_all:
+                for ds in all_db_names:
+                    ds_filters = dict(current.get(ds, {}))
+                    ds_filters[f] = spec
+                    current[ds] = ds_filters
             else:
-                current.pop(ds, None)
+                # apply only to this dataset; clear from others
+                for ds in all_db_names:
+                    ds_filters = dict(current.get(ds, {}))
+                    if ds == db_name:
+                        ds_filters[f] = spec
+                    else:
+                        ds_filters.pop(f, None)
+                    if ds_filters:
+                        current[ds] = ds_filters
+                    else:
+                        current.pop(ds, None)
+
+        # clear common fields that were removed (not in common_filters)
+        for f in common_fields:
+            if f not in common_filters:
+                # check how this field was previously stored to decide scope of removal
+                prev_spec = current.get(db_name, {}).get(f)
+                prev_apply_to_all = (
+                    prev_spec.get("apply_to_all", False) if prev_spec else False
+                )
+                targets = all_db_names if prev_apply_to_all else [db_name]
+                for ds in targets:
+                    ds_filters = dict(current.get(ds, {}))
+                    ds_filters.pop(f, None)
+                    if ds_filters:
+                        current[ds] = ds_filters
+                    else:
+                        current.pop(ds, None)
 
         # apply dataset-specific filters to just this dataset
         ds_filters = dict(current.get(db_name, {}))
