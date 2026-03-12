@@ -10,9 +10,6 @@ a virtual environment.
 ```bash
 python -m venv tfbpshiny-env
 source tfbpshiny-env/bin/activate  # On Windows: tfbpshiny-env\Scripts\activate
-# use the `@dev` for the latest development version.
-# Remove `@dev` for the latest stable release. I recommend using `@dev`
-# in general
 python -m pip install git+https://github.com/BrentLab/tfbpshiny@dev
 ```
 
