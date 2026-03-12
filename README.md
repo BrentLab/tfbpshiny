@@ -73,9 +73,15 @@ production version of the app and run it in the containers:
 
 ### Local development using poetry
 
-Git clone the app as usual, cd into it and poetry install. Add a .env
-file that is the same as the `.shiny` file above, minus the `DOCKER_ENV`
-variable. Then you can do:
+Git clone the app as usual, cd into it and poetry install. If you need to provide
+a huggingface token for local development, you can create a `.env` file in the
+root of the repo with the following content:
+
+```raw
+HUGGINGFACE_HUB_TOKEN=<your huggingface token>
+```
+
+Then, you can run the app using the `poetry run` command:
 
 ```bash
 # You don't need to set the `port` or `host` unless you need to use something other
