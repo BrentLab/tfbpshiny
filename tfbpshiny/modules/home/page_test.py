@@ -2,7 +2,7 @@
 Standalone app for developing the Home page in isolation.
 
 Run with:
-    shiny run tfbpshiny/home/page_test.py
+    poetry run shiny run tfbpshiny/home/page_test.py
 
 """
 
@@ -12,7 +12,7 @@ from typing import Any
 
 from shiny import App, ui
 
-from tfbpshiny.home.ui import home_ui
+from tfbpshiny.modules.home.ui import home_ui
 
 app_ui = ui.page_fillable(
     home_ui(),

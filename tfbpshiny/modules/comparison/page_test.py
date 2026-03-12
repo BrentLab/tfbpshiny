@@ -2,7 +2,7 @@
 Standalone app for developing the Comparison (DTO) comparison page in isolation.
 
 Run with:
-    shiny run tfbpshiny/modules/comparison/page_test.py
+    poetry run shiny run tfbpshiny/modules/comparison/page_test.py
 
 """
 

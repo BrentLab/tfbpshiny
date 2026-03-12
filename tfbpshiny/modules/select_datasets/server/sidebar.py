@@ -138,6 +138,39 @@ def select_datasets_sidebar_server(
                 modal_open_for.set(db_name)
                 modal_df.set(df)
                 display_name = dataset_dict[db_name].get("display_name", db_name)
+
+                # build union of categorical levels for each common field
+                # across all active datasets, so all valid values are selectable
+                all_active = active_binding_datasets() + active_perturbation_datasets()
+                common_field_levels: dict[str, list[str]] = {}
+                for cf_field in common_fields:
+                    if cf_field not in df.columns:
+                        continue
+                    col_dtype = df[cf_field].dtype
+                    type_override = FIELD_TYPE_OVERRIDES.get(
+                        (db_name, cf_field)
+                    ) or FIELD_TYPE_OVERRIDES.get(("", cf_field))
+                    override_kind = type_override[0] if type_override else None
+                    if override_kind != "categorical" and col_dtype.name not in (
+                        "object",
+                        "category",
+                    ):
+                        continue
+                    levels: set[str] = {str(v) for v in df[cf_field].dropna().unique()}
+                    for other_db in all_active:
+                        if other_db == db_name:
+                            continue
+                        try:
+                            other_sql, other_params = metadata_query(other_db)
+                            other_df = vdb.query(other_sql, **other_params)
+                            if cf_field in other_df.columns:
+                                levels |= {
+                                    str(v) for v in other_df[cf_field].dropna().unique()
+                                }
+                        except Exception:
+                            pass
+                    common_field_levels[cf_field] = list(levels)
+
                 ui.modal_show(
                     dataset_filter_modal_ui(
                         db_name,
@@ -145,6 +178,7 @@ def select_datasets_sidebar_server(
                         existing_filters,
                         common_fields,
                         display_name=display_name,
+                        common_field_levels=common_field_levels,
                     )
                 )
 
@@ -297,6 +331,13 @@ def select_datasets_sidebar_server(
             current.pop(db_name, None)
 
         dataset_filters.set(current)
+
+        # activate the dataset toggle if it isn't already on
+        try:
+            if not bool(input[_toggle_id(db_name)]()):
+                ui.update_switch(_toggle_id(db_name), value=True)
+        except Exception:
+            pass
 
         ui.modal_remove()
         modal_open_for.set(None)

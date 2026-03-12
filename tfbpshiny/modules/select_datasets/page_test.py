@@ -2,7 +2,7 @@
 Standalone app for developing the Select Datasets page in isolation.
 
 Run with:
-    shiny run tfbpshiny/modules/select_datasets/page_test.py
+    poetry run shiny run tfbpshiny/modules/select_datasets/page_test.py
 
 """
 

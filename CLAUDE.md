@@ -22,6 +22,7 @@ than guessing at APIs.
 |---------|-----------|---------------|
 | py-shiny (Shiny for Python source) | `@py-shiny-site (reference)` | https://github.com/posit-dev/py-shiny |
 | tfbpapi | `@tfbpapi (reference)` | https://github.com/BrentLab/tfbpapi |
+| duckDB (for SQL query reference) | `@duckdb (reference)` | https://duckdb.org/docs/stable/
 
 **tfbpapi documentation**: https://brentlab.github.io/tfbpapi/
 

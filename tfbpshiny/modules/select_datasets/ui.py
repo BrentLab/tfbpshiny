@@ -17,6 +17,7 @@ def _filter_control(
     saved_spec: dict[str, Any] | None,
     db_name: str = "",
     is_common: bool = False,
+    union_levels: list[str] | None = None,
 ) -> ui.Tag | None:
     """
     Build a single filter-option card for ``field``.
@@ -44,7 +45,11 @@ def _filter_control(
         )
 
     if override_kind == "categorical" or dtype.name in ("object", "category"):
-        raw = [str(v) for v in col.dropna().unique()]
+        raw = (
+            union_levels
+            if union_levels is not None
+            else [str(v) for v in col.dropna().unique()]
+        )
         choices = sorted(
             raw, key=lambda x: float(x) if override_level_dtype == "numeric" else x
         )
@@ -123,6 +128,7 @@ def dataset_filter_modal_ui(
     saved_filters: dict[str, Any] | None = None,
     common_fields: set[str] | None = None,
     display_name: str | None = None,
+    common_field_levels: dict[str, list[str]] | None = None,
 ) -> ui.Tag:
     """
     Build the filter modal for a given dataset from live metadata.
@@ -140,10 +146,14 @@ def dataset_filter_modal_ui(
         ``None``, all characteristics are treated as dataset-specific.
     :param display_name: Human-readable dataset name used as the modal title.
         Falls back to ``db_name`` if not provided.
+    :param common_field_levels: For common categorical fields, the union of factor
+        levels across all active datasets. Used to populate the selectize choices
+        so that valid values from other datasets remain selectable.
 
     """
     saved = saved_filters or {}
     cf = (common_fields or set()) - {"sample_id"}
+    cfl = common_field_levels or {}
     title = display_name or db_name
 
     common_cards: list[ui.Tag] = []
@@ -154,7 +164,12 @@ def dataset_filter_modal_ui(
             continue
         is_common = field in cf
         card = _filter_control(
-            field, df[field], saved.get(field), db_name, is_common=is_common
+            field,
+            df[field],
+            saved.get(field),
+            db_name,
+            is_common=is_common,
+            union_levels=cfl.get(field) if is_common else None,
         )
         if card is None:
             continue
@@ -172,8 +187,7 @@ def dataset_filter_modal_ui(
                     "class": "text-muted",
                     "style": "font-size:0.8rem; margin-bottom:8px;",
                 },
-                "These characteristics appear in every dataset. Each has its own "
-                '"Apply to all datasets" toggle.',
+                "These characteristics appear in every dataset.",
             ),
             *common_cards,
         ]

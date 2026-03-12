@@ -12,7 +12,6 @@ from shiny import App, reactive, render, ui
 from tfbpapi import VirtualDB
 
 from configure_logger import configure_logger
-from tfbpshiny.home.ui import home_ui
 from tfbpshiny.modules.binding.server import (
     binding_sidebar_server,
     binding_workspace_server,
@@ -26,6 +25,7 @@ from tfbpshiny.modules.comparison.ui import (
     comparison_sidebar_ui,
     comparison_workspace_ui,
 )
+from tfbpshiny.modules.home.ui import home_ui
 from tfbpshiny.modules.perturbation.server import (
     perturbation_sidebar_server,
     perturbation_workspace_server,

@@ -28,25 +28,13 @@ production version of the app and run it in the containers:
 
     **.shiny**
 
+    The huggingface hub token would only be useful if you have private datasets that
+    you want to access from the app. If you only need to access public datasets,
+    you can leave it out.
+
     ```raw
     DOCKER_ENV=true
-    BASE_URL='https://django.tfbindingandperturbation.com'
-    TOKEN='your token here'
-    BINDING_URL='https://django.tfbindingandperturbation.com/api/binding'
-    BINDINGCONCATENATED_URL='https://django.tfbindingandperturbation.com/api/bindingconcatenated/'
-    BINDINGMANUALQC_URL='https://django.tfbindingandperturbation.com/api/bindingmanualqc'
-    CALLINGCARDSBACKGROUND_URL='https://django.tfbindingandperturbation.com/api/callingcardsbackground'
-    DATASOURCE_URL='https://django.tfbindingandperturbation.com/api/datasource'
-    DTO_URL='https://django.tfbindingandperturbation.com/api/dto'
-    EXPRESSION_URL='https://django.tfbindingandperturbation.com/api/expression'
-    EXPRESSIONMANUALQC_URL='https://django.tfbindingandperturbation.com/api/expressionmanualqc'
-    FILEFORMAT_URL='https://django.tfbindingandperturbation.com/api/fileformat'
-    GENOMICFEATURE_URL='https://django.tfbindingandperturbation.com/api/genomicfeature'
-    PROMOTERSET_URL='https://django.tfbindingandperturbation.com/api/promoterset'
-    PROMOTERSETSIG_URL='https://django.tfbindingandperturbation.com/api/promotersetsig'
-    RANKRESPONSE_URL='https://django.tfbindingandperturbation.com/api/rankresponse'
-    REGULATOR_URL='https://django.tfbindingandperturbation.com/api/regulator'
-    UNIVARIATEMODELS_URL='https://django.tfbindingandperturbation.com/api/univariatemodels'
+    HUGGINGFACE_HUB_TOKEN=<your huggingface token>
     ```
 
     **.traefik**

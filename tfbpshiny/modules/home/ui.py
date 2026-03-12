@@ -9,7 +9,7 @@ def home_ui() -> ui.Tag:
         ui.div(
             {"class": "alert alert-warning", "role": "alert"},
             ui.strong("Under development: "),
-            "excuse the mess. Projected release: summer 2026.",
+            "excuse the mess. Projected release: April 1, 2026.",
         ),
         ui.h2("Welcome to the TF Binding and Perturbation Explorer"),
         ui.p(

@@ -2,7 +2,7 @@
 Standalone app for developing the Perturbation perturbation page in isolation.
 
 Run with:
-    shiny run tfbpshiny/modules/perturbation/page_test.py
+    poetry run shiny run tfbpshiny/modules/perturbation/page_test.py
 
 """
 
