@@ -4,11 +4,30 @@ This is a packaged shiny app for the frontend of django.tfbindingandperturbation
 
 ## Install
 
-This may be installed from github using pip. To install the most up to date version,
-install the `dev` branch
+This may be installed from github using pip. It is recommended that you do this in
+a virtual environment.
 
-```python
-pip install git+https://github.com/BrentLab/tfbpshiny@dev
+```bash
+python -m venv tfbpshiny-env
+source tfbpshiny-env/bin/activate  # On Windows: tfbpshiny-env\Scripts\activate
+# use the `@dev` for the latest development version.
+# Remove `@dev` for the latest stable release. I recommend using `@dev`
+# in general
+python -m pip install git+https://github.com/BrentLab/tfbpshiny@dev
+```
+
+Then, you can run the app using the `tfbpshiny` command line interface.
+
+```bash
+python -m tfbpshiny shiny
+```
+
+You can set the port and host using the `--port` and `--host` flags,
+respectively. For example:
+
+```bash
+python -m tfbpshiny --log-level INFO shiny \
+    --port 8010 --host 127.0.0.1
 ```
 
 ### Docker compose (production profile)
@@ -62,7 +81,10 @@ file that is the same as the `.shiny` file above, minus the `DOCKER_ENV`
 variable. Then you can do:
 
 ```bash
-poetry run python -m tfbpshiny --log-level INFO shiny \
+# You don't need to set the `port` or `host` unless you need to use something other
+# than port 8000 and localhost. `--debug` puts shiny in hot reload mode, which is
+# useful for development
+poetry run python -m tfbpshiny --log-level DEBUG shiny \
     --port 8010 --host 127.0.0.1 --debug
 ```
 
