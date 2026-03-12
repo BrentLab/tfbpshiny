@@ -34,7 +34,10 @@ from tfbpshiny.modules.perturbation.ui import (
     perturbation_sidebar_ui,
     perturbation_workspace_ui,
 )
-from tfbpshiny.modules.select_datasets.server import select_datasets_server
+from tfbpshiny.modules.select_datasets.server import (
+    select_datasets_sidebar_server,
+    select_datasets_workspace_server,
+)
 from tfbpshiny.modules.select_datasets.ui import (
     selection_matrix_ui,
     selection_sidebar_ui,
@@ -147,10 +150,31 @@ app_ui = ui.page_fillable(
 def app_server(input: Any, output: Any, session: Any) -> None:
     """Create shared reactive state and call all module servers."""
 
-    # Shared reactive values
+    # this stores the name of the currently active module, ie
+    # "home", "selection", "binding", "perturbation", or "comparison"
     active_module: reactive.Value[str] = reactive.value("home")
 
-    select_datasets_server(vdb, logger)
+    # Dataset selection state — shared across all analysis modules
+    active_binding_datasets, active_perturbation_datasets, dataset_filters = (
+        select_datasets_sidebar_server(
+            "select_datasets_sidebar", vdb=vdb, logger=logger
+        )
+    )
+    select_datasets_workspace_server(
+        "select_datasets_workspace",
+        active_binding_datasets=active_binding_datasets,
+        active_perturbation_datasets=active_perturbation_datasets,
+        dataset_filters=dataset_filters,
+        vdb=vdb,
+        logger=logger,
+    )
+
+    binding_sidebar_server("module_sidebar", active_module=active_module)
+    binding_workspace_server("module_workspace", active_module=active_module)
+    perturbation_sidebar_server("module_sidebar", active_module=active_module)
+    perturbation_workspace_server("module_workspace", active_module=active_module)
+    comparison_sidebar_server("module_sidebar", active_module=active_module)
+    comparison_workspace_server("module_workspace", active_module=active_module)
 
     # The page is always divided into a sidebar region and workspace region
     # this renders the sidebar region according to the active module
@@ -162,7 +186,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
             # no sidebar for home module
             return ui.span()
         if selected_module == "selection":
-            return selection_sidebar_ui("sel_sidebar")
+            return selection_sidebar_ui("select_datasets_sidebar")
         if selected_module == "binding":
             return binding_sidebar_ui("module_sidebar")
         if selected_module == "perturbation":
@@ -180,7 +204,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         if selected_module == "home":
             return home_ui()
         if selected_module == "selection":
-            return selection_matrix_ui("sel_matrix")
+            return selection_matrix_ui("select_datasets_workspace")
         if selected_module == "binding":
             return binding_workspace_ui("module_workspace")
         if selected_module == "perturbation":
@@ -215,14 +239,6 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     @reactive.event(input.comparison, ignore_init=True)
     def _nav_comparison() -> None:
         active_module.set("comparison")
-
-    # Module servers
-    binding_sidebar_server("module_sidebar", active_module=active_module)
-    binding_workspace_server("module_workspace", active_module=active_module)
-    perturbation_sidebar_server("module_sidebar", active_module=active_module)
-    perturbation_workspace_server("module_workspace", active_module=active_module)
-    comparison_sidebar_server("module_sidebar", active_module=active_module)
-    comparison_workspace_server("module_workspace", active_module=active_module)
 
 
 app = App(ui=app_ui, server=app_server)

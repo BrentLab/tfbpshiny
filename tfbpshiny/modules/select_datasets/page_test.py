@@ -15,7 +15,10 @@ from typing import Any
 from shiny import App, ui
 from tfbpapi import VirtualDB
 
-from tfbpshiny.modules.select_datasets.server import select_datasets_server
+from tfbpshiny.modules.select_datasets.server import (
+    select_datasets_sidebar_server,
+    select_datasets_workspace_server,
+)
 from tfbpshiny.modules.select_datasets.ui import (
     selection_matrix_ui,
     selection_sidebar_ui,
@@ -29,8 +32,8 @@ vdb = VirtualDB(
 app_ui = ui.page_fillable(
     ui.div(
         {"class": "app-body", "style": "display:flex; height:100vh;"},
-        selection_sidebar_ui("sel_sidebar"),
-        selection_matrix_ui("sel_matrix"),
+        selection_sidebar_ui("select_datasets_sidebar"),
+        selection_matrix_ui("select_datasets_workspace"),
     ),
     padding=0,
     gap=0,
@@ -38,7 +41,19 @@ app_ui = ui.page_fillable(
 
 
 def server(input: Any, output: Any, session: Any) -> None:
-    select_datasets_server(vdb=vdb, logger=logger)
+    active_binding_datasets, active_perturbation_datasets, dataset_filters = (
+        select_datasets_sidebar_server(
+            "select_datasets_sidebar", vdb=vdb, logger=logger
+        )
+    )
+    select_datasets_workspace_server(
+        "select_datasets_workspace",
+        active_binding_datasets=active_binding_datasets,
+        active_perturbation_datasets=active_perturbation_datasets,
+        dataset_filters=dataset_filters,
+        vdb=vdb,
+        logger=logger,
+    )
 
 
 app = App(ui=app_ui, server=server)

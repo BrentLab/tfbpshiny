@@ -12,7 +12,6 @@ from tfbpshiny.modules.select_datasets.queries import (
     regulator_locus_tags_query,
     sample_count_query,
 )
-from tfbpshiny.modules.select_datasets.server.sidebar import selection_sidebar_server
 from tfbpshiny.modules.select_datasets.ui import (
     diagonal_cell_modal_ui,
     off_diagonal_cell_modal_ui,
@@ -20,13 +19,13 @@ from tfbpshiny.modules.select_datasets.ui import (
 
 
 @module.server
-def selection_matrix_server(
+def select_datasets_workspace_server(
     input: Any,
     output: Any,
     session: Any,
     active_binding_datasets: reactive.calc,
     active_perturbation_datasets: reactive.calc,
-    filter_dict: reactive.Value[dict[str, Any]],
+    dataset_filters: reactive.Value[dict[str, Any]],
     vdb: VirtualDB,
     logger: Logger,
 ) -> None:
@@ -53,7 +52,7 @@ def selection_matrix_server(
 
         """
         active = _active_datasets()
-        filters = filter_dict()
+        filters = dataset_filters()
 
         # --- diagonal pass: regulator sets + sample counts per dataset ---
         regulator_sets: dict[str, set[str]] = {}
@@ -129,7 +128,7 @@ def selection_matrix_server(
         @reactive.event(input[apply_btn_id])
         def _on_apply_common_regulators() -> None:
             reg_sets = {}
-            filters = filter_dict()
+            filters = dataset_filters()
             for db_name in (db_a, db_b):
                 sql, params = regulator_locus_tags_query(db_name, filters.get(db_name))
                 reg_df = vdb.query(sql, **params)
@@ -140,7 +139,7 @@ def selection_matrix_server(
             if not common:
                 ui.modal_remove()
                 return
-            current = dict(filter_dict())
+            current = dict(dataset_filters())
             for db_name in (db_a, db_b):
                 ds_filters = dict(current.get(db_name, {}))
                 ds_filters["regulator_locus_tag"] = {
@@ -148,7 +147,7 @@ def selection_matrix_server(
                     "value": common,
                 }
                 current[db_name] = ds_filters
-            filter_dict.set(current)
+            dataset_filters.set(current)
             ui.modal_remove()
 
     # Track which cell effects have already been registered to avoid duplicates
@@ -252,22 +251,4 @@ def selection_matrix_server(
         )
 
 
-def select_datasets_server(
-    vdb: VirtualDB,
-    logger: Logger,
-) -> None:
-    """Wire both select_datasets module servers."""
-    active_binding_datasets, active_perturbation_datasets, filter_dict = (
-        selection_sidebar_server("sel_sidebar", vdb=vdb, logger=logger)
-    )
-    selection_matrix_server(
-        "sel_matrix",
-        active_binding_datasets=active_binding_datasets,
-        active_perturbation_datasets=active_perturbation_datasets,
-        filter_dict=filter_dict,
-        vdb=vdb,
-        logger=logger,
-    )
-
-
-__all__ = ["select_datasets_server", "selection_matrix_server"]
+__all__ = ["select_datasets_workspace_server"]

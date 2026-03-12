@@ -29,7 +29,7 @@ def _filter_btn_id(db_name: str) -> str:
 
 
 @module.server
-def selection_sidebar_server(
+def select_datasets_sidebar_server(
     input: Any,
     output: Any,
     session: Any,
@@ -42,7 +42,7 @@ def selection_sidebar_server(
 ]:
     """
     Render dataset selection sidebar; return (active_binding_datasets,
-    active_perturbation_datasets, filter_dict).
+    active_perturbation_datasets, dataset_filters).
 
     The sidebar has two sections: "Binding" and "Perturbation".
     Datasets are sourced from VirtualDB tags (data_type, display_name).
@@ -79,7 +79,7 @@ def selection_sidebar_server(
     collapsed: reactive.Value[bool] = reactive.value(False)
     # {<db_name>: {<field_name>: {"type": "categorical" or "numeric" or "bool",
     #                              "value": list[str] | [lo, hi] | bool}}}
-    filter_dict: reactive.Value[dict[str, Any]] = reactive.value({})
+    dataset_filters: reactive.Value[dict[str, Any]] = reactive.value({})
     # tracks which db_name's filter modal is currently open
     modal_open_for: reactive.Value[str | None] = reactive.value(None)
     # stores the DataFrame fetched when a filter modal is opened
@@ -132,7 +132,7 @@ def selection_sidebar_server(
             @reactive.effect
             @reactive.event(input[_filter_btn_id(db_name)])
             def _open_filter_modal() -> None:
-                existing_filters = filter_dict().get(db_name)
+                existing_filters = dataset_filters().get(db_name)
                 sql, params = metadata_query(db_name, existing_filters)
                 df = vdb.query(sql, **params)
                 modal_open_for.set(db_name)
@@ -155,7 +155,7 @@ def selection_sidebar_server(
     def _reset_filter_modal() -> None:
         db_name = modal_open_for()
         if db_name is not None:
-            current = dict(filter_dict())
+            current = dict(dataset_filters())
             all_db_names = [d for d, _ in binding_datasets + perturbation_datasets]
             # clear common-field filters from every dataset
             for ds in all_db_names:
@@ -169,7 +169,7 @@ def selection_sidebar_server(
                         current.pop(ds)
             # clear dataset-specific filters for the open dataset
             current.pop(db_name, None)
-            filter_dict.set(current)
+            dataset_filters.set(current)
         ui.modal_remove()
         modal_open_for.set(None)
         modal_df.set(None)
@@ -243,7 +243,7 @@ def selection_sidebar_server(
             f: v for f, v in field_filters.items() if f not in common_fields
         }
 
-        current = dict(filter_dict())
+        current = dict(dataset_filters())
         all_db_names = [d for d, _ in binding_datasets + perturbation_datasets]
 
         # apply each common filter according to its own apply_to_all flag
@@ -296,7 +296,7 @@ def selection_sidebar_server(
         else:
             current.pop(db_name, None)
 
-        filter_dict.set(current)
+        dataset_filters.set(current)
 
         ui.modal_remove()
         modal_open_for.set(None)
@@ -406,7 +406,7 @@ def selection_sidebar_server(
             ),
         )
 
-    return active_binding_datasets, active_perturbation_datasets, filter_dict
+    return active_binding_datasets, active_perturbation_datasets, dataset_filters
 
 
-__all__ = ["selection_sidebar_server"]
+__all__ = ["select_datasets_sidebar_server"]
