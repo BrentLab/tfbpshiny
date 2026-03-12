@@ -1,6 +1,4 @@
-"""UI functions for the Perturbation perturbation page."""
-
-# #DUPLICATE: modules/binding/ui.py, modules/comparison/ui.py
+"""UI functions for the Perturbation analysis page."""
 
 from __future__ import annotations
 
@@ -10,29 +8,24 @@ from tfbpshiny.modules.module_template import sidebar_shell, workspace_shell
 
 
 @module.ui
-def perturbation_sidebar_ui(label: str = "Perturbation") -> ui.Tag:
+def perturbation_sidebar_ui() -> ui.Tag:
     return sidebar_shell(
         "perturbation-sidebar",
-        header=ui.div(
-            ui.h2(label),
-            ui.div({"class": "subtitle"}, "Controls will appear here"),
-        ),
-        body=ui.div(
-            {"class": "empty-state"},
-            ui.p("Sidebar controls coming soon."),
-        ),
+        header=ui.h2("Perturbation"),
+        body=ui.output_ui("sidebar_controls"),
     )
 
 
 @module.ui
-def perturbation_workspace_ui(label: str = "Perturbation") -> ui.Tag:
+def perturbation_workspace_ui() -> ui.Tag:
     return workspace_shell(
         "perturbation-workspace",
-        header=ui.h1(label),
+        header=ui.h1("Perturbation Analysis"),
         body=ui.div(
-            {"class": "empty-state"},
-            ui.h3("Coming soon"),
-            ui.p("Perturbation content will be implemented here."),
+            ui.output_ui("distributions_plot"),
+            ui.hr(),
+            ui.output_ui("regulator_selector"),
+            ui.output_ui("regulator_plots"),
         ),
     )
 

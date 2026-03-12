@@ -1,4 +1,4 @@
-"""Sidebar server for the Binding analysis page."""
+"""Sidebar server for the Perturbation analysis page."""
 
 from __future__ import annotations
 
@@ -7,24 +7,23 @@ from logging import Logger
 from typing import Any
 
 from shiny import module, reactive, render, ui
-from tfbpapi import VirtualDB
 
 
 @module.server
-def binding_sidebar_server(
+def perturbation_sidebar_server(
     input: Any,
     output: Any,
     session: Any,
-    active_binding_datasets: reactive.Value[list[str]],
+    active_perturbation_datasets: reactive.Value[list[str]],
     dataset_filters: reactive.Value[dict[str, Any]],
-    vdb: VirtualDB,
+    vdb: Any,
     logger: Logger,
 ) -> tuple[
     Callable[[], str],  # corr_type: "pearson" | "spearman"
     Callable[[], str],  # col_preference: "effect" | "pvalue"
 ]:
     """
-    Render binding analysis sidebar controls; return reactive selections.
+    Render perturbation analysis sidebar controls; return reactive selections.
 
     :return: Tuple of (corr_type, col_preference).
 
@@ -46,12 +45,12 @@ def binding_sidebar_server(
 
     @render.ui
     def sidebar_controls() -> ui.Tag:
-        active = active_binding_datasets()
+        active = active_perturbation_datasets()
 
         if not active:
             return ui.div(
                 {"class": "empty-state compact"},
-                ui.p("Select binding datasets from the Select Datasets page."),
+                ui.p("Select perturbation datasets from the Select Datasets page."),
             )
 
         return ui.div(
@@ -82,4 +81,4 @@ def binding_sidebar_server(
     return corr_type, col_preference
 
 
-__all__ = ["binding_sidebar_server"]
+__all__ = ["perturbation_sidebar_server"]

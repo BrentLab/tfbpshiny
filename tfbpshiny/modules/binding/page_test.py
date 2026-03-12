@@ -11,6 +11,7 @@ Uses mock data so no real VirtualDB connection is required.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -122,7 +123,10 @@ vdb = _mock_vdb()
 _active_binding: reactive.Value[list[str]] = reactive.value(_DATASETS)
 _dataset_filters: reactive.Value[dict[str, Any]] = reactive.value({})
 
+_CSS = (Path(__file__).parent.parent.parent / "app.css").resolve()
+
 app_ui = ui.page_fillable(
+    ui.include_css(_CSS),
     ui.div(
         {"class": "app-body", "style": "display:flex; height:100vh;"},
         binding_sidebar_ui("binding_sidebar"),
@@ -138,7 +142,7 @@ def server(input: Any, output: Any, session: Any) -> None:
     def active_binding_datasets() -> list[str]:
         return _active_binding()
 
-    corr_type, column = binding_sidebar_server(
+    corr_type, col_preference = binding_sidebar_server(
         "binding_sidebar",
         active_binding_datasets=active_binding_datasets,
         dataset_filters=_dataset_filters,
@@ -150,7 +154,7 @@ def server(input: Any, output: Any, session: Any) -> None:
         "binding_workspace",
         active_binding_datasets=active_binding_datasets,
         corr_type=corr_type,
-        column=column,
+        col_preference=col_preference,
         dataset_filters=_dataset_filters,
         vdb=vdb,
         logger=logger,

@@ -36,8 +36,8 @@ def select_datasets_sidebar_server(
     vdb: VirtualDB,
     logger: Logger,
 ) -> tuple[
-    reactive.calc[list[str]],
-    reactive.calc[list[str]],
+    reactive.Value[list[str]],
+    reactive.Value[list[str]],
     reactive.Value[dict[str, Any]],
 ]:
     """
@@ -85,46 +85,48 @@ def select_datasets_sidebar_server(
     # stores the DataFrame fetched when a filter modal is opened
     modal_df: reactive.Value[pd.DataFrame | None] = reactive.value(None)
 
+    # Persistent selection state — survives UI re-renders across navigation
+    _active_binding_datasets: reactive.Value[list[str]] = reactive.value([])
+    _active_perturbation_datasets: reactive.Value[list[str]] = reactive.value([])
+    # Per-dataset toggle state — persists so toggles restore correctly on re-render
+    _toggle_state: dict[str, reactive.Value[bool]] = {
+        db_name: reactive.value(False)
+        for db_name, _ in binding_datasets + perturbation_datasets
+    }
+
     # expand/collapse sidebar
     @reactive.effect
     @reactive.event(input.toggle_sidebar)
     def _toggle_sidebar() -> None:
         collapsed.set(not collapsed())
 
-    @reactive.calc
-    def active_binding_datasets() -> list[str]:
-        """Return the list of currently active binding datasets based on the
-        select_dataset sidebar toggles for the binding section."""
-        selected = []
-        for db_name, _ in binding_datasets:
+    # One effect per dataset: fires when its toggle changes, updates persistent state
+    def _make_toggle_effect(db_name: str, data_type: str) -> None:
+        @reactive.effect
+        @reactive.event(input[_toggle_id(db_name)])
+        def _on_toggle() -> None:
             try:
-                if bool(input[_toggle_id(db_name)]()):
-                    selected.append(db_name)
+                val = bool(input[_toggle_id(db_name)]())
             except Exception:
-                pass
-        return selected
+                return
+            _toggle_state[db_name].set(val)
+            if data_type == "binding":
+                current = list(_active_binding_datasets())
+                if val and db_name not in current:
+                    current.append(db_name)
+                elif not val and db_name in current:
+                    current.remove(db_name)
+                _active_binding_datasets.set(current)
+            else:
+                current = list(_active_perturbation_datasets())
+                if val and db_name not in current:
+                    current.append(db_name)
+                elif not val and db_name in current:
+                    current.remove(db_name)
+                _active_perturbation_datasets.set(current)
 
-    @reactive.calc
-    def active_perturbation_datasets() -> list[str]:
-        """Return the list of currently active perturbation datasets based on the
-        select_dataset sidebar toggles for the perturbation section."""
-        selected = []
-        for db_name, _ in perturbation_datasets:
-            try:
-                if bool(input[_toggle_id(db_name)]()):
-                    selected.append(db_name)
-            except Exception:
-                pass
-        return selected
-
-    # TODO: remove this and log it where active_perturbation_datasets
-    # and active_binding_datasets are used
-    @reactive.effect
-    def _log_active_datasets() -> None:
-        logger.info(
-            f"Active datasets - Binding: {active_binding_datasets()}, "
-            f"Perturbation: {active_perturbation_datasets()}"
-        )
+    for db_name, tags in dataset_dict.items():
+        _make_toggle_effect(db_name, tags.get("data_type", ""))
 
     for _db_name, _ in binding_datasets + perturbation_datasets:
 
@@ -141,7 +143,9 @@ def select_datasets_sidebar_server(
 
                 # build union of categorical levels for each common field
                 # across all active datasets, so all valid values are selectable
-                all_active = active_binding_datasets() + active_perturbation_datasets()
+                all_active = (
+                    _active_binding_datasets() + _active_perturbation_datasets()
+                )
                 common_field_levels: dict[str, list[str]] = {}
                 for cf_field in common_fields:
                     if cf_field not in df.columns:
@@ -332,12 +336,18 @@ def select_datasets_sidebar_server(
 
         dataset_filters.set(current)
 
-        # activate the dataset toggle if it isn't already on
-        try:
-            if not bool(input[_toggle_id(db_name)]()):
-                ui.update_switch(_toggle_id(db_name), value=True)
-        except Exception:
-            pass
+        # activate the dataset if it isn't already on
+        if not _toggle_state[db_name]():
+            _toggle_state[db_name].set(True)
+            current_b = list(_active_binding_datasets())
+            current_p = list(_active_perturbation_datasets())
+            if db_name in [d for d, _ in binding_datasets] and db_name not in current_b:
+                _active_binding_datasets.set(current_b + [db_name])
+            elif (
+                db_name in [d for d, _ in perturbation_datasets]
+                and db_name not in current_p
+            ):
+                _active_perturbation_datasets.set(current_p + [db_name])
 
         ui.modal_remove()
         modal_open_for.set(None)
@@ -356,17 +366,18 @@ def select_datasets_sidebar_server(
                 pass
 
         def _dataset_row(db_name: str, label: str) -> ui.Tag:
+            current_val = _toggle_state[db_name]()
             if is_collapsed:
                 return ui.div(
                     {"class": "dataset-row"},
-                    ui.input_switch(_toggle_id(db_name), label=None, value=False),
+                    ui.input_switch(_toggle_id(db_name), label=None, value=current_val),
                 )
             return ui.div(
                 {"class": "dataset-row"},
                 ui.input_switch(
                     _toggle_id(db_name),
                     label=ui.span({"class": "dataset-row-label sidebar-text"}, label),
-                    value=False,
+                    value=current_val,
                 ),
                 ui.input_action_button(
                     _filter_btn_id(db_name),
@@ -447,7 +458,7 @@ def select_datasets_sidebar_server(
             ),
         )
 
-    return active_binding_datasets, active_perturbation_datasets, dataset_filters
+    return _active_binding_datasets, _active_perturbation_datasets, dataset_filters
 
 
 __all__ = ["select_datasets_sidebar_server"]

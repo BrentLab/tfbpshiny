@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from shiny import module, ui
-from shinywidgets import output_widget
 
 from tfbpshiny.modules.module_template import sidebar_shell, workspace_shell
 
@@ -23,10 +22,10 @@ def binding_workspace_ui() -> ui.Tag:
         "binding-workspace",
         header=ui.h1("Binding Correlation"),
         body=ui.div(
-            output_widget("distributions_plot"),
+            ui.output_ui("distributions_plot"),
             ui.hr(),
             ui.output_ui("regulator_selector"),
-            output_widget("regulator_plots"),
+            ui.output_ui("regulator_plots"),
         ),
     )
 

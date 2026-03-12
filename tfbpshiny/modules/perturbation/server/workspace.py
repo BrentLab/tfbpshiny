@@ -1,5 +1,5 @@
 """
-Workspace server for the Binding analysis page.
+Workspace server for the Perturbation analysis page.
 
 Plotly rendering strategy
 -------------------------
@@ -37,7 +37,7 @@ from plotly.io import to_html
 from shiny import module, reactive, render, ui
 from tfbpapi import VirtualDB
 
-from tfbpshiny.modules.binding.queries import (
+from tfbpshiny.modules.perturbation.queries import (
     corr_pair_sql,
     get_measurement_column,
     regulator_scatter_sql,
@@ -46,11 +46,11 @@ from tfbpshiny.modules.binding.queries import (
 
 
 @module.server
-def binding_workspace_server(
+def perturbation_workspace_server(
     input: Any,
     output: Any,
     session: Any,
-    active_binding_datasets: reactive.Value[list[str]],
+    active_perturbation_datasets: reactive.Value[list[str]],
     corr_type: Callable[[], str],
     col_preference: Callable[[], str],
     dataset_filters: reactive.Value[dict[str, Any]],
@@ -58,7 +58,7 @@ def binding_workspace_server(
     logger: Logger,
 ) -> None:
     """
-    Render the binding correlation rows: pairwise distributions
+    Render the perturbation correlation rows: pairwise distributions
     and per-regulator plots.
     """
 
@@ -69,10 +69,8 @@ def binding_workspace_server(
 
     @reactive.calc
     def _pairs() -> list[tuple[str, str]]:
-        active = active_binding_datasets()
-        pairs = list(itertools.combinations(active, 2))
-        logger.debug(f"binding _pairs: active={active}, pairs={pairs}")
-        return pairs
+        active = active_perturbation_datasets()
+        return list(itertools.combinations(active, 2))
 
     @reactive.calc
     def _all_corr_data() -> dict[tuple[str, str], pd.DataFrame]:
@@ -125,14 +123,14 @@ def binding_workspace_server(
 
         if not pairs:
             fig.add_annotation(
-                text="Select at least two binding datasets to see correlations.",
+                text="Select at least two perturbation datasets to see correlations.",
                 xref="paper",
                 yref="paper",
                 x=0.5,
                 y=0.5,
                 showarrow=False,
             )
-            return fig
+            return ui.HTML(to_html(fig, include_plotlyjs="cdn", full_html=False))
 
         for db_a, db_b in pairs:
             df = corr_data.get((db_a, db_b), pd.DataFrame())
@@ -172,7 +170,7 @@ def binding_workspace_server(
         if not corr_data:
             return ui.span()
 
-        active = active_binding_datasets()
+        active = active_perturbation_datasets()
         sym_map: dict[str, str] = {}
         for db in active:
             try:
@@ -313,4 +311,4 @@ def binding_workspace_server(
         return ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False))
 
 
-__all__ = ["binding_workspace_server"]
+__all__ = ["perturbation_workspace_server"]

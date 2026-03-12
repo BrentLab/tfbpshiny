@@ -23,6 +23,7 @@ than guessing at APIs.
 | py-shiny (Shiny for Python source) | `@py-shiny-site (reference)` | https://github.com/posit-dev/py-shiny |
 | tfbpapi | `@tfbpapi (reference)` | https://github.com/BrentLab/tfbpapi |
 | duckDB (for SQL query reference) | `@duckdb (reference)` | https://duckdb.org/docs/stable/
+| plotly | `@plotly (reference)`   | https://plotly.com/python/ |
 
 **tfbpapi documentation**: https://brentlab.github.io/tfbpapi/
 
@@ -82,7 +83,9 @@ Each module follows a consistent structure:
   is implemented and developed, this may become optional or be removed.
   However, currently it is required.
 - `queries.py` (optional) — If needed, SQL query templates used in the module against
-  `vdb`
+  `vdb`. **Note**: queries.py is excluded from flake8 linting due to the presence of
+  long SQL query strings that may exceed typical line length limits. This allows for
+  better readability of SQL queries without triggering linting errors.
 
 ### Layout System
 

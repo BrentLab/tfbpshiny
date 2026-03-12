@@ -169,52 +169,44 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         logger=logger,
     )
 
-    binding_sidebar_server("module_sidebar", active_module=active_module)
-    binding_workspace_server("module_workspace", active_module=active_module)
-    perturbation_sidebar_server("module_sidebar", active_module=active_module)
-    perturbation_workspace_server("module_workspace", active_module=active_module)
-    comparison_sidebar_server("module_sidebar", active_module=active_module)
-    comparison_workspace_server("module_workspace", active_module=active_module)
+    corr_type, col_preference = binding_sidebar_server(
+        "binding_sidebar",
+        active_binding_datasets=active_binding_datasets,
+        dataset_filters=dataset_filters,
+        vdb=vdb,
+        logger=logger,
+    )
+    binding_workspace_server(
+        "binding_workspace",
+        active_binding_datasets=active_binding_datasets,
+        corr_type=corr_type,
+        col_preference=col_preference,
+        dataset_filters=dataset_filters,
+        vdb=vdb,
+        logger=logger,
+    )
 
-    # The page is always divided into a sidebar region and workspace region
-    # this renders the sidebar region according to the active module
-    @render.ui
-    def sidebar_region() -> ui.Tag:
-        selected_module = active_module()
-        logger.debug(f"Rendering sidebar for active module: {selected_module}")
-        if selected_module == "home":
-            # no sidebar for home module
-            return ui.span()
-        if selected_module == "selection":
-            return selection_sidebar_ui("select_datasets_sidebar")
-        if selected_module == "binding":
-            return binding_sidebar_ui("module_sidebar")
-        if selected_module == "perturbation":
-            return perturbation_sidebar_ui("module_sidebar")
-        if selected_module == "comparison":
-            return comparison_sidebar_ui("module_sidebar")
-        logger.error(f"No sidebar for active module: {selected_module}")
-        return ui.span(ui.p("ERROR: No sidebar for: " + selected_module))
+    corr_type_p, col_preference_p = perturbation_sidebar_server(
+        "perturbation_sidebar",
+        active_perturbation_datasets=active_perturbation_datasets,
+        dataset_filters=dataset_filters,
+        vdb=vdb,
+        logger=logger,
+    )
+    perturbation_workspace_server(
+        "perturbation_workspace",
+        active_perturbation_datasets=active_perturbation_datasets,
+        corr_type=corr_type_p,
+        col_preference=col_preference_p,
+        dataset_filters=dataset_filters,
+        vdb=vdb,
+        logger=logger,
+    )
 
-    # this renders the workspace region according to the active module
-    @render.ui
-    def workspace_region() -> ui.Tag:
-        selected_module = active_module()
-        logger.debug(f"Rendering workspace for active module: {selected_module}")
-        if selected_module == "home":
-            return home_ui()
-        if selected_module == "selection":
-            return selection_matrix_ui("select_datasets_workspace")
-        if selected_module == "binding":
-            return binding_workspace_ui("module_workspace")
-        if selected_module == "perturbation":
-            return perturbation_workspace_ui("module_workspace")
-        if selected_module == "comparison":
-            return comparison_workspace_ui("module_workspace")
-        logger.error(f"No workspace for active module: {selected_module}")
-        return ui.span(ui.p("ERROR: No workspace for: " + selected_module))
+    comparison_sidebar_server("comparison_sidebar", active_module=active_module)
+    comparison_workspace_server("comparison_workspace", active_module=active_module)
 
-    # Nav
+    # set the active module when a nav button is clicked
     @reactive.effect
     @reactive.event(input.home, ignore_init=True)
     def _nav_home() -> None:
@@ -239,6 +231,44 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     @reactive.event(input.comparison, ignore_init=True)
     def _nav_comparison() -> None:
         active_module.set("comparison")
+
+    # The page is always divided into a sidebar region and workspace region
+    # this renders the sidebar region according to the active module
+    @render.ui
+    def sidebar_region() -> ui.Tag:
+        selected_module = active_module()
+        logger.debug(f"Rendering sidebar for active module: {selected_module}")
+        if selected_module == "home":
+            # no sidebar for home module
+            return ui.span()
+        if selected_module == "selection":
+            return selection_sidebar_ui("select_datasets_sidebar")
+        if selected_module == "binding":
+            return binding_sidebar_ui("binding_sidebar")
+        if selected_module == "perturbation":
+            return perturbation_sidebar_ui("perturbation_sidebar")
+        if selected_module == "comparison":
+            return comparison_sidebar_ui("comparison_sidebar")
+        logger.error(f"No sidebar for active module: {selected_module}")
+        return ui.span(ui.p("ERROR: No sidebar for: " + selected_module))
+
+    # this renders the workspace region according to the active module
+    @render.ui
+    def workspace_region() -> ui.Tag:
+        selected_module = active_module()
+        logger.debug(f"Rendering workspace for active module: {selected_module}")
+        if selected_module == "home":
+            return home_ui()
+        if selected_module == "selection":
+            return selection_matrix_ui("select_datasets_workspace")
+        if selected_module == "binding":
+            return binding_workspace_ui("binding_workspace")
+        if selected_module == "perturbation":
+            return perturbation_workspace_ui("perturbation_workspace")
+        if selected_module == "comparison":
+            return comparison_workspace_ui("comparison_workspace")
+        logger.error(f"No workspace for active module: {selected_module}")
+        return ui.span(ui.p("ERROR: No workspace for: " + selected_module))
 
 
 app = App(ui=app_ui, server=app_server)
