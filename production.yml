@@ -40,6 +40,8 @@ services:
       context: .
       dockerfile: ./compose/production/traefik/Dockerfile
     image: tfbpshiny_production_traefik
+    env_file:
+      - ./.envs/.production/.traefik
     ports:
       - "80:80"
       - "443:443"
