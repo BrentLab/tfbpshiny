@@ -18,6 +18,7 @@ DATASET_COLUMNS: dict[str, tuple[str, str]] = {
     "hughes_knockout": ("mean_norm_log2fc", ""),
     "kemmeren": ("Madj", "pval"),
     "hackett": ("log2_shrunken_timecourses", ""),
+    "hu_reimand": ("effect", "pval"),
 }
 
 
