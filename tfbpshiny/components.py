@@ -148,6 +148,26 @@ def sidebar_subtitle(text: str) -> ui.Tag:
     return ui.div({"class": "subtitle"}, text)
 
 
+def sidebar_section_title(text: str) -> ui.Tag:
+    """
+    Label for a named group of controls within a sidebar section.
+
+    CSS: ``.sidebar-section-title``
+
+    """
+    return ui.div({"class": "sidebar-section-title"}, text)
+
+
+def sidebar_section(*children: Any) -> ui.Tag:
+    """
+    Wrapper div that groups related sidebar controls with consistent spacing.
+
+    CSS: ``.sidebar-section``
+
+    """
+    return ui.div({"class": "sidebar-section"}, *children)
+
+
 def group_header(text: str) -> ui.Tag:
     """
     All-caps section divider label inside a sidebar or workspace body (11 px, 700

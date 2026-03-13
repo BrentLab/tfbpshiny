@@ -8,8 +8,6 @@
     --color-surface: #FFFFFF;
     --color-border: #E2E8F0;
     --color-text: #1A202C;
-    --color-text-muted: #718096;
-    --color-text-light: #A0AEC0;
 
     --radius-sm: 6px;
     --radius-md: 10px;
@@ -18,7 +16,8 @@
 
     --nav-height: 52px;
     --sidebar-width: 380px;
-    --sidebar-font-size: 0.8125rem;
+    --font-size-base: 1.0rem;   /* 14px — body / sidebar controls */
+    --font-size-label: 0.875rem;   /* 12px — section titles, labels, matrix cells */
     --transition-fast: 150ms ease;
 }
 
@@ -30,6 +29,7 @@ body {
     background: var(--color-bg);
     color: var(--color-text);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: var(--font-size-base);
 }
 
 /* --- App container (top-nav + body row) --------------------------------- */
@@ -76,13 +76,13 @@ body {
     border: 1px solid var(--color-border);
     border-radius: 999px;
     background: #F8FAFC;
-    color: var(--color-text-muted);
+    color: var(--color-text);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: background var(--transition-fast), color var(--transition-fast);
-    font-size: 11px;
+    font-size: var(--font-size-label);
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -131,8 +131,8 @@ body {
 }
 
 .sidebar-header .subtitle {
-    font-size: 12px;
-    color: var(--color-text-muted);
+    font-size: var(--font-size-label);
+    color: var(--color-text);
     margin-top: 2px;
 }
 
@@ -175,12 +175,31 @@ body {
     overflow-y: auto;
 }
 
-/* --- Group headers ------------------------------------------------------ */
-.group-header {
-    font-size: 11px;
+/* --- Sidebar sections --------------------------------------------------- */
+.sidebar-section {
+    margin-bottom: 16px;
+}
+
+.sidebar-section-title {
+    font-size: var(--font-size-label);
     font-weight: 700;
     letter-spacing: 0.04em;
-    color: var(--color-text-muted);
+    text-transform: uppercase;
+    color: var(--color-text);
+    margin-bottom: 8px;
+    margin-top: 12px;
+}
+
+.sidebar-section .sidebar-section-title:first-child {
+    margin-top: 0;
+}
+
+/* --- Group headers ------------------------------------------------------ */
+.group-header {
+    font-size: var(--font-size-label);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--color-text);
     padding: 12px 0 2px;
     margin-top: 4px;
     margin-bottom: 12px;
@@ -194,7 +213,7 @@ body {
     justify-content: center;
     padding: 64px 24px;
     text-align: center;
-    color: var(--color-text-muted);
+    color: var(--color-text);
 }
 
 .empty-state.compact {
@@ -211,9 +230,8 @@ body {
     min-width: 92px;
 }
 
-/* Single unified text style; adjust --sidebar-font-size in :root to rescale */
 .selection-sidebar .sidebar-text {
-    font-size: var(--sidebar-font-size);
+    font-size: var(--font-size-base);
     color: var(--color-text);
 }
 
@@ -242,7 +260,7 @@ body {
 
 .selection-sidebar .btn-filter-dataset {
     flex-shrink: 0;
-    font-size: 0.7rem;
+    font-size: var(--font-size-label);
     padding: 0.125rem 0.4rem;
     line-height: 1.4;
     border-radius: 3px;
@@ -281,7 +299,7 @@ body {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     background: var(--color-surface);
-    color: var(--color-text-muted);
+    color: var(--color-text);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -300,7 +318,7 @@ body {
     table-layout: fixed;
     border-spacing: 0;
     border-collapse: collapse;
-    font-size: 12px;
+    font-size: var(--font-size-label);
 }
 
 .matrix-summary-table th,
@@ -324,7 +342,7 @@ body {
 }
 
 .matrix-summary-table .matrix-header-name {
-    font-size: 11px;
+    font-size: var(--font-size-label);
     font-weight: 700;
     color: var(--color-text);
     white-space: nowrap;
@@ -338,7 +356,7 @@ body {
     left: 0;
     z-index: 1;
     background: #FFFFFF;
-    font-size: 12px;
+    font-size: var(--font-size-label);
     font-weight: 600;
     color: var(--color-text);
     text-align: left;
@@ -371,7 +389,7 @@ body {
     border: none;
     background: transparent;
     color: var(--color-text);
-    font-size: 12px;
+    font-size: var(--font-size-label);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     cursor: pointer;
@@ -407,7 +425,7 @@ body {
 }
 
 .filter-option-title {
-    font-size: 12px;
+    font-size: var(--font-size-label);
     font-weight: 700;
     color: var(--color-text);
 }
@@ -425,7 +443,7 @@ body {
     border: 1px solid var(--color-border, #d0d7de);
     background: var(--color-bg-subtle, #f6f8fa);
     color: var(--color-text, #24292f);
-    font-size: 13px;
+    font-size: var(--font-size-base);
     font-weight: 500;
     text-decoration: none;
     white-space: nowrap;
@@ -444,6 +462,6 @@ body {
     border-radius: 10px;
     background: var(--color-primary, #0969da);
     color: #fff;
-    font-size: 11px;
+    font-size: var(--font-size-label);
     font-weight: 600;
 }

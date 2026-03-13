@@ -19,7 +19,6 @@ DATASET_COLUMNS: dict[str, tuple[str, str]] = {
     "callingcards": ("callingcards_enrichment", "poisson_pval"),
     "harbison": ("effect", "pvalue"),
     "rossi": ("enrichment", "log_poisson_pval"),
-    "hu_reimand": ("effect", "pval"),
     "chec_m2025": ("enrichment", "log_poisson_pval"),
 }
 

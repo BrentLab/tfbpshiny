@@ -24,8 +24,7 @@ than guessing at APIs.
 | tfbpapi | `@tfbpapi (reference)` | https://github.com/BrentLab/tfbpapi |
 | duckDB (for SQL query reference) | `@duckdb (reference)` | https://duckdb.org/docs/stable/
 | plotly | `@plotly (reference)`   | https://plotly.com/python/ |
-
-**tfbpapi documentation**: https://brentlab.github.io/tfbpapi/
+| terraform | `@terraform (reference)` | https://developer.hashicorp.com/terraform/docs
 
 ## Technology Stack
 
@@ -291,6 +290,32 @@ a HuggingFace token for private repo access. See `python-dotenv` docs for format
 
 Production uses Docker Compose (`production.yml`). Environment files in
 `.envs/.production/`. Traefik handles reverse proxy routing.
+
+The shinyapp service mounts a named Docker volume `hf_cache` at `/hf-cache`
+inside the container, and sets `HF_HOME=/hf-cache`. This causes HuggingFace
+downloads to land on the persistent volume rather than the container layer,
+so the cache survives container rebuilds.
+
+## Terraform / Infrastructure as Code
+
+The `terraform/` directory contains Terraform configuration for provisioning
+the EC2 instance on AWS. It manages:
+
+- EC2 instance (Amazon Linux 2023, default `t3.small`, 20 GB gp3 root volume)
+- Security group (ports 22, 80, 443)
+- IAM role with `CloudWatchAgentServerPolicy` (required for the `awslogs` Docker log driver)
+- `user_data.sh` cloud-init script that installs Docker + Compose plugin and clones the repo
+
+It does **not** manage DNS records, SSL certificates (handled by Traefik/Let's Encrypt),
+or secret env files (must be copied to the instance manually after provisioning).
+
+**Key files:**
+- `terraform/main.tf` — resource definitions and `public_ip` output
+- `terraform/variables.tf` — `aws_region`, `instance_type`, `key_name`, `root_volume_gb`
+- `terraform/terraform.tfvars.example` — copy to `terraform.tfvars` (gitignored) and fill in values
+- `terraform/user_data.sh` — cloud-init script run on first boot
+
+**Terraform state files and `terraform.tfvars` are gitignored.** Never commit them.
 
 ## Branch Strategy
 

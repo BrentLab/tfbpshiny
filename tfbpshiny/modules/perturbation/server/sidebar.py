@@ -8,6 +8,8 @@ from typing import Any
 
 from shiny import module, reactive, render, ui
 
+from tfbpshiny.components import sidebar_section, sidebar_section_title
+
 
 @module.server
 def perturbation_sidebar_server(
@@ -72,9 +74,8 @@ def perturbation_sidebar_server(
             )
 
         return ui.div(
-            ui.div(
-                {"class": "sidebar-section"},
-                ui.div({"class": "sidebar-section-title"}, "Column"),
+            sidebar_section(
+                sidebar_section_title("Column"),
                 ui.input_radio_buttons(
                     "col_preference",
                     label=None,
@@ -83,9 +84,8 @@ def perturbation_sidebar_server(
                     inline=True,
                 ),
             ),
-            ui.div(
-                {"class": "sidebar-section"},
-                ui.div({"class": "sidebar-section-title"}, "Correlation"),
+            sidebar_section(
+                sidebar_section_title("Correlation"),
                 ui.input_radio_buttons(
                     "corr_type",
                     label=None,

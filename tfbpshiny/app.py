@@ -61,9 +61,13 @@ configure_logger(
 )
 
 # instantiate the virtualDB
-virtualdb_config = Path(__file__).parent / "brentlab_yeast_collection.yaml"
-logger.info(f"Loading VirtualDB with config: {virtualdb_config.resolve()}")
-vdb = VirtualDB(virtualdb_config.resolve())
+
+virtualdb_config = os.getenv(
+    "VIRTUALDB_CONFIG", str(Path(__file__).parent / "brentlab_yeast_collection.yaml")
+)
+hf_token: str | None = os.getenv("HF_TOKEN")
+logger.info(f"Loading VirtualDB with config: {virtualdb_config}")
+vdb = VirtualDB(virtualdb_config, token=hf_token)
 
 app_ui = ui.page_fillable(
     ui.include_css((Path(__file__).parent / "app.css").resolve()),
@@ -149,8 +153,25 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         logger=logger,
     )
 
-    comparison_sidebar_server("comparison_sidebar", active_module=active_module)
-    comparison_workspace_server("comparison_workspace", active_module=active_module)
+    top_n, effect_threshold, pvalue_threshold, facet_by = comparison_sidebar_server(
+        "comparison_sidebar",
+        active_binding_datasets=active_binding_datasets,
+        active_perturbation_datasets=active_perturbation_datasets,
+        vdb=vdb,
+        logger=logger,
+    )
+    comparison_workspace_server(
+        "comparison_workspace",
+        active_binding_datasets=active_binding_datasets,
+        active_perturbation_datasets=active_perturbation_datasets,
+        dataset_filters=dataset_filters,
+        top_n=top_n,
+        effect_threshold=effect_threshold,
+        pvalue_threshold=pvalue_threshold,
+        facet_by=facet_by,
+        vdb=vdb,
+        logger=logger,
+    )
 
     # set the active module when a nav button is clicked
     @reactive.effect
