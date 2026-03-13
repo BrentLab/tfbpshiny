@@ -4,14 +4,19 @@ from __future__ import annotations
 
 from shiny import module, ui
 
-from tfbpshiny.modules.module_template import sidebar_shell, workspace_shell
+from tfbpshiny.components import (
+    sidebar_heading,
+    sidebar_shell,
+    workspace_heading,
+    workspace_shell,
+)
 
 
 @module.ui
 def perturbation_sidebar_ui() -> ui.Tag:
     return sidebar_shell(
         "perturbation-sidebar",
-        header=ui.h2("Perturbation"),
+        header=sidebar_heading("Perturbation"),
         body=ui.output_ui("sidebar_controls"),
     )
 
@@ -20,7 +25,7 @@ def perturbation_sidebar_ui() -> ui.Tag:
 def perturbation_workspace_ui() -> ui.Tag:
     return workspace_shell(
         "perturbation-workspace",
-        header=ui.h1("Perturbation Analysis"),
+        header=workspace_heading("Perturbation Analysis"),
         body=ui.div(
             ui.output_ui("distributions_plot"),
             ui.hr(),

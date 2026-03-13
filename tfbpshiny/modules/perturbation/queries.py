@@ -7,6 +7,8 @@ from typing import Any, Literal
 import pandas as pd
 from tfbpapi import VirtualDB
 
+from tfbpshiny.modules.binding.queries import _corr_pair_sql_impl
+
 # Map of db_name -> (effect_col, pvalue_col).
 # pvalue_col is empty string for datasets that have no pvalue column.
 # TODO: this information should be moved to virtualdb config.
@@ -69,7 +71,7 @@ def perturbation_data_query(
     params: dict[str, Any] = {}
     where_clause = _build_where(filters, params) if filters else ""
     sql = (
-        f"SELECT regulator_locus_tag, target_locus_tag, {col} "
+        f"SELECT regulator_locus_tag, target_locus_tag, sample_id, {col} "
         f"FROM {db_name}{where_clause}"
     )
     return sql, params
@@ -123,83 +125,29 @@ def corr_pair_sql(
     filters_b: dict[str, Any] | None,
     method: str,
     prefix: str = "",
-) -> pd.DataFrame:
+    sql_only: bool = False,
+) -> pd.DataFrame | tuple[str, dict[str, Any]]:
     """
-    Compute per-regulator correlation between two perturbation datasets in DuckDB.
+    Compute per-regulator correlation between two perturbation datasets.
 
-    For Pearson: uses DuckDB's native ``corr(y, x)`` aggregate.
-    For Spearman: ranks values within each regulator first, then applies
-    ``corr()`` on the ranks. Effect columns are ranked by ``ABS(value)`` DESC;
-    pvalue columns are ranked by value ASC.
-
-    :param vdb: VirtualDB instance.
-    :param db_a: First dataset name.
-    :param col_a: Column to use from first dataset.
-    :param filters_a: Optional filters for first dataset.
-    :param db_b: Second dataset name.
-    :param col_b: Column to use from second dataset.
-    :param filters_b: Optional filters for second dataset.
-    :param method: ``"pearson"`` or ``"spearman"``.
-    :param prefix: Parameter namespace prefix to avoid collisions across pairs.
-    :return: DataFrame with columns ``regulator_locus_tag`` and ``correlation``.
+    Delegates to :func:`~tfbpshiny.modules.binding.queries._corr_pair_sql_impl`
+    using :func:`perturbation_data_query`.
+    See that function for full parameter and return documentation.
 
     """
-    sql_a, params_a = perturbation_data_query(db_a, col_a, filters_a)
-    sql_b, params_b = perturbation_data_query(db_b, col_b, filters_b)
-
-    params_a = {f"{prefix}a_{k}": v for k, v in params_a.items()}
-    params_b = {f"{prefix}b_{k}": v for k, v in params_b.items()}
-    for old, new in [(k[len(f"{prefix}a_") :], k) for k in params_a]:
-        sql_a = sql_a.replace(f"${old}", f"${new}")
-    for old, new in [(k[len(f"{prefix}b_") :], k) for k in params_b]:
-        sql_b = sql_b.replace(f"${old}", f"${new}")
-
-    params = {**params_a, **params_b}
-
-    is_pvalue_a = "pval" in col_a.lower()
-    is_pvalue_b = "pval" in col_b.lower()
-    order_a = f"{col_a} ASC" if is_pvalue_a else f"ABS({col_a}) DESC"
-    order_b = f"{col_b} ASC" if is_pvalue_b else f"ABS({col_b}) DESC"
-
-    if method == "spearman":
-        sql = f"""
-            WITH
-              a AS ({sql_a}),
-              b AS ({sql_b}),
-              joined AS (
-                SELECT
-                  a.regulator_locus_tag,
-                  RANK() OVER (PARTITION BY a.regulator_locus_tag ORDER BY {order_a}) AS rank_a,
-                  RANK() OVER (PARTITION BY a.regulator_locus_tag ORDER BY {order_b}) AS rank_b
-                FROM a
-                JOIN b
-                  ON a.regulator_locus_tag = b.regulator_locus_tag
-                 AND a.target_locus_tag    = b.target_locus_tag
-              )
-            SELECT
-              regulator_locus_tag,
-              corr(rank_a, rank_b) AS correlation
-            FROM joined
-            GROUP BY regulator_locus_tag
-            HAVING COUNT(*) >= 3
-        """
-    else:
-        sql = f"""
-            WITH
-              a AS ({sql_a}),
-              b AS ({sql_b})
-            SELECT
-              a.regulator_locus_tag,
-              corr(a.{col_a}, b.{col_b}) AS correlation
-            FROM a
-            JOIN b
-              ON a.regulator_locus_tag = b.regulator_locus_tag
-             AND a.target_locus_tag    = b.target_locus_tag
-            GROUP BY a.regulator_locus_tag
-            HAVING COUNT(*) >= 3
-        """
-
-    return vdb.query(sql, **params)
+    return _corr_pair_sql_impl(
+        vdb,
+        perturbation_data_query,
+        db_a,
+        col_a,
+        filters_a,
+        db_b,
+        col_b,
+        filters_b,
+        method,
+        prefix,
+        sql_only,
+    )
 
 
 def regulator_symbols_query(db_name: str) -> str:

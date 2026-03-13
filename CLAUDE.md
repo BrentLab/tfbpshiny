@@ -60,7 +60,8 @@ read the source in `@tfbpapi (reference)` or check https://brentlab.github.io/tf
 ```
 tfbpshiny/
 ├── app.py              # Main application shell and orchestration
-├── app.css             # Global styles
+├── app.css             # Global styles and CSS custom properties
+├── components.py       # Reusable styled UI component library (see below)
 ├── modules/            # Feature modules
 │   ├── home/           # The home page module (splash screen)
 │   ├── binding/        # TF binding data module
@@ -86,6 +87,42 @@ Each module follows a consistent structure:
   `vdb`. **Note**: queries.py is excluded from flake8 linting due to the presence of
   long SQL query strings that may exceed typical line length limits. This allows for
   better readability of SQL queries without triggering linting errors.
+  **Convention**: any function in `queries.py` that executes SQL against `vdb` directly
+  (i.e. calls `vdb.query()` internally) must accept a `sql_only: bool = False` keyword
+  argument. When `sql_only=True` the function returns a `(sql_string, params_dict)`
+  tuple instead of executing the query. This is useful for debugging and
+  notebook-based investigation.
+
+### Styled Component Library (`components.py`)
+
+`tfbpshiny/components.py` is the **single source of truth** for all reusable,
+styled Shiny UI elements.  Every function maps to one or more CSS classes defined in
+`app.css` and documents that mapping in its docstring.
+
+**When to use it:**
+- Any time you build a sidebar shell, workspace shell, nav button, group header, dataset
+  row, filter card, empty state, or matrix cell button — use the corresponding function
+  from `components.py` rather than inlining the class string.
+- When adding a new CSS class that will be used in more than one place, add a matching
+  factory function to `components.py` at the same time.
+
+**When to update it:**
+- A CSS class in `app.css` is renamed → update the matching component function.
+- A component's HTML structure changes (e.g. a new wrapper div) → update the function.
+- A new globally reusable UI pattern appears in two or more module `ui.py` files →
+  extract it into `components.py`.
+
+**Rules:**
+- No business logic or reactive code belongs here — only pure `ui.Tag` factories.
+- Module `ui.py` files import from `components` (not from each other).
+- `app.py` imports `github_badge` and `nav_button` from `components`.
+- Do **not** inline `class_="nav-btn"`, `class_="empty-state"`, etc. anywhere else in
+  the app — always go through `components.py`.
+
+**Notable exception:** `select_datasets/ui.py` builds filter-option cards directly
+because it injects a conditional "Apply to all datasets" toggle into the card header,
+which the generic `filter_option_card()` component does not support.  The function
+contains a comment explaining this.
 
 ### Layout System
 
@@ -218,6 +255,23 @@ def test_navigation(page: Page, app):
 - **Testing**: pytest with `shiny.pytest` (unit) and Playwright (E2E) — see Testing section below
 - **Docstrings**: Sphinx style. Document parameters and return values; do not repeat
   types (those go in type hints). Inline comments above the line, not beside it.
+  For `@reactive.calc` and `@reactive.event` functions, document what triggers
+  re-computation using a `:trigger:` field:
+
+  ```python
+  @reactive.calc
+  def _pairs() -> list[tuple[str, str]]:
+      """
+      All unique pairs of active binding datasets.
+
+      :trigger: ``active_binding_datasets`` — re-runs whenever the selected
+          datasets change.
+      :returns: List of ``(db_a, db_b)`` tuples, length = n choose 2.
+      """
+  ```
+
+  Use `:trigger:` for `@reactive.calc` (what reactive inputs/values it depends on)
+  and for `@reactive.effect @reactive.event(...)` (what event fires it).
 - **Pre-commit hooks**: run `pre-commit install` once after cloning
 
 ## Environment Configuration

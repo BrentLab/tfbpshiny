@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 from shiny import module, ui
 
-from tfbpshiny.modules.module_template import workspace_shell
+from tfbpshiny.components import workspace_heading, workspace_shell
 from tfbpshiny.modules.select_datasets.queries import FIELD_TYPE_OVERRIDES
 
 
@@ -23,6 +23,11 @@ def _filter_control(
     Build a single filter-option card for ``field``.
 
     Returns ``None`` if the field type is not filterable or has no usable data.
+
+    Note: this function uses the ``filter-option-card`` CSS classes directly
+    rather than ``components.filter_option_card`` because it conditionally
+    injects an "Apply to all datasets" toggle into the card header — a variant
+    that the generic component does not support.
 
     :param is_common: When ``True``, appends an "Apply to all datasets" toggle
         inside the card. The toggle is pre-set from ``saved_spec["apply_to_all"]``
@@ -258,7 +263,7 @@ def selection_matrix_ui() -> ui.Tag:
     """Render the intersection matrix workspace."""
     return workspace_shell(
         "selection-workspace",
-        header=ui.h1("Sample Counts by Dataset"),
+        header=workspace_heading("Sample Counts by Dataset"),
         body=ui.output_ui("matrix_content"),
     )
 

@@ -94,17 +94,30 @@ def select_datasets_sidebar_server(
         for db_name, _ in binding_datasets + perturbation_datasets
     }
 
-    # expand/collapse sidebar
     @reactive.effect
     @reactive.event(input.toggle_sidebar)
     def _toggle_sidebar() -> None:
+        """
+        Toggle the sidebar between expanded and collapsed state.
+
+        :trigger input.toggle_sidebar: fires when the user clicks the collapse/expand
+        chevron button in the sidebar header.
+
+        """
         collapsed.set(not collapsed())
 
-    # One effect per dataset: fires when its toggle changes, updates persistent state
     def _make_toggle_effect(db_name: str, data_type: str) -> None:
         @reactive.effect
         @reactive.event(input[_toggle_id(db_name)])
         def _on_toggle() -> None:
+            """
+            Update persistent toggle state and active-dataset list when a dataset switch
+            is changed.
+
+            :trigger input[_toggle_id(db_name)]: fires when the user flips the switch
+            for this specific dataset.
+
+            """
             try:
                 val = bool(input[_toggle_id(db_name)]())
             except Exception:
@@ -134,6 +147,14 @@ def select_datasets_sidebar_server(
             @reactive.effect
             @reactive.event(input[_filter_btn_id(db_name)])
             def _open_filter_modal() -> None:
+                """
+                Fetch metadata, compute common-field union levels, and show the filter
+                modal for this dataset.
+
+                :trigger input[_filter_btn_id(db_name)]: fires when the user     clicks
+                the Filter button on this dataset's row.
+
+                """
                 existing_filters = dataset_filters().get(db_name)
                 sql, params = metadata_query(db_name, existing_filters)
                 df = vdb.query(sql, **params)
@@ -191,6 +212,14 @@ def select_datasets_sidebar_server(
     @reactive.effect
     @reactive.event(input.modal_reset_filters)
     def _reset_filter_modal() -> None:
+        """
+        Clear all filters for the open dataset (and common-field filters from every
+        dataset), then close the modal.
+
+        :trigger input.modal_reset_filters: fires when the user clicks the     Reset
+        button inside the filter modal.
+
+        """
         db_name = modal_open_for()
         if db_name is not None:
             current = dict(dataset_filters())
@@ -208,6 +237,7 @@ def select_datasets_sidebar_server(
             # clear dataset-specific filters for the open dataset
             current.pop(db_name, None)
             dataset_filters.set(current)
+        logger.debug(f"dataset_filters reset for {db_name}: {current}")
         ui.modal_remove()
         modal_open_for.set(None)
         modal_df.set(None)
@@ -215,6 +245,17 @@ def select_datasets_sidebar_server(
     @reactive.effect
     @reactive.event(input.modal_apply_filters)
     def _apply_filter_modal() -> None:
+        """
+        Read filter inputs from the modal, persist them to ``dataset_filters``, activate
+        the dataset if it was off, then close the modal.
+
+        Common-field filters are propagated to all datasets or just this one
+        according to each field's ``apply_to_all`` toggle.
+
+        :trigger input.modal_apply_filters: fires when the user clicks the
+            Apply Filters button inside the filter modal.
+
+        """
         db_name = modal_open_for()
         df = modal_df()
         if db_name is None or df is None:
@@ -335,6 +376,7 @@ def select_datasets_sidebar_server(
             current.pop(db_name, None)
 
         dataset_filters.set(current)
+        logger.debug(f"dataset_filters applied for {db_name}: {current}")
 
         # activate the dataset if it isn't already on
         if not _toggle_state[db_name]():
@@ -353,9 +395,19 @@ def select_datasets_sidebar_server(
         modal_open_for.set(None)
         modal_df.set(None)
 
-    # add dynamic dataset selection/filter UI to sidebar
     @render.ui
     def sidebar_panel() -> ui.Tag:
+        """
+        Full sidebar panel: header with collapse button, then Binding and
+        Perturbation dataset rows with per-row toggles and Filter buttons.
+
+        Toggle values are restored from ``_toggle_state`` so that re-renders
+        (e.g. on navigation back to this page) reflect the current selection.
+
+        :trigger collapsed: re-renders when the sidebar is collapsed or expanded.
+        :trigger _toggle_state[*]: re-renders when any dataset's persistent
+            toggle state changes (i.e. after ``_on_toggle`` fires).
+        """
         is_collapsed = collapsed()
 
         search_term = ""

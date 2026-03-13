@@ -31,6 +31,15 @@ def perturbation_sidebar_server(
 
     @reactive.calc
     def corr_type() -> str:
+        """
+        Currently selected correlation method.
+
+        :trigger input.corr_type: fires when the user changes the Correlation
+            radio button in the sidebar.
+        :returns: ``"pearson"`` or ``"spearman"``; defaults to ``"pearson"``
+            before the input is rendered.
+
+        """
         try:
             return str(input.corr_type())
         except Exception:
@@ -38,6 +47,15 @@ def perturbation_sidebar_server(
 
     @reactive.calc
     def col_preference() -> str:
+        """
+        Currently selected measurement column preference.
+
+        :trigger input.col_preference: fires when the user changes the Column
+            radio button in the sidebar.
+        :returns: ``"effect"`` or ``"pvalue"``; defaults to ``"effect"``
+            before the input is rendered.
+
+        """
         try:
             return str(input.col_preference())
         except Exception:

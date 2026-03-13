@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import time
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -12,6 +11,7 @@ from shiny import App, reactive, render, ui
 from tfbpapi import VirtualDB
 
 from configure_logger import configure_logger
+from tfbpshiny.components import github_badge, nav_button
 from tfbpshiny.modules.binding.server import (
     binding_sidebar_server,
     binding_workspace_server,
@@ -65,56 +65,6 @@ virtualdb_config = Path(__file__).parent / "brentlab_yeast_collection.yaml"
 logger.info(f"Loading VirtualDB with config: {virtualdb_config.resolve()}")
 vdb = VirtualDB(virtualdb_config.resolve())
 
-# this is for the github badge in the navbar. it links to the repo and displays
-# the current version
-try:
-    _version = version("tfbpshiny")
-except PackageNotFoundError:
-    _version = "dev"
-
-_GITHUB_URL = "https://github.com/BrentLab/tfbpshiny"
-
-
-def github_badge() -> ui.Tag:
-    """GitHub repo link with version pill, suitable for the navbar."""
-    return ui.a(
-        {"class": "github-badge", "href": _GITHUB_URL, "target": "_blank"},
-        ui.tags.svg(
-            {
-                "xmlns": "http://www.w3.org/2000/svg",
-                "width": "16",
-                "height": "16",
-                "viewBox": "0 0 16 16",
-                "fill": "currentColor",
-                "style": "vertical-align:middle; margin-right:5px;",
-            },
-            ui.Tag(
-                "path",
-                # this is the SVG path data for the GitHub logo
-                # see https://simpleicons.org/icons/github.svg
-                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 "
-                "7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-"
-                "2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 "
-                "1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-"
-                "1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-"
-                "1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 "
-                "1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56"
-                ".82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 "
-                "0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 "
-                "8c0-4.42-3.58-8-8-8z",
-            ),
-        ),
-        ui.tags.span(
-            {"style": "vertical-align:middle; margin-right:6px;"},
-            "BrentLab/tfbpshiny",
-        ),
-        ui.tags.span(
-            {"class": "github-badge-version"},
-            f"v{_version}",
-        ),
-    )
-
-
 app_ui = ui.page_fillable(
     ui.include_css((Path(__file__).parent / "app.css").resolve()),
     ui.div(
@@ -124,15 +74,11 @@ app_ui = ui.page_fillable(
             ui.div({"class": "nav-logo"}, "TF\nBinding & Perturbation\nExplorer"),
             ui.div(
                 {"class": "nav-tags"},
-                ui.input_action_button("home", "Home", class_="nav-btn"),
-                ui.input_action_button(
-                    "selection", "Select Datasets", class_="nav-btn"
-                ),
-                ui.input_action_button("binding", "Binding", class_="nav-btn"),
-                ui.input_action_button(
-                    "perturbation", "Perturbation", class_="nav-btn"
-                ),
-                ui.input_action_button("comparison", "Comparison", class_="nav-btn"),
+                nav_button("home", "Home"),
+                nav_button("selection", "Select Datasets"),
+                nav_button("binding", "Binding"),
+                nav_button("perturbation", "Perturbation"),
+                nav_button("comparison", "Comparison"),
             ),
             github_badge(),
         ),

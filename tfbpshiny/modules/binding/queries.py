@@ -76,7 +76,7 @@ def binding_data_query(
     params: dict[str, Any] = {}
     where_clause = _build_where(filters, params) if filters else ""
     sql = (
-        f"SELECT regulator_locus_tag, target_locus_tag, {col} "
+        f"SELECT regulator_locus_tag, target_locus_tag, sample_id, {col} "
         f"FROM {db_name}{where_clause}"
     )
     return sql, params
@@ -120,8 +120,9 @@ def _build_where(
     return f" WHERE {' AND '.join(clauses)}" if clauses else ""
 
 
-def corr_pair_sql(
+def _corr_pair_sql_impl(
     vdb: VirtualDB,
+    data_query_fn: Any,
     db_a: str,
     col_a: str,
     filters_a: dict[str, Any] | None,
@@ -130,30 +131,52 @@ def corr_pair_sql(
     filters_b: dict[str, Any] | None,
     method: str,
     prefix: str = "",
-) -> pd.DataFrame:
+    sql_only: bool = False,
+) -> pd.DataFrame | tuple[str, dict[str, Any]]:
     """
-    Compute per-regulator correlation between two datasets entirely in DuckDB.
+    Shared implementation for computing per-regulator correlation between two datasets.
 
-    For Pearson: uses DuckDB's native ``corr(y, x)`` aggregate.
-    For Spearman: ranks values within each regulator first, then applies
-    ``corr()`` on the ranks. Effect columns are ranked by ``ABS(value)`` DESC
-    (larger absolute effect = higher rank); pvalue columns are ranked by value
-    ASC (smaller p-value = more significant = higher rank).
+    Called by both ``binding.queries.corr_pair_sql`` and
+    ``perturbation.queries.corr_pair_sql``; the only difference between them is the
+    ``data_query_fn`` used to build the per-dataset sub-queries.
+
+    The join is performed on ``(regulator_locus_tag, target_locus_tag)``. Because
+    datasets may have multiple samples per regulator (e.g. different experimental
+    conditions), the GROUP BY includes ``sample_id`` from both sides. This means
+    the returned DataFrame has one row per unique ``(regulator, sample_a, sample_b)``
+    combination — there will be multiple correlation values per regulator when either
+    dataset has more than one sample for that regulator.
+
+    For Pearson: uses DuckDB's native ``corr(y, x)`` aggregate directly on the
+    measurement values.
+    For Spearman: ranks values within each ``(regulator, sample)`` group first, then
+    applies ``corr()`` on the ranks. Effect columns are ranked by ``ABS(value) DESC``
+    (larger absolute effect = higher rank); p-value columns are ranked by ``value ASC``
+    (smaller p-value = more significant = higher rank).
 
     :param vdb: VirtualDB instance.
-    :param db_a: First dataset name.
+    :param data_query_fn: Callable with signature
+        ``(db_name, col, filters) -> (sql_str, params_dict)``; either
+        ``binding_data_query`` or ``perturbation_data_query``.
+    :param db_a: First dataset name (used as literal label in output column ``db_a``).
     :param col_a: Column to use from first dataset.
     :param filters_a: Optional filters for first dataset.
-    :param db_b: Second dataset name.
+    :param db_b: Second dataset name (used as literal label in output column ``db_b``).
     :param col_b: Column to use from second dataset.
     :param filters_b: Optional filters for second dataset.
     :param method: ``"pearson"`` or ``"spearman"``.
     :param prefix: Parameter namespace prefix to avoid collisions across pairs.
-    :return: DataFrame with columns ``regulator_locus_tag`` and ``correlation``.
+    :param sql_only: If ``True``, return ``(sql, params)`` instead of executing the
+        query. Defaults to ``False``.
+    :return: DataFrame with columns ``db_a``, ``db_a_id``, ``db_b``, ``db_b_id``,
+        ``regulator_locus_tag``, and ``correlation`` when ``sql_only=False``; a
+        ``(sql_string, params_dict)`` tuple when ``sql_only=True``.
+
+    :raises QueryError: If the query fails when executed with ``sql_only=False``.
 
     """
-    sql_a, params_a = binding_data_query(db_a, col_a, filters_a)
-    sql_b, params_b = binding_data_query(db_b, col_b, filters_b)
+    sql_a, params_a = data_query_fn(db_a, col_a, filters_a)
+    sql_b, params_b = data_query_fn(db_b, col_b, filters_b)
 
     # namespace params to avoid collisions
     params_a = {f"{prefix}a_{k}": v for k, v in params_a.items()}
@@ -170,6 +193,12 @@ def corr_pair_sql(
     order_a = f"{col_a} ASC" if is_pvalue_a else f"ABS({col_a}) DESC"
     order_b = f"{col_b} ASC" if is_pvalue_b else f"ABS({col_b}) DESC"
 
+    # The INNER JOIN ensures only targets present in both datasets are included.
+    # NULL, infinity, and NaN values are filtered out explicitly in the WHERE
+    # clause; corr() raises OutOfRangeException (STDDEV_POP out of range) when
+    # inputs contain non-finite values.
+    # See: https://github.com/duckdb/duckdb/issues/14373
+    #      https://github.com/duckdb/duckdb/discussions/10956
     if method == "spearman":
         sql = f"""
             WITH
@@ -178,18 +207,36 @@ def corr_pair_sql(
               joined AS (
                 SELECT
                   a.regulator_locus_tag,
-                  RANK() OVER (PARTITION BY a.regulator_locus_tag ORDER BY {order_a}) AS rank_a,
-                  RANK() OVER (PARTITION BY a.regulator_locus_tag ORDER BY {order_b}) AS rank_b
+                  a.sample_id AS db_a_id,
+                  b.sample_id AS db_b_id,
+                  RANK() OVER (
+                    PARTITION BY a.regulator_locus_tag, a.sample_id, b.sample_id
+                    ORDER BY {order_a}
+                  ) AS rank_a,
+                  RANK() OVER (
+                    PARTITION BY a.regulator_locus_tag, a.sample_id, b.sample_id
+                    ORDER BY {order_b}
+                  ) AS rank_b
                 FROM a
-                JOIN b
+                INNER JOIN b
                   ON a.regulator_locus_tag = b.regulator_locus_tag
                  AND a.target_locus_tag    = b.target_locus_tag
+                WHERE a.{col_a} IS NOT NULL
+                  AND b.{col_b} IS NOT NULL
+                  AND NOT isinf(a.{col_a})
+                  AND NOT isinf(b.{col_b})
+                  AND NOT isnan(a.{col_a})
+                  AND NOT isnan(b.{col_b})
               )
             SELECT
+              '{db_a}'          AS db_a,
+              db_a_id,
+              '{db_b}'          AS db_b,
+              db_b_id,
               regulator_locus_tag,
               corr(rank_a, rank_b) AS correlation
             FROM joined
-            GROUP BY regulator_locus_tag
+            GROUP BY regulator_locus_tag, db_a_id, db_b_id
             HAVING COUNT(*) >= 3
         """
     else:
@@ -198,17 +245,65 @@ def corr_pair_sql(
               a AS ({sql_a}),
               b AS ({sql_b})
             SELECT
+              '{db_a}'                     AS db_a,
+              a.sample_id                  AS db_a_id,
+              '{db_b}'                     AS db_b,
+              b.sample_id                  AS db_b_id,
               a.regulator_locus_tag,
-              corr(a.{col_a}, b.{col_b}) AS correlation
+              corr(a.{col_a}, b.{col_b})  AS correlation
             FROM a
-            JOIN b
+            INNER JOIN b
               ON a.regulator_locus_tag = b.regulator_locus_tag
              AND a.target_locus_tag    = b.target_locus_tag
-            GROUP BY a.regulator_locus_tag
+            WHERE a.{col_a} IS NOT NULL
+              AND b.{col_b} IS NOT NULL
+              AND NOT isinf(a.{col_a})
+              AND NOT isinf(b.{col_b})
+              AND NOT isnan(a.{col_a})
+              AND NOT isnan(b.{col_b})
+            GROUP BY a.regulator_locus_tag, a.sample_id, b.sample_id
             HAVING COUNT(*) >= 3
         """
 
+    if sql_only:
+        return sql, params
+    # note this will raise a QueryError with a nicely formatted message that includes
+    # the sql and parameters
     return vdb.query(sql, **params)
+
+
+def corr_pair_sql(
+    vdb: VirtualDB,
+    db_a: str,
+    col_a: str,
+    filters_a: dict[str, Any] | None,
+    db_b: str,
+    col_b: str,
+    filters_b: dict[str, Any] | None,
+    method: str,
+    prefix: str = "",
+    sql_only: bool = False,
+) -> pd.DataFrame | tuple[str, dict[str, Any]]:
+    """
+    Compute per-regulator correlation between two binding datasets.
+
+    Delegates to :func:`_corr_pair_sql_impl` using :func:`binding_data_query`.
+    See that function for full parameter and return documentation.
+
+    """
+    return _corr_pair_sql_impl(
+        vdb,
+        binding_data_query,
+        db_a,
+        col_a,
+        filters_a,
+        db_b,
+        col_b,
+        filters_b,
+        method,
+        prefix,
+        sql_only,
+    )
 
 
 def regulator_symbols_query(db_name: str) -> str:
@@ -297,6 +392,7 @@ __all__ = [
     "DATASET_COLUMNS",
     "get_measurement_column",
     "binding_data_query",
+    "_corr_pair_sql_impl",
     "corr_pair_sql",
     "regulator_symbols_query",
     "regulator_scatter_sql",

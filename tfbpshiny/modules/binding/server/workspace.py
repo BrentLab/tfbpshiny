@@ -1,29 +1,3 @@
-"""
-Workspace server for the Binding analysis page.
-
-Plotly rendering strategy
--------------------------
-Plots are rendered as static HTML via ``plotly.io.to_html`` + ``ui.HTML``, using
-``@render.ui`` rather than ``render_widget`` / ``output_widget`` from shinywidgets.
-
-Rationale: ``render_widget`` wraps figures as ``FigureWidget`` (an ipywidget), which
-maintains a persistent comm channel between the Python server and the browser. When the
-user navigates away from this module the DOM is destroyed, tearing down the comm. On
-return, shinywidgets tries to re-attach the old comm ID to the new DOM nodes and fails
-with a ``t.views is undefined`` / ``[anywidget] Runtime not found`` client error.
-
-Using ``to_html`` produces a self-contained HTML+JS blob that is fully re-rendered by
-the browser each time the ``@render.ui`` output updates, with no persistent state. The
-resulting Plotly figures are still fully interactive client-side (hover, zoom, pan).
-
-If server-side callbacks on plot events (click, select, hover) are ever needed, this
-strategy will need to be revisited. At that point ``render_plotly`` from shinywidgets
-should be evaluated, but the navigation/DOM-teardown problem will need to be solved
-(e.g. by keeping widget DOM nodes alive via CSS ``display:none`` rather than removing
-them, or by using Shiny's ``suspended`` panel pattern).
-
-"""
-
 from __future__ import annotations
 
 import itertools
@@ -69,6 +43,14 @@ def binding_workspace_server(
 
     @reactive.calc
     def _pairs() -> list[tuple[str, str]]:
+        """
+        All unique pairs of active binding datasets.
+
+        :trigger active_binding_datasets: re-runs whenever the user toggles a
+            binding dataset on or off in the Select Datasets sidebar.
+        :returns: List of ``(db_a, db_b)`` tuples, length = n_active choose 2.
+
+        """
         active = active_binding_datasets()
         pairs = list(itertools.combinations(active, 2))
         logger.debug(f"binding _pairs: active={active}, pairs={pairs}")
@@ -76,7 +58,33 @@ def binding_workspace_server(
 
     @reactive.calc
     def _all_corr_data() -> dict[tuple[str, str], pd.DataFrame]:
-        """Compute per-regulator correlations for every active pair."""
+        """
+        Per-regulator correlation values for every active dataset pair.
+
+        The heart of this function is a for loop over the dataset pairs. In each
+        iteration, the user selected measurement column (effect or p-value),
+        filters for that dataset, and the correlation method (pearson or spearman) are
+        submitted along with the virtualDB instance to `corr_pair_sql()`
+        (see queries.py), which uses the duckDB aggregate functions to compute
+        correlations. The join is done on (regulator_locus_tag, target_locus_tag).
+        NOTE: if there are multiple samples for a given regulator_locus_tag, then
+        there will be multiple correlation values for that regulator in the output
+        dataframe.
+
+        :trigger _pairs: re-runs when the set of active pairs changes.
+        :trigger col_preference: re-runs when the user switches between Effect
+            and P-value columns.
+        :trigger corr_type: re-runs when the user switches between Pearson and
+            Spearman.
+        :trigger dataset_filters: re-runs when filters are applied or reset for
+            any dataset.
+        :returns: a dict with keys ``(db_a, db_b)`` and values a dataframe
+            with columns ``db_a``, ``db_a_id``, ``db_b``, ``db_b_id``,
+            ``regulator_locus_tag`` and ``correlation``. Failed pairs are stored as
+            empty DataFrames so downstream renders can handle them gracefully. The
+            failure and error are logged at the ERROR level.
+
+        """
         pairs = _pairs()
         # TODO: get rid of the type ignore
         preference: Literal["effect", "pvalue"] = col_preference()  # type: ignore[assignment] # noqa: E501
@@ -110,13 +118,29 @@ def binding_workspace_server(
                     f"Failed to correlate {db_a} vs {db_b}: {exc}", exc_info=True
                 )
                 result[(db_a, db_b)] = pd.DataFrame(
-                    columns=["regulator_locus_tag", "correlation"]
+                    columns=[
+                        "db_a",
+                        "db_a_id",
+                        "db_b",
+                        "db_b_id",
+                        "regulator_locus_tag",
+                        "correlation",
+                    ]
                 )
 
         return result
 
     @render.ui
     def distributions_plot() -> ui.Tag:
+        """
+        Box-plot of per-regulator correlation values for every active pair.
+
+        :trigger _pairs: re-renders when the set of active pairs changes. :trigger
+        _all_corr_data: re-renders when correlation data is recomputed. :trigger
+        corr_type: re-renders when the correlation method changes     (updates the
+        axis/title label).
+
+        """
         pairs = _pairs()
         corr_data = _all_corr_data()
         method = corr_type().capitalize()
@@ -167,7 +191,19 @@ def binding_workspace_server(
 
     @render.ui
     def regulator_selector() -> ui.Tag:
-        """Regulator selector: union of regulators present in any pair's corr data."""
+        """
+        Dropdown of regulators present in at least one pair's correlation data.
+
+        Choices are keyed by locus tag and labelled by gene symbol where available. The
+        previously selected regulator is preserved across re-renders if it is still
+        present in the new choice set.
+
+        :trigger _all_corr_data: re-renders when correlation data changes (new
+        datasets selected, filters applied, or column/method changed). :trigger
+        active_binding_datasets: re-renders to refresh the symbol map     when the
+        active dataset set changes.
+
+        """
         corr_data = _all_corr_data()
         if not corr_data:
             return ui.span()
@@ -209,6 +245,18 @@ def binding_workspace_server(
 
     @render.ui
     def regulator_plots() -> ui.Tag:
+        """
+        Per-pair scatter plots for the selected regulator.
+
+        Delegates to ``_build_regulator_plots``; catches and renders any
+        unhandled exceptions as an annotated empty figure.
+
+        :trigger input.selected_regulator: re-renders when the user picks a
+            different regulator from the dropdown.
+        :trigger _all_corr_data: re-renders when correlation data changes
+            (new datasets, filters, column preference, or method).
+
+        """
         try:
             return _build_regulator_plots()
         except Exception as exc:
