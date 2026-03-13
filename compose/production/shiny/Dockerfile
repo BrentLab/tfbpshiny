@@ -22,7 +22,9 @@ COPY configure_logger.py .
 RUN pip install --no-cache-dir .
 
 # Run as a non-root user
-RUN useradd --no-create-home --shell /bin/false appuser
+RUN useradd --no-create-home --shell /bin/false appuser && \
+    mkdir -p /hf-cache && \
+    chown appuser /hf-cache
 USER appuser
 
 # Shiny listens on 0.0.0.0:8000 inside the container; host/port can be

@@ -8,10 +8,10 @@ services:
       context: .
       dockerfile: ./compose/production/shiny/Dockerfile
     image: tfbpshiny_production_app
-    env_file:
-      - ./.envs/.production/.shiny
     environment:
       - HF_HOME=/hf-cache
+      - HF_TOKEN
+      - DOCKER_ENV
     volumes:
       - hf_cache:/hf-cache
     expose:
@@ -40,8 +40,6 @@ services:
       context: .
       dockerfile: ./compose/production/traefik/Dockerfile
     image: tfbpshiny_production_traefik
-    env_file:
-      - ./.envs/.production/.traefik
     ports:
       - "80:80"
       - "443:443"
