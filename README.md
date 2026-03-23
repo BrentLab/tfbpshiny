@@ -169,9 +169,7 @@ poetry run pytest                   # all tests
 ### Code quality
 
 ```bash
-poetry run black .
-poetry run isort .
-poetry run mypy .
+pre-commit run --all-files
 ```
 
 ### Branching
