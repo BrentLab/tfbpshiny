@@ -21,7 +21,7 @@ than guessing at APIs.
 | Package | Local path | Online source |
 |---------|-----------|---------------|
 | py-shiny (Shiny for Python source) | `@py-shiny-site (reference)` | https://github.com/posit-dev/py-shiny |
-| labretriever | `@labretriever (reference)` | https://github.com/BrentLab/labretriever |
+| labretriever | `@labretriever (reference)` | https://github.com/cmatKhan/labretriever |
 | duckDB (for SQL query reference) | `@duckdb (reference)` | https://duckdb.org/docs/stable/
 | plotly | `@plotly (reference)`   | https://plotly.com/python/ |
 | terraform | `@terraform (reference)` | https://developer.hashicorp.com/terraform/docs
