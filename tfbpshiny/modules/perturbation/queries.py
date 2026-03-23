@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 import pandas as pd
-from tfbpapi import VirtualDB
+from labretriever import VirtualDB
 
 from tfbpshiny.modules.binding.queries import _corr_pair_sql_impl
 

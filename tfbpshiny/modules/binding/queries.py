@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 import pandas as pd
-from tfbpapi import VirtualDB
+from labretriever import VirtualDB
 
 # Map of db_name -> (effect_col, pvalue_col).
 # pvalue_col is empty string for datasets that have no pvalue column.

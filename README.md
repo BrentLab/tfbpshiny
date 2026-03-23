@@ -29,36 +29,6 @@ python -m tfbpshiny --log-level INFO shiny --port 8010 --host 127.0.0.1
 
 ---
 
-## Local development (Poetry)
-
-```bash
-git clone https://github.com/BrentLab/tfbpshiny.git
-cd tfbpshiny
-poetry install
-pre-commit install
-```
-
-Run in debug / hot-reload mode:
-
-```bash
-poetry run python -m tfbpshiny --log-level DEBUG shiny \
-    --port 8010 --host 127.0.0.1 --debug
-```
-
-### Environment variables
-
-Create a `.env` file in the repo root to override defaults:
-
-```bash
-# Optional — only needed for private HuggingFace datasets
-HF_TOKEN=<your_huggingface_token>
-
-# Optional — override the VirtualDB config path
-VIRTUALDB_CONFIG=/path/to/custom_config.yaml
-```
-
----
-
 ## Production deployment
 
 ### Prerequisites
@@ -158,24 +128,42 @@ Application and Traefik logs are sent to AWS CloudWatch Logs under the log group
 
 ## Contributing
 
-1. Fork the repository and clone your fork
-1. Install dependencies: `poetry install && pre-commit install`
-1. Switch to `dev`: `git switch dev`
-1. Branch from `dev` — **not** `main`: `git switch -c my-feature`
-1. Keep branches small and focused to make review easier
-1. Rebase onto `dev` periodically: `git rebase dev`
-1. When ready, open a pull request targeting the BrentLab `dev`
-  branch — **not** `main`
+### Setup
+
+```bash
+git clone https://github.com/BrentLab/tfbpshiny.git
+cd tfbpshiny
+poetry install
+pre-commit install
+# First-time Playwright setup (required for E2E tests)
+poetry run playwright install chromium
+```
+
+### Environment variables
+
+Create a `.env` file in the repo root to override defaults:
+
+```bash
+# Optional — only needed for private HuggingFace datasets
+HF_TOKEN=<your_huggingface_token>
+
+# Optional — override the VirtualDB config path
+VIRTUALDB_CONFIG=/path/to/custom_config.yaml
+```
+
+### Running the app
+
+```bash
+poetry run python -m tfbpshiny --log-level DEBUG shiny \
+    --port 8010 --host 127.0.0.1 --debug
+```
 
 ### Running tests
 
 ```bash
 poetry run pytest tests/unit/      # unit tests
-poetry run pytest tests/e2e/       # end-to-end (requires Playwright)
+poetry run pytest tests/e2e/       # end-to-end
 poetry run pytest                   # all tests
-
-# First-time Playwright setup
-poetry run playwright install
 ```
 
 ### Code quality
@@ -185,3 +173,12 @@ poetry run black .
 poetry run isort .
 poetry run mypy .
 ```
+
+### Branching
+
+1. Switch to `dev`: `git switch dev`
+1. Branch from `dev` — **not** `main`: `git switch -c my-feature`
+1. Keep branches small and focused to make review easier
+1. Rebase onto `dev` periodically: `git rebase dev`
+1. When ready, open a pull request targeting the BrentLab `dev`
+  branch — **not** `main`

@@ -8,8 +8,8 @@ from typing import Any
 
 import faicons as fa
 import pandas as pd
+from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
-from tfbpapi import VirtualDB
 
 from tfbpshiny.modules.select_datasets.queries import (
     FIELD_TYPE_OVERRIDES,

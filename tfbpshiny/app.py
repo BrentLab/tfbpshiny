@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from dotenv import load_dotenv
+from labretriever import VirtualDB
 from shiny import App, reactive, render, ui
-from tfbpapi import VirtualDB
 
 from configure_logger import configure_logger
 from tfbpshiny.components import github_badge, nav_button

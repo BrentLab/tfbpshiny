@@ -15,13 +15,13 @@ dashboard interface to visualize and analyze genomics data.
 ## Reference Repositories
 
 Two companion repositories are available as workspace folders and online. Use them
-when working with Shiny components or tfbpapi data access — read their source rather
+when working with Shiny components or labretriever data access — read their source rather
 than guessing at APIs.
 
 | Package | Local path | Online source |
 |---------|-----------|---------------|
 | py-shiny (Shiny for Python source) | `@py-shiny-site (reference)` | https://github.com/posit-dev/py-shiny |
-| tfbpapi | `@tfbpapi (reference)` | https://github.com/BrentLab/tfbpapi |
+| labretriever | `@labretriever (reference)` | https://github.com/BrentLab/labretriever |
 | duckDB (for SQL query reference) | `@duckdb (reference)` | https://duckdb.org/docs/stable/
 | plotly | `@plotly (reference)`   | https://plotly.com/python/ |
 | terraform | `@terraform (reference)` | https://developer.hashicorp.com/terraform/docs
@@ -38,11 +38,11 @@ than guessing at APIs.
   Express examples or older shinysession patterns
 - Version: ^1.4.0 (see pyproject.toml for exact version)
 
-### tfbpapi Library
+### labretriever Library
 
-The application uses `tfbpapi` for data access and manipulation. It is installed from
+The application uses `labretriever` for data access and manipulation. It is installed from
 the `dev` branch via Poetry. When in doubt about available methods or data structures,
-read the source in `@tfbpapi (reference)` or check https://brentlab.github.io/tfbpapi/.
+read the source in `@labretriever (reference)` or check https://brentlab.github.io/labretriever/.
 
 ### Other Key Dependencies
 
@@ -150,8 +150,8 @@ and passed to modules as needed. Supports both local development and Docker depl
 
 ### Working with VirtualDB
 
-Use the `vdb` instance to access data sources. Refer to the tfbpapi docs or
-`@tfbpapi (reference)` source for available methods and data structures.
+Use the `vdb` instance to access data sources. Refer to the labretriever docs or
+`@labretriever (reference)` source for available methods and data structures.
 
 ## Development Commands
 
@@ -174,7 +174,7 @@ poetry run pytest tests/e2e/           # end-to-end tests only
 poetry run pytest                       # all tests
 
 # Install Playwright browsers (first time only, required for E2E)
-poetry run playwright install
+poetry run playwright install chromium
 ```
 
 After making changes, verify by running the app and checking for import errors or
@@ -193,32 +193,22 @@ official testing guidelines.
 
 ```
 tests/
-├── unit/           # Unit tests for server logic
-│   ├── test_binding.py
-│   ├── test_perturbation.py
-│   └── test_select_datasets.py
-└── e2e/            # End-to-end tests with Playwright
-    ├── test_navigation.py
-    ├── test_data_selection.py
-    └── test_modal_interactions.py
+├── unit/                       # Pure-function unit tests (no reactive context)
+│   └── test_select_datasets.py # _build_where, query builders, ID generators
+└── e2e/                        # Playwright end-to-end tests
+    └── test_navigation.py      # Navigation smoke tests
 ```
 
 ### Unit Testing
 
-Test server functions and reactive logic in isolation using `shiny.pytest` fixtures.
-Do not test UI components in unit tests — test the server logic only.
+Shiny for Python has no API for testing reactive server logic in isolation — there is
+no `create_session` equivalent. Unit tests are limited to **pure Python functions**
+that have been extracted from server code (e.g. query builders, ID generators,
+data-transformation helpers). Test those with plain pytest; do not attempt to test
+reactive effects or renders in unit tests.
 
-```python
-from shiny.pytest import create_session
-
-def test_module_server():
-    with create_session() as session:
-        # mock inputs, assert outputs/reactive state
-        pass
-```
-
-Key patterns: mock reactive inputs, verify outputs and reactive calculations, mock
-external dependencies (VirtualDB, API calls) rather than hitting real data sources.
+Key patterns: test pure helper functions directly; mock external dependencies
+(VirtualDB) with simple stubs when needed.
 
 ### End-to-End Testing
 
@@ -330,8 +320,8 @@ when complete.
 
 1. **Always use Shiny Core syntax** — not Express. If unsure, check
    https://shiny.posit.co/py/api/core/ or `@py-shiny-site (reference)`.
-2. **Do not guess at tfbpapi APIs** — read the source in `@tfbpapi (reference)` or
-   the docs at https://brentlab.github.io/tfbpapi/.
+2. **Do not guess at labretriever APIs** — read the source in `@labretriever (reference)` or
+   the docs at https://brentlab.github.io/labretriever/.
 3. **Module isolation** — keep modules self-contained with clear interfaces.
 4. **Reactive patterns** — follow Shiny's reactive programming model; avoid
    side effects outside reactive contexts.
