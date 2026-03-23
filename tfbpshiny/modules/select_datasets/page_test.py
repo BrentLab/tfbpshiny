@@ -12,8 +12,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from labretriever import VirtualDB
 from shiny import App, ui
-from tfbpapi import VirtualDB
 
 from tfbpshiny.modules.select_datasets.server import (
     select_datasets_sidebar_server,

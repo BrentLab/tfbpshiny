@@ -6,8 +6,8 @@ from collections.abc import Callable
 from logging import Logger
 from typing import Any
 
+from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
-from tfbpapi import VirtualDB
 
 from tfbpshiny.components import sidebar_section, sidebar_section_title
 from tfbpshiny.modules.comparison.queries import (

@@ -7,9 +7,9 @@ from typing import Any, Literal
 
 import pandas as pd
 import plotly.graph_objects as go
+from labretriever import VirtualDB
 from plotly.io import to_html
 from shiny import module, reactive, render, ui
-from tfbpapi import VirtualDB
 
 from tfbpshiny.modules.perturbation.queries import (
     corr_pair_sql,

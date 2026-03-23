@@ -8,7 +8,8 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-tfbpapi = {git = "https://github.com/BrentLab/tfbpapi.git", rev = "dev"}
+# use `rev` to pin to a specific hash, or tag, from the git repo
+labretriever = {git = "https://github.com/cmatKhan/labretriever.git", rev = "22239d7"}
 shiny = "^1.4.0"
 shinywidgets = "^0.5.2"
 plotly = "^6.0.1"
@@ -20,6 +21,7 @@ pytest = "^8.3.5"
 ipykernel = "^6.29.5"
 nbformat = "^5.10.4"
 playwright = "^1.58.0"
+pytest-playwright = "^0.7.2"
 
 [tool.pytest.ini_options]
 minversion = "6.0"

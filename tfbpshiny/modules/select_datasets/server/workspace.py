@@ -5,8 +5,8 @@ from __future__ import annotations
 from logging import Logger
 from typing import Any
 
+from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
-from tfbpapi import VirtualDB
 
 from tfbpshiny.modules.select_datasets.queries import (
     regulator_locus_tags_query,

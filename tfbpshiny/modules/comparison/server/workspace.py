@@ -9,10 +9,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from labretriever import VirtualDB
 from plotly.io import to_html
 from plotly.subplots import make_subplots
 from shiny import module, reactive, render, ui
-from tfbpapi import VirtualDB
 
 from tfbpshiny.modules.comparison.queries import (
     BINDING_CONFIGS,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-# TODO: open a tfbpapi issue to expose datacard field types (e.g. factor vs numeric)
+# TODO: open a labretriever issue to expose datacard field types (e.g. factor vs numeric)
 # via VirtualDB so this hard-coding is no longer necessary.
 # The datacard for hackett_2020 marks `time` as a factor, but the _meta view
 # exposes it as a numeric column (DOUBLE). Override it here so the filter modal

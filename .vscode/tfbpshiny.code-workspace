@@ -3,12 +3,17 @@
 		{
 			"path": ".."
 		},
-		// put the tfbpapi at the same level as tfbshiny. During development,
+		// put the labretriever at the same level as tfbshiny. During development,
 		// it is very useful to have both in your workspace
 		{
-			"path": "../../tfbpapi",
-			"name": "tfbpapi (reference)"
+			"path": "../../../labretriever",
+			"name": "labretriever (reference)"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"python.testing.pytestArgs": [
+			"tests"
+		],
+		"python.testing.cwd": "${workspaceFolder:tfbpshiny}"
+	}
 }
