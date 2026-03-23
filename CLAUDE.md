@@ -41,7 +41,7 @@ than guessing at APIs.
 ### labretriever Library
 
 The application uses `labretriever` for data access and manipulation. It is installed from
-the `dev` branch via Poetry. When in doubt about available methods or data structures,
+the github branch via Poetry. When in doubt about available methods or data structures,
 read the source in `@labretriever (reference)` or check https://brentlab.github.io/labretriever/.
 
 ### Other Key Dependencies
