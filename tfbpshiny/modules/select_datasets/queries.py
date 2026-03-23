@@ -40,22 +40,22 @@ def _build_where(
     for field, spec in (filters or {}).items():
         kind = spec["type"]
         val = spec["value"]
-        p = f"{prefix}{field}" if prefix else field
+        p = (f"{prefix}{field}" if prefix else field).replace(" ", "_")
 
         if kind == "categorical":
             placeholders = ", ".join(f"$cat_{p}_{i}" for i in range(len(val)))
-            clauses.append(f"{field} IN ({placeholders})")
+            clauses.append(f'"{field}" IN ({placeholders})')
             for i, v in enumerate(val):
                 params[f"cat_{p}_{i}"] = v
         elif kind == "numeric":
             lo, hi = val
             clauses.append(
-                f"TRY_CAST({field} AS DOUBLE)" f" BETWEEN $num_{p}_lo AND $num_{p}_hi"
+                f'TRY_CAST("{field}" AS DOUBLE)' f" BETWEEN $num_{p}_lo AND $num_{p}_hi"
             )
             params[f"num_{p}_lo"] = lo
             params[f"num_{p}_hi"] = hi
         elif kind == "bool":
-            clauses.append(f"{field} = $bool_{p}")
+            clauses.append(f'"{field}" = $bool_{p}')
             params[f"bool_{p}"] = bool(val)
 
     return f" WHERE {' AND '.join(clauses)}" if clauses else ""

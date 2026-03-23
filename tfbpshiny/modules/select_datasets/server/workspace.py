@@ -130,7 +130,15 @@ def select_datasets_workspace_server(
             reg_sets = {}
             filters = dataset_filters()
             for db_name in (db_a, db_b):
-                sql, params = regulator_locus_tags_query(db_name, filters.get(db_name))
+                # Exclude any existing regulator_locus_tag filter so the pairwise
+                # intersection is computed from the full regulator set for each dataset
+                # (subject to other filters only).
+                db_filters = {
+                    k: v
+                    for k, v in (filters.get(db_name) or {}).items()
+                    if k != "regulator_locus_tag"
+                } or None
+                sql, params = regulator_locus_tags_query(db_name, db_filters)
                 reg_df = vdb.query(sql, **params)
                 reg_sets[db_name] = set(
                     reg_df["regulator_locus_tag"].dropna().astype(str)
@@ -140,8 +148,9 @@ def select_datasets_workspace_server(
                 ui.modal_remove()
                 return
             current = dict(dataset_filters())
-            for db_name in (db_a, db_b):
+            for db_name in _active_datasets():
                 ds_filters = dict(current.get(db_name, {}))
+                ds_filters.pop("regulator_locus_tag", None)
                 ds_filters["regulator_locus_tag"] = {
                     "type": "categorical",
                     "value": common,
@@ -182,7 +191,18 @@ def select_datasets_workspace_server(
                 )
             )
 
-        data = _matrix_data()
+        try:
+            data = _matrix_data()
+        except Exception as exc:
+            logger.error(f"Failed to compute matrix data: {exc}")
+            return ui.card(
+                ui.card_body(
+                    ui.p(
+                        "Failed to load dataset matrix. Check that filters are valid.",
+                        class_="text-danger",
+                    )
+                )
+            )
         diagonal = data["diagonal"]
         cross_dataset = data["cross_dataset"]
 
