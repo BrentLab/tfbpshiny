@@ -327,7 +327,7 @@ def select_datasets_sidebar_server(
             # read per-field apply_to_all toggle for common fields
             if field in common_fields and field in field_filters:
                 try:
-                    apply_to_all = bool(input[f"apply_to_all_{field}"]())
+                    apply_to_all = bool(input[f"apply_to_all_{_slugify(field)}"]())
                 except Exception:
                     apply_to_all = False
                 field_filters[field]["apply_to_all"] = apply_to_all

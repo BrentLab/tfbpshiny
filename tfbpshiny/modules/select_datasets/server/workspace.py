@@ -193,8 +193,8 @@ def select_datasets_workspace_server(
 
         try:
             data = _matrix_data()
-        except Exception as exc:
-            logger.error(f"Failed to compute matrix data: {exc}")
+        except Exception:
+            logger.exception("Failed to compute matrix data")
             return ui.card(
                 ui.card_body(
                     ui.p(
