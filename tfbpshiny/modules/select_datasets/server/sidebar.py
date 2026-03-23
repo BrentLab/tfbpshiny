@@ -15,7 +15,21 @@ from tfbpshiny.modules.select_datasets.queries import (
     FIELD_TYPE_OVERRIDES,
     metadata_query,
 )
-from tfbpshiny.modules.select_datasets.ui import dataset_filter_modal_ui
+from tfbpshiny.modules.select_datasets.ui import _slugify, dataset_filter_modal_ui
+
+# Metadata fields to suppress from the filter UI, keyed by db_name.
+# Fields to suppress from the filter UI. Use "*" for fields hidden across all
+# datasets; use the db_name key for dataset-specific exclusions. The effective
+# hidden set for a given dataset is the union of "*" and its own entry.
+HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
+    "*": {"regulator_locus_tag", "regulator_symbol"},
+    "callingcards": {"background_total_hops", "experiment_total_hops"},
+    "harbison": {"condition"},
+    "chec_m2025": {"condition", "mahendrawada_symbol"},
+    "degron": {"env_condition", "timepoint"},
+    "rossi": {"antibody", "growth_media"},
+    "hackett": {"date", "mechanism", "restriction", "strain"},
+}
 
 
 def _toggle_id(db_name: str) -> str:
@@ -204,6 +218,8 @@ def select_datasets_sidebar_server(
                         common_fields,
                         display_name=display_name,
                         common_field_levels=common_field_levels,
+                        hidden_fields=HIDDEN_FILTER_FIELDS.get("*", set())
+                        | HIDDEN_FILTER_FIELDS.get(db_name, set()),
                     )
                 )
 
@@ -269,7 +285,7 @@ def select_datasets_sidebar_server(
 
             col = df[field]
             try:
-                value = input[f"filter_{field}"]()
+                value = input[f"filter_{_slugify(field)}"]()
             except Exception:
                 continue
 
@@ -311,7 +327,7 @@ def select_datasets_sidebar_server(
             # read per-field apply_to_all toggle for common fields
             if field in common_fields and field in field_filters:
                 try:
-                    apply_to_all = bool(input[f"apply_to_all_{field}"]())
+                    apply_to_all = bool(input[f"apply_to_all_{_slugify(field)}"]())
                 except Exception:
                     apply_to_all = False
                 field_filters[field]["apply_to_all"] = apply_to_all

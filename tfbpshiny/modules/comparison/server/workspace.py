@@ -78,8 +78,8 @@ def comparison_workspace_server(
 
     try:
         ensure_hackett_analysis_set(vdb)
-    except Exception as exc:
-        logger.warning(f"Could not register hackett_analysis_set: {exc}")
+    except Exception:
+        logger.exception("Could not register hackett_analysis_set")
 
     @reactive.calc
     def _active_binding_labels() -> dict[str, str]:
@@ -108,8 +108,8 @@ def comparison_workspace_server(
             return pd.DataFrame()
         try:
             df = fetch_dto_data(vdb)
-        except Exception as exc:
-            logger.error(f"DTO fetch failed: {exc}", exc_info=True)
+        except Exception:
+            logger.exception("DTO fetch failed")
             return pd.DataFrame()
 
         # TODO: get rid of the type ignores

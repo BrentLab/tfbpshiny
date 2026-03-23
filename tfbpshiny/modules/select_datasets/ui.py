@@ -11,6 +11,17 @@ from tfbpshiny.components import workspace_heading, workspace_shell
 from tfbpshiny.modules.select_datasets.queries import FIELD_TYPE_OVERRIDES
 
 
+def _slugify(s: str) -> str:
+    """
+    Convert a string to a slug suitable for use in HTML element IDs.
+
+    This is primarily used to replace spaces, eg in aliased fields like
+    `Regulator locus tag`, to `regulator_locus_tag` for the filter control IDs.
+
+    """
+    return s.lower().replace(" ", "_")
+
+
 def _filter_control(
     field: str,
     col: pd.Series,
@@ -44,7 +55,7 @@ def _filter_control(
     def _apply_to_all_toggle() -> ui.Tag:
         saved_val = saved_spec.get("apply_to_all", False) if saved_spec else False
         return ui.input_switch(
-            f"apply_to_all_{field}",
+            f"apply_to_all_{_slugify(field)}",
             "Apply to all datasets",
             value=saved_val,
         )
@@ -67,7 +78,7 @@ def _filter_control(
                 _apply_to_all_toggle() if is_common else ui.span(),
             ),
             ui.input_selectize(
-                f"filter_{field}",
+                f"filter_{_slugify(field)}",
                 label=None,
                 choices=choices,
                 selected=selected,
@@ -85,7 +96,7 @@ def _filter_control(
                 ui.span({"class": "filter-option-title"}, field),
                 _apply_to_all_toggle() if is_common else ui.span(),
             ),
-            ui.input_switch(f"filter_{field}", label=field, value=saved_val),
+            ui.input_switch(f"filter_{_slugify(field)}", label=field, value=saved_val),
         )
 
     if dtype.name in ("float64", "int64", "float32", "int32"):
@@ -106,7 +117,7 @@ def _filter_control(
                 _apply_to_all_toggle() if is_common else ui.span(),
             ),
             ui.input_slider(
-                f"filter_{field}",
+                f"filter_{_slugify(field)}",
                 label=None,
                 min=data_min,
                 max=data_max,
@@ -134,6 +145,7 @@ def dataset_filter_modal_ui(
     common_fields: set[str] | None = None,
     display_name: str | None = None,
     common_field_levels: dict[str, list[str]] | None = None,
+    hidden_fields: set[str] | None = None,
 ) -> ui.Tag:
     """
     Build the filter modal for a given dataset from live metadata.
@@ -164,8 +176,11 @@ def dataset_filter_modal_ui(
     common_cards: list[ui.Tag] = []
     specific_cards: list[ui.Tag] = []
 
+    _hidden = hidden_fields or set()
     for field in df.columns:
         if field == "sample_id":
+            continue
+        if field in _hidden:
             continue
         is_common = field in cf
         card = _filter_control(

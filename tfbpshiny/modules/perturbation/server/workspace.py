@@ -258,7 +258,7 @@ def perturbation_workspace_server(
         try:
             return _build_regulator_plots()
         except Exception as exc:
-            logger.error(f"regulator_plots render failed: {exc}", exc_info=True)
+            logger.exception("regulator_plots render failed")
             fig = go.Figure()
             fig.add_annotation(
                 text=f"Error rendering plots: {exc}",
@@ -319,8 +319,8 @@ def perturbation_workspace_server(
                     idx,
                 )
                 merged = vdb.query(scatter_sql, **scatter_params)
-            except Exception as exc:
-                logger.warning(f"Regulator plot fetch failed for {db_a}/{db_b}: {exc}")
+            except Exception:
+                logger.exception(f"Regulator plot fetch failed for {db_a}/{db_b}")
                 continue
 
             if merged.empty:
