@@ -175,12 +175,12 @@ def regulator_breakdown_query(
         + (f", {per_reg_exprs}" if per_reg_exprs else "")
         + f"  FROM {db_name}_meta{where}"
         + (" AND" if where else " WHERE")
-        + f" regulator_locus_tag IN (SELECT regulator_locus_tag FROM multi)"
-        f"  GROUP BY regulator_locus_tag"
-        f") "
-        f"SELECT COUNT(*) AS n_multi"
+        + " regulator_locus_tag IN (SELECT regulator_locus_tag FROM multi)"
+        "  GROUP BY regulator_locus_tag"
+        ") "
+        "SELECT COUNT(*) AS n_multi"
         + (f", {agg_exprs}" if agg_exprs else "")
-        + f" FROM per_reg"
+        + " FROM per_reg"
     )
     return sql, params
 
