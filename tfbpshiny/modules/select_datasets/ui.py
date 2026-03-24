@@ -283,10 +283,39 @@ def selection_matrix_ui() -> ui.Tag:
     )
 
 
-def diagonal_cell_modal_ui() -> ui.Tag:
-    """Placeholder modal for diagonal (single-dataset) matrix cells."""
+def diagonal_cell_modal_ui(display_name: str, breakdown: dict) -> ui.Tag:
+    """
+    Modal for diagonal matrix cells summarising sample/regulator multiplicity.
+
+    This will either say that each sample interrogates a unique regulator,
+    or provide information about which columns differentiate samples that share
+    regulators.
+
+    :param display_name: Human-readable dataset name for the modal title.
+    :param breakdown: Dict produced by the multiplicity analysis in workspace.py.
+        ``{"uniform": True}`` when each regulator maps to exactly one sample;
+        ``{"uniform": False, "n_multi": int, "differentiating_columns": list[str]}``
+        otherwise.
+
+    """
+    if breakdown.get("uniform"):
+        body = ui.p("Each sample represents a unique interrogated regulator.")
+    else:
+        cols = breakdown.get("differentiating_columns", [])
+        body = ui.div(
+            ui.p(
+                f"{breakdown['n_multi']:,} regulators appear in multiple samples. "
+                f"Samples differ by:"
+            ),
+            (
+                ui.tags.ul(*[ui.tags.li(c) for c in cols])
+                if cols
+                else ui.p(ui.tags.em("unknown columns"))
+            ),
+        )
     return ui.modal(
-        ui.p("diagonal"),
+        body,
+        title=display_name,
         easy_close=True,
         footer=ui.modal_button("Close"),
     )
