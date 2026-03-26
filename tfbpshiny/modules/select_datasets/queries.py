@@ -158,18 +158,29 @@ def regulator_breakdown_query(
     """
     params: dict[str, Any] = {}
     where = _build_where(filters, params)
-    count_exprs = ", ".join(f'COUNT(DISTINCT "{c}") AS "{c}"' for c in candidate_cols)
+    # per_reg: for each multi-sample regulator, count distinct values per column
+    per_reg_exprs = ", ".join(f'COUNT(DISTINCT "{c}") AS "{c}"' for c in candidate_cols)
+    # agg: count how many regulators show internal variation (per-regulator distinct > 1)
+    agg_exprs = ", ".join(
+        f'COUNT(*) FILTER (WHERE "{c}" > 1) AS "{c}"' for c in candidate_cols
+    )
     sql = (
         f"WITH multi AS ("
         f"  SELECT regulator_locus_tag"
         f"  FROM {db_name}_meta{where}"
         f"  GROUP BY regulator_locus_tag"
         f"  HAVING COUNT(*) > 1"
+        f"), per_reg AS ("
+        f"  SELECT regulator_locus_tag"
+        + (f", {per_reg_exprs}" if per_reg_exprs else "")
+        + f"  FROM {db_name}_meta{where}"
+        + (" AND" if where else " WHERE")
+        + f" regulator_locus_tag IN (SELECT regulator_locus_tag FROM multi)"
+        f"  GROUP BY regulator_locus_tag"
         f") "
         f"SELECT COUNT(*) AS n_multi"
-        + (f", {count_exprs}" if count_exprs else "")
-        + f" FROM {db_name}_meta{where}"
-        f" WHERE regulator_locus_tag IN (SELECT regulator_locus_tag FROM multi)"
+        + (f", {agg_exprs}" if agg_exprs else "")
+        + f" FROM per_reg"
     )
     return sql, params
 
