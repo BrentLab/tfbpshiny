@@ -102,7 +102,7 @@ def select_datasets_workspace_server(
         """
         Create the modal and contents on click of a diagonal cell.
 
-        The modal text will describe whether there is a 1-1 correspondance between
+        The modal text will describe whether there is a 1-1 correspondence between
         regulators and samples. If there are not, then it will list the metadata columns
         that differentiate samples with the same regulator.
 
