@@ -133,7 +133,7 @@ def select_datasets_workspace_server(
             if n_multi == 0:
                 multi_regulator_sample_breakdown: dict = {"uniform": True}
             else:
-                diff_cols = [c for c in candidate_cols if row[c] > 1]
+                diff_cols = [c for c in candidate_cols if row[c] > 0]
                 multi_regulator_sample_breakdown = {
                     "uniform": False,
                     "n_multi": n_multi,
