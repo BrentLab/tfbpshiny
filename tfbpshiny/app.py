@@ -177,26 +177,60 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     @reactive.effect
     @reactive.event(input.home, ignore_init=True)
     def _nav_home() -> None:
+        """
+        Switch the active module to the home page.
+
+        :trigger: ``input.home`` — fires when the user clicks the HOME nav button.
+
+        """
         active_module.set("home")
 
     @reactive.effect
     @reactive.event(input.selection, ignore_init=True)
     def _nav_selection() -> None:
+        """
+        Switch the active module to the dataset selection page.
+
+        :trigger: ``input.selection`` — fires when the user clicks the SELECT
+            DATASETS nav button.
+
+        """
         active_module.set("selection")
 
     @reactive.effect
     @reactive.event(input.binding, ignore_init=True)
     def _nav_binding() -> None:
+        """
+        Switch the active module to the binding data page.
+
+        :trigger: ``input.binding`` — fires when the user clicks the BINDING nav
+            button.
+
+        """
         active_module.set("binding")
 
     @reactive.effect
     @reactive.event(input.perturbation, ignore_init=True)
     def _nav_perturbation() -> None:
+        """
+        Switch the active module to the perturbation data page.
+
+        :trigger: ``input.perturbation`` — fires when the user clicks the
+            PERTURBATION nav button.
+
+        """
         active_module.set("perturbation")
 
     @reactive.effect
     @reactive.event(input.comparison, ignore_init=True)
     def _nav_comparison() -> None:
+        """
+        Switch the active module to the comparison analysis page.
+
+        :trigger: ``input.comparison`` — fires when the user clicks the COMPARISON
+            nav button.
+
+        """
         active_module.set("comparison")
 
     # The page is always divided into a sidebar region and workspace region

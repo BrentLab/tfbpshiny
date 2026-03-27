@@ -185,10 +185,31 @@ def regulator_breakdown_query(
     return sql, params
 
 
+def regulator_display_labels_query(db_name: str) -> tuple[str, dict]:
+    """
+    Return ``(sql, params)`` for fetching distinct regulator locus tags and symbols.
+
+    Used to build the ``{locus_tag: "SYMBOL (LOCUS_TAG)"}`` display map for the
+    Regulator selectize in the filter modal.
+
+    :param db_name: Dataset name.
+    :return: ``(sql_string, params_dict)`` — rows have columns
+        ``regulator_locus_tag`` and ``regulator_symbol``.
+
+    """
+    return (
+        f"SELECT DISTINCT regulator_locus_tag, regulator_symbol"
+        f" FROM {db_name}_meta"
+        f" ORDER BY regulator_locus_tag",
+        {},
+    )
+
+
 __all__ = [
     "FIELD_TYPE_OVERRIDES",
     "metadata_query",
     "sample_count_query",
     "regulator_locus_tags_query",
     "regulator_breakdown_query",
+    "regulator_display_labels_query",
 ]

@@ -14,6 +14,7 @@ from shiny import module, reactive, render, ui
 from tfbpshiny.modules.select_datasets.queries import (
     FIELD_TYPE_OVERRIDES,
     metadata_query,
+    regulator_display_labels_query,
 )
 from tfbpshiny.modules.select_datasets.ui import _slugify, dataset_filter_modal_ui
 
@@ -22,7 +23,12 @@ from tfbpshiny.modules.select_datasets.ui import _slugify, dataset_filter_modal_
 # datasets; use the db_name key for dataset-specific exclusions. The effective
 # hidden set for a given dataset is the union of "*" and its own entry.
 HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
-    "*": {"regulator_locus_tag", "regulator_symbol"},
+    "*": {
+        "regulator_locus_tag",
+        "regulator_symbol",
+        "Regulator locus tag",
+        "Regulator symbol",
+    },
     "callingcards": {"background_total_hops", "experiment_total_hops"},
     "harbison": {"condition"},
     "chec_m2025": {"condition", "mahendrawada_symbol"},
@@ -210,6 +216,21 @@ def select_datasets_sidebar_server(
                             pass
                     common_field_levels[cf_field] = list(levels)
 
+                # build {locus_tag: "SYMBOL (LOCUS_TAG)"} map for regulator selectize
+                reg_display_labels: dict[str, str] = {}
+                try:
+                    reg_sql, reg_params = regulator_display_labels_query(db_name)
+                    reg_df = vdb.query(reg_sql, **reg_params)
+                    for _, row in reg_df.iterrows():
+                        tag = str(row["regulator_locus_tag"])
+                        sym = row.get("regulator_symbol")
+                        label = f"{sym} ({tag})" if sym and str(sym) != "nan" else tag
+                        reg_display_labels[tag] = label
+                except Exception:
+                    logger.exception(
+                        f"Failed to fetch regulator display labels for {db_name}"
+                    )
+
                 ui.modal_show(
                     dataset_filter_modal_ui(
                         db_name,
@@ -220,6 +241,7 @@ def select_datasets_sidebar_server(
                         common_field_levels=common_field_levels,
                         hidden_fields=HIDDEN_FILTER_FIELDS.get("*", set())
                         | HIDDEN_FILTER_FIELDS.get(db_name, set()),
+                        regulator_display_labels=reg_display_labels or None,
                     )
                 )
 
@@ -257,6 +279,33 @@ def select_datasets_sidebar_server(
         ui.modal_remove()
         modal_open_for.set(None)
         modal_df.set(None)
+
+    @reactive.effect
+    @reactive.event(input.modal_clear_regulator_filter)
+    def _clear_regulator_filter() -> None:
+        """
+        Remove ``regulator_locus_tag`` from all datasets and clear the selectize in the
+        open modal in place via ``ui.update_selectize``.
+
+        :trigger input.modal_clear_regulator_filter: fires when the user clicks the
+        Clear button inside the Regulator card of a filter modal.
+
+        """
+        db_name = modal_open_for()
+        if db_name is None:
+            return
+        all_db_names = [d for d, _ in binding_datasets + perturbation_datasets]
+        current = dict(dataset_filters())
+        for ds in all_db_names:
+            ds_filters = dict(current.get(ds, {}))
+            ds_filters.pop("regulator_locus_tag", None)
+            if ds_filters:
+                current[ds] = ds_filters
+            else:
+                current.pop(ds, None)
+        dataset_filters.set(current)
+        # clear the selectize in place — no modal teardown/re-show needed
+        ui.update_selectize("filter_regulator_locus_tag", selected=[])
 
     @reactive.effect
     @reactive.event(input.modal_apply_filters)
@@ -332,7 +381,32 @@ def select_datasets_sidebar_server(
                     apply_to_all = False
                 field_filters[field]["apply_to_all"] = apply_to_all
 
+        # handle regulator_locus_tag explicitly (hidden from generic field loop)
+        try:
+            reg_selected = list(input["filter_regulator_locus_tag"]())
+        except Exception:
+            reg_selected = []
+        try:
+            reg_apply_to_all = bool(input["apply_to_all_regulator_locus_tag"]())
+        except Exception:
+            reg_apply_to_all = True
+        if reg_selected:
+            saved_reg = (
+                dataset_filters().get(db_name, {}).get("regulator_locus_tag", {})
+            )
+            from_pair = saved_reg.get("from_pair") if saved_reg else None
+            reg_spec: dict[str, Any] = {
+                "type": "categorical",
+                "value": reg_selected,
+                "apply_to_all": reg_apply_to_all,
+            }
+            if from_pair:
+                reg_spec["from_pair"] = from_pair
+            field_filters["regulator_locus_tag"] = reg_spec
+
         # split into common-field filters and dataset-specific
+        # regulator_locus_tag is treated as a common field for propagation purposes
+        reg_filter = field_filters.pop("regulator_locus_tag", None)
         common_filters = {f: v for f, v in field_filters.items() if f in common_fields}
         specific_filters = {
             f: v for f, v in field_filters.items() if f not in common_fields
@@ -340,6 +414,34 @@ def select_datasets_sidebar_server(
 
         current = dict(dataset_filters())
         all_db_names = [d for d, _ in binding_datasets + perturbation_datasets]
+
+        # apply regulator filter (or clear it if empty)
+        if reg_filter:
+            if reg_filter.get("apply_to_all", True):
+                for ds in all_db_names:
+                    ds_filters = dict(current.get(ds, {}))
+                    ds_filters["regulator_locus_tag"] = reg_filter
+                    current[ds] = ds_filters
+            else:
+                for ds in all_db_names:
+                    ds_filters = dict(current.get(ds, {}))
+                    if ds == db_name:
+                        ds_filters["regulator_locus_tag"] = reg_filter
+                    else:
+                        ds_filters.pop("regulator_locus_tag", None)
+                    if ds_filters:
+                        current[ds] = ds_filters
+                    else:
+                        current.pop(ds, None)
+        else:
+            # regulator field was cleared — remove from all datasets
+            for ds in all_db_names:
+                ds_filters = dict(current.get(ds, {}))
+                ds_filters.pop("regulator_locus_tag", None)
+                if ds_filters:
+                    current[ds] = ds_filters
+                else:
+                    current.pop(ds, None)
 
         # apply each common filter according to its own apply_to_all flag
         for f, spec in common_filters.items():
