@@ -273,8 +273,6 @@ def binding_workspace_server(
             return ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False))
 
     def _build_regulator_plots() -> ui.Tag:
-        from plotly.subplots import make_subplots
-
         try:
             reg = str(input.selected_regulator()) or None
         except Exception:
@@ -285,9 +283,8 @@ def binding_workspace_server(
         filters = dataset_filters()
         method = corr_type()
 
-        fig = go.Figure()
-
         if not reg or not pairs:
+            fig = go.Figure()
             fig.add_annotation(
                 text="Select a regulator above to see per-pair scatter plots.",
                 xref="paper",
@@ -298,12 +295,9 @@ def binding_workspace_server(
             )
             return ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False))
 
-        n = len(pairs)
-        subplot_titles = [
-            f"{display_names.get(db_a, db_a)} vs {display_names.get(db_b, db_b)}"
-            for db_a, db_b in pairs
-        ]
-        fig = make_subplots(rows=1, cols=n, subplot_titles=subplot_titles)
+        # First pass: collect data and track which datasets are missing the regulator
+        pair_data: list[tuple[str, str, str, str, object]] = []
+        missing_datasets: set[str] = set()
 
         for idx, (db_a, db_b) in enumerate(pairs, start=1):
             try:
@@ -326,12 +320,20 @@ def binding_workspace_server(
                 continue
 
             if merged.empty:
+                missing_datasets.add(display_names.get(db_a, db_a))
+                missing_datasets.add(display_names.get(db_b, db_b))
                 continue
 
-            r = merged["_val_a"].corr(merged["_val_b"])
+            pair_data.append((db_a, db_b, col_a, col_b, merged))
+
+        # Build one figure per valid pair
+        plot_divs: list[ui.Tag] = []
+        for db_a, db_b, col_a, col_b, merged in pair_data:
             la = display_names.get(db_a, db_a)
             lb = display_names.get(db_b, db_b)
+            r = merged["_val_a"].corr(merged["_val_b"])
 
+            fig = go.Figure()
             fig.add_trace(
                 go.Scatter(
                     x=merged["_val_a"],
@@ -344,21 +346,57 @@ def binding_workspace_server(
                         + f"{la}: %{{x:.3f}}<br>"
                         + f"{lb}: %{{y:.3f}}<extra></extra>"
                     ),
-                    name=f"r={r:.3f}",
                     showlegend=False,
-                ),
-                row=1,
-                col=idx,
+                )
             )
-            fig.update_xaxes(title_text=f"{la}: {col_a}", row=1, col=idx)
-            fig.update_yaxes(title_text=f"{lb}: {col_b}", row=1, col=idx)
-            fig.layout.annotations[idx - 1].text += f"  (r={r:.3f})"
+            fig.add_annotation(
+                text=f"r={r:.3f}",
+                xref="paper",
+                yref="paper",
+                x=0.98,
+                y=0.98,
+                xanchor="right",
+                yanchor="top",
+                showarrow=False,
+                font=dict(size=12),
+            )
+            fig.update_layout(
+                title=dict(
+                    text=f"{la}<br>vs<br>{lb}",
+                    x=0.5,
+                    xanchor="center",
+                ),
+                xaxis_title=f"{la}: {col_a}",
+                yaxis_title=f"{lb}: {col_b}",
+                margin=dict(l=50, r=20, t=100, b=50),
+                width=400,
+                height=400,
+            )
+            plot_divs.append(
+                ui.div(
+                    ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False)),
+                    style="flex: 0 0 auto;",
+                )
+            )
 
-        fig.update_layout(
-            title=f"Regulator: {reg}",
-            margin=dict(l=40, r=20, t=70, b=50),
+        missing_note: list[ui.Tag] = []
+        if missing_datasets:
+            names = ", ".join(sorted(missing_datasets))
+            missing_note.append(
+                ui.p(
+                    f"{reg} was not found in: {names}. "
+                    "Pairs involving these datasets are omitted.",
+                    style="color: gray; font-style: italic; margin: 0.5rem 0;",
+                )
+            )
+
+        return ui.div(
+            *missing_note,
+            ui.div(
+                *plot_divs,
+                style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start;",  # noqa: E501
+            ),
         )
-        return ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False))
 
 
 __all__ = ["binding_workspace_server"]
