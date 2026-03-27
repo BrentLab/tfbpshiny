@@ -8,6 +8,13 @@ from typing import Any
 from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
 
+from tfbpshiny.components import (
+    matrix_cell,
+    matrix_cell_button,
+    matrix_header_cell,
+    matrix_row_label,
+    matrix_table,
+)
 from tfbpshiny.modules.select_datasets.queries import (
     regulator_breakdown_query,
     regulator_locus_tags_query,
@@ -40,6 +47,14 @@ def select_datasets_workspace_server(
 
     @reactive.calc
     def _active_datasets() -> list[str]:
+        """
+        Combined list of all currently active binding and perturbation datasets.
+
+        :trigger: ``active_binding_datasets``, ``active_perturbation_datasets`` —
+            re-runs whenever either list changes.
+        :returns: Concatenated list of active db_name strings, binding first.
+
+        """
         return active_binding_datasets() + active_perturbation_datasets()
 
     @reactive.calc
@@ -48,9 +63,12 @@ def select_datasets_workspace_server(
         Compute per-dataset regulator/sample counts and pairwise common-regulator counts
         with restricted sample counts.
 
-        :return: Dict with keys: ``"diagonal"`` — ``{db_name: {"regulators": int,
-            "samples": int}}`` ``"cross_dataset"`` — ``{(db_i, db_j):
-            {"common_regulators": int, "samples_a": int, "samples_b": int}}``
+        :trigger: ``_active_datasets`` — re-runs when the active dataset list changes.
+            ``dataset_filters`` — re-runs when any filter changes, since filters
+            affect regulator and sample counts.
+        :returns: Dict with keys: ``"diagonal"`` — ``{db_name: {"regulators": int,
+            "samples": int}}``; ``"cross_dataset"`` — ``{(db_i, db_j):
+            {"common_regulators": int, "samples_a": int, "samples_b": int}}``.
 
         """
         active = _active_datasets()
@@ -112,6 +130,14 @@ def select_datasets_workspace_server(
         @reactive.effect
         @reactive.event(input[btn_id])
         def _on_click() -> None:
+            """
+            Compute regulator/sample multiplicity for this dataset and show the diagonal
+            cell modal.
+
+            :trigger: ``input[diag_{db_name}]`` — fires when the user clicks the
+                diagonal matrix cell button for this dataset.
+
+            """
             filters = dataset_filters().get(db_name)
 
             all_cols = vdb.get_fields(f"{db_name}_meta")
@@ -153,9 +179,31 @@ def select_datasets_workspace_server(
         @reactive.effect
         @reactive.event(input[btn_id])
         def _on_click() -> None:
+            """
+            If this pair is the active regulator filter, clear the filter and
+            unhighlight the cell. Otherwise, show the off-diagonal cell modal.
+
+            :trigger: ``input[offdiag_{db_a}__{db_b}]`` — fires when the user
+                clicks the off-diagonal matrix cell button for this pair.
+
+            """
+            if _active_regulator_pair() == (db_a, db_b):
+                # Remove regulator_locus_tag from all datasets and clear highlight.
+                current = dict(dataset_filters())
+                for db_name in list(current):
+                    ds_filters = dict(current[db_name])
+                    ds_filters.pop("regulator_locus_tag", None)
+                    if ds_filters:
+                        current[db_name] = ds_filters
+                    else:
+                        current.pop(db_name)
+                dataset_filters.set(current)
+                _active_regulator_pair.set(None)
+                return
             data = _matrix_data()
             info = data["cross_dataset"].get((db_a, db_b), {})
             n_common = info.get("common_regulators", 0)
+            _open_modal_pair.set((db_a, db_b))
             ui.modal_show(
                 off_diagonal_cell_modal_ui(
                     display_names.get(db_a, db_a),
@@ -167,6 +215,20 @@ def select_datasets_workspace_server(
         @reactive.effect
         @reactive.event(input[apply_btn_id])
         def _on_apply_common_regulators() -> None:
+            """
+            Compute the regulator intersection for this pair, write it as a
+            ``regulator_locus_tag`` filter to all datasets, and highlight the cell.
+
+            Only acts when this pair's modal is the one currently open, preventing
+            all registered apply effects from firing on a single button click.
+
+            :trigger: ``input[modal_select_common_regulators]`` — fires when the
+                user clicks the "Select common regulators" button in the off-diagonal
+                modal.
+
+            """
+            if _open_modal_pair() != (db_a, db_b):
+                return
             reg_sets = {}
             filters = dataset_filters()
             for db_name in (db_a, db_b):
@@ -188,16 +250,34 @@ def select_datasets_workspace_server(
                 ui.modal_remove()
                 return
             current = dict(dataset_filters())
-            for db_name in _active_datasets():
+            pair_display = (
+                display_names.get(db_a, db_a),
+                display_names.get(db_b, db_b),
+            )
+            for db_name in vdb.get_datasets():
                 ds_filters = dict(current.get(db_name, {}))
                 ds_filters.pop("regulator_locus_tag", None)
                 ds_filters["regulator_locus_tag"] = {
                     "type": "categorical",
                     "value": common,
+                    "from_pair": pair_display,
                 }
                 current[db_name] = ds_filters
             dataset_filters.set(current)
+            _active_regulator_pair.set((db_a, db_b))
+            _open_modal_pair.set(None)
             ui.modal_remove()
+
+    # Tracks the (db_a, db_b) pair whose intersection is the current regulator filter.
+    # Used to highlight that cell in the matrix. None when no pairwise filter is active.
+    _active_regulator_pair: reactive.Value[tuple[str, str] | None] = reactive.value(
+        None
+    )
+
+    # Tracks which pair's off-diagonal modal is currently open.
+    # All _on_apply_common_regulators effects share the same button ID, so this
+    # guards against every registered effect firing on a single Apply click.
+    _open_modal_pair: reactive.Value[tuple[str, str] | None] = reactive.value(None)
 
     # Track which cell effects have already been registered to avoid duplicates
     # when active_datasets changes but some datasets remain.
@@ -205,6 +285,15 @@ def select_datasets_workspace_server(
 
     @reactive.effect
     def _register_cell_effects() -> None:
+        """
+        Register click effects for any newly active dataset cells that have not yet been
+        registered, avoiding duplicate effect registration.
+
+        :trigger: ``_active_datasets`` — re-runs whenever the active dataset list
+            changes so that new diagonal and off-diagonal cell effects are created
+            for any newly added datasets.
+
+        """
         active = _active_datasets()
         for db_name in active:
             if db_name not in _registered_effects:
@@ -216,6 +305,23 @@ def select_datasets_workspace_server(
                 if pair_id not in _registered_effects:
                     _make_off_diagonal_effect(db_a, db_b)
                     _registered_effects.add(pair_id)
+
+    @reactive.effect
+    def _clear_pair_when_filter_removed() -> None:
+        """
+        Clear the highlighted cell pair when no ``regulator_locus_tag`` filter remains
+        in ``dataset_filters``.
+
+        :trigger: ``dataset_filters`` — re-runs on every filter change; clears
+            ``_active_regulator_pair`` once the regulator filter has been removed.
+
+        """
+        filters = dataset_filters()
+        has_reg_filter = any(
+            "regulator_locus_tag" in (v or {}) for v in filters.values()
+        )
+        if not has_reg_filter:
+            _active_regulator_pair.set(None)
 
     @render.ui
     def matrix_content() -> ui.Tag:
@@ -247,42 +353,31 @@ def select_datasets_workspace_server(
         cross_dataset = data["cross_dataset"]
 
         # --- header row ---
-        header_cells = [ui.tags.th({"class": "matrix-row-header"}, "Dataset")]
+        header_cells = [matrix_header_cell("Dataset", row=True)]
         for db_name in active:
-            label = display_names.get(db_name, db_name)
-            header_cells.append(
-                ui.tags.th(
-                    {"class": "matrix-col-header"},
-                    ui.div({"class": "matrix-header-name"}, label),
-                )
-            )
+            header_cells.append(matrix_header_cell(display_names.get(db_name, db_name)))
 
         # --- body rows ---
         body_rows: list[ui.Tag] = []
         for row_i, db_row in enumerate(active):
-            cells: list[ui.Tag] = [
-                ui.tags.td(
-                    {"class": "matrix-row-label"}, display_names.get(db_row, db_row)
-                )
-            ]
+            cells: list[ui.Tag] = [matrix_row_label(display_names.get(db_row, db_row))]
 
             for col_i, db_col in enumerate(active):
                 if col_i < row_i:
                     # lower triangle — empty
-                    cells.append(ui.tags.td({"class": "matrix-cell-empty"}, ""))
+                    cells.append(matrix_cell("empty"))
                     continue
 
                 if col_i == row_i:
                     # diagonal — regulator count + sample count
                     info = diagonal.get(db_row, {})
                     cells.append(
-                        ui.tags.td(
-                            {"class": "matrix-cell-diagonal"},
-                            ui.input_action_button(
+                        matrix_cell(
+                            "diagonal",
+                            matrix_cell_button(
                                 f"diag_{db_row}",
                                 f"{info.get('regulators', 0):,} regulators / "
                                 f"{info.get('samples', 0):,} samples",
-                                class_="matrix-cell-button",
                             ),
                         )
                     )
@@ -290,25 +385,27 @@ def select_datasets_workspace_server(
                     # upper triangle — common regulators only
                     key = (db_row, db_col)
                     info = cross_dataset.get(key, {})
+                    is_active = _active_regulator_pair() == (db_row, db_col)
                     cells.append(
-                        ui.tags.td(
-                            {"class": "matrix-cell-interactive"},
-                            ui.input_action_button(
+                        matrix_cell(
+                            "interactive",
+                            matrix_cell_button(
                                 f"offdiag_{db_row}__{db_col}",
                                 f"{info.get('common_regulators', 0):,} "
                                 "common regulators",
-                                class_="matrix-cell-button",
+                                tooltip=(
+                                    "Click to remove the regulator filter"
+                                    if is_active
+                                    else None
+                                ),
                             ),
+                            active=is_active,
                         )
                     )
 
             body_rows.append(ui.tags.tr(*cells))
 
-        return ui.tags.table(
-            {"class": "matrix-summary-table"},
-            ui.tags.thead(ui.tags.tr(*header_cells)),
-            ui.tags.tbody(*body_rows),
-        )
+        return matrix_table(ui.tags.tr(*header_cells), *body_rows)
 
 
 __all__ = ["select_datasets_workspace_server"]

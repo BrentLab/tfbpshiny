@@ -9,7 +9,7 @@ from typing import Any
 from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
 
-from tfbpshiny.components import sidebar_section, sidebar_section_title
+from tfbpshiny.components import sidebar_section
 
 
 @module.server
@@ -76,7 +76,7 @@ def binding_sidebar_server(
 
         return ui.div(
             sidebar_section(
-                sidebar_section_title("Column"),
+                "Column",
                 ui.input_radio_buttons(
                     "col_preference",
                     label=None,
@@ -86,7 +86,7 @@ def binding_sidebar_server(
                 ),
             ),
             sidebar_section(
-                sidebar_section_title("Correlation"),
+                "Correlation",
                 ui.input_radio_buttons(
                     "corr_type",
                     label=None,

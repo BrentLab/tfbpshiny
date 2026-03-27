@@ -225,18 +225,21 @@ def binding_workspace_server(
             if not df.empty:
                 all_regs |= set(df["regulator_locus_tag"].dropna().unique())
 
-        regs = sorted(all_regs)
-        if not regs:
+        if not all_regs:
             return ui.span()
-        choices = {r: sym_map.get(r, r) or r for r in regs}
+        choices = {
+            r: f"{sym} ({r})" if (sym := sym_map.get(r) or "") else r
+            for r in sorted(all_regs)
+        }
+        choices = dict(sorted(choices.items(), key=lambda kv: kv[1].lower()))
 
         try:
             current = str(input.selected_regulator())
         except Exception:
             current = ""
-        default = current if current in choices else regs[0]
+        default = current if current in choices else next(iter(choices))
 
-        return ui.input_select(
+        return ui.input_selectize(
             "selected_regulator",
             "Regulator",
             choices=choices,
@@ -386,7 +389,7 @@ def binding_workspace_server(
                 ui.p(
                     f"{reg} was not found in: {names}. "
                     "Pairs involving these datasets are omitted.",
-                    style="color: gray; font-style: italic; margin: 0.5rem 0;",
+                    style="color: gray; margin: 0.5rem 0;",
                 )
             )
 

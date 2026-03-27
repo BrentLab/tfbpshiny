@@ -9,7 +9,7 @@ from typing import Any
 from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
 
-from tfbpshiny.components import sidebar_section, sidebar_section_title
+from tfbpshiny.components import sidebar_section
 from tfbpshiny.modules.comparison.queries import (
     DEFAULT_EFFECT_THRESHOLD,
     DEFAULT_PVALUE_THRESHOLD,
@@ -119,7 +119,7 @@ def comparison_sidebar_server(
         return ui.div(
             # DTO section — no controls
             sidebar_section(
-                sidebar_section_title("Dual Threshold Optimization"),
+                "Dual Threshold Optimization",
                 ui.p(
                     {"class": "text-muted", "style": "font-size:0.85em;"},
                     "DTO results are pre-computed; no parameters to set.",
@@ -128,7 +128,7 @@ def comparison_sidebar_server(
             ui.hr(),
             # Top-N section
             sidebar_section(
-                sidebar_section_title("Top N by Binding"),
+                "Top N by Binding",
                 ui.input_numeric(
                     "top_n",
                     "Top N",
@@ -137,7 +137,7 @@ def comparison_sidebar_server(
                     max=500,
                     step=5,
                 ),
-                sidebar_section_title("Responsive threshold"),
+                ui.div({"class": "sidebar-section-title"}, "Responsive threshold"),
                 ui.input_slider(
                     "effect_threshold",
                     "Min |effect|",
@@ -154,7 +154,7 @@ def comparison_sidebar_server(
                     value=pvalue_threshold(),
                     step=0.001,
                 ),
-                sidebar_section_title("Facet by"),
+                ui.div({"class": "sidebar-section-title"}, "Facet by"),
                 ui.input_radio_buttons(
                     "facet_by",
                     label=None,
