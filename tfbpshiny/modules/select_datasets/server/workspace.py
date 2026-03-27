@@ -9,9 +9,11 @@ from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
 
 from tfbpshiny.modules.select_datasets.queries import (
+    regulator_breakdown_query,
     regulator_locus_tags_query,
     sample_count_query,
 )
+from tfbpshiny.modules.select_datasets.server.sidebar import HIDDEN_FILTER_FIELDS
 from tfbpshiny.modules.select_datasets.ui import (
     diagonal_cell_modal_ui,
     off_diagonal_cell_modal_ui,
@@ -97,13 +99,51 @@ def select_datasets_workspace_server(
         return {"diagonal": diagonal, "cross_dataset": cross_dataset}
 
     def _make_diagonal_effect(db_name: str) -> None:
-        """Register a per-dataset click effect for a diagonal cell button."""
+        """
+        Create the modal and contents on click of a diagonal cell.
+
+        The modal text will describe whether there is a 1-1 correspondence between
+        regulators and samples. If there are not, then it will list the metadata columns
+        that differentiate samples with the same regulator.
+
+        """
         btn_id = f"diag_{db_name}"
 
         @reactive.effect
         @reactive.event(input[btn_id])
         def _on_click() -> None:
-            ui.modal_show(diagonal_cell_modal_ui())
+            filters = dataset_filters().get(db_name)
+
+            all_cols = vdb.get_fields(f"{db_name}_meta")
+            # TODO: this is a good use case for the field `role` experimental
+            # condition -- only use experimental condition fields and remove
+            # any hidden filter fields
+            remove_cols = (
+                {"sample_id"}
+                | {c for c in all_cols if c.lower().startswith("regulator")}
+                | HIDDEN_FILTER_FIELDS.get("*", set())
+                | HIDDEN_FILTER_FIELDS.get(db_name, set())
+            )
+            candidate_cols = [c for c in all_cols if c not in remove_cols]
+
+            sql, params = regulator_breakdown_query(db_name, candidate_cols, filters)
+            row = vdb.query(sql, **params).iloc[0]
+            n_multi = int(row["n_multi"])
+
+            if n_multi == 0:
+                multi_regulator_sample_breakdown: dict = {"uniform": True}
+            else:
+                diff_cols = [c for c in candidate_cols if row[c] > 0]
+                multi_regulator_sample_breakdown = {
+                    "uniform": False,
+                    "n_multi": n_multi,
+                    "differentiating_columns": diff_cols,
+                }
+
+            display_name = display_names.get(db_name, db_name)
+            ui.modal_show(
+                diagonal_cell_modal_ui(display_name, multi_regulator_sample_breakdown)
+            )
 
     def _make_off_diagonal_effect(db_a: str, db_b: str) -> None:
         """Register per-pair click and modal-action effects for an off-diagonal cell."""

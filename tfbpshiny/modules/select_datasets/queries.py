@@ -130,9 +130,65 @@ def regulator_locus_tags_query(
     )
 
 
+def regulator_breakdown_query(
+    db_name: str,
+    candidate_cols: list[str],
+    filters: dict[str, Any] | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """
+    Return ``(sql, params)`` for a single query that counts multi-sample regulators and
+    distinct values per candidate column in one pass.
+
+    The result is a single row with:
+
+    - ``n_multi`` — number of regulators that appear in more than one sample
+    - One column per entry in ``candidate_cols`` — the number of distinct
+      values for that column across multi-sample regulators only
+
+    If ``n_multi`` is 0 every regulator maps to exactly one sample (uniform).
+    Otherwise, candidate columns where the count is > 1 are the differentiating
+    columns.
+
+    :param db_name: Dataset name.
+    :param candidate_cols: Columns to check, pre-filtered to exclude identity
+        and hidden fields.
+    :param filters: Active filters for this dataset.
+    :return: ``(sql_string, params_dict)``.
+
+    """
+    params: dict[str, Any] = {}
+    where = _build_where(filters, params)
+    # per_reg: for each multi-sample regulator, count distinct values per column
+    per_reg_exprs = ", ".join(f'COUNT(DISTINCT "{c}") AS "{c}"' for c in candidate_cols)
+    # agg: count how many regulators show internal variation (per-regulator distinct > 1)
+    agg_exprs = ", ".join(
+        f'COUNT(*) FILTER (WHERE "{c}" > 1) AS "{c}"' for c in candidate_cols
+    )
+    sql = (
+        f"WITH multi AS ("
+        f"  SELECT regulator_locus_tag"
+        f"  FROM {db_name}_meta{where}"
+        f"  GROUP BY regulator_locus_tag"
+        f"  HAVING COUNT(*) > 1"
+        f"), per_reg AS ("
+        f"  SELECT regulator_locus_tag"
+        + (f", {per_reg_exprs}" if per_reg_exprs else "")
+        + f"  FROM {db_name}_meta{where}"
+        + (" AND" if where else " WHERE")
+        + f" regulator_locus_tag IN (SELECT regulator_locus_tag FROM multi)"
+        f"  GROUP BY regulator_locus_tag"
+        f") "
+        f"SELECT COUNT(*) AS n_multi"
+        + (f", {agg_exprs}" if agg_exprs else "")
+        + f" FROM per_reg"
+    )
+    return sql, params
+
+
 __all__ = [
     "FIELD_TYPE_OVERRIDES",
     "metadata_query",
     "sample_count_query",
     "regulator_locus_tags_query",
+    "regulator_breakdown_query",
 ]

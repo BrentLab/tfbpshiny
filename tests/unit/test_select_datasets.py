@@ -3,6 +3,7 @@
 from tfbpshiny.modules.select_datasets.queries import (
     _build_where,
     metadata_query,
+    regulator_breakdown_query,
     regulator_locus_tags_query,
     sample_count_query,
 )
@@ -37,7 +38,7 @@ def test_build_where_categorical():
     where = _build_where(
         {"strain": {"type": "categorical", "value": ["BY4741"]}}, params
     )
-    assert "strain IN" in where
+    assert '"strain" IN' in where
     assert "BY4741" in params.values()
 
 
@@ -89,3 +90,42 @@ def test_regulator_locus_tags_query():
     sql, params = regulator_locus_tags_query("harbison")
     assert "DISTINCT regulator_locus_tag" in sql
     assert params == {}
+
+
+# --- regulator_breakdown_query ---
+
+
+def test_regulator_breakdown_query_no_filters_no_cols():
+    sql, params = regulator_breakdown_query("harbison", [])
+    assert "n_multi" in sql
+    assert "harbison_meta" in sql
+    assert "HAVING COUNT(*) > 1" in sql
+    assert params == {}
+
+
+def test_regulator_breakdown_query_candidate_cols_in_select():
+    sql, params = regulator_breakdown_query(
+        "harbison", ["Carbon source", "Temperature"]
+    )
+    assert 'COUNT(DISTINCT "Carbon source")' in sql
+    assert 'COUNT(DISTINCT "Temperature")' in sql
+    assert params == {}
+
+
+def test_regulator_breakdown_query_with_filters():
+    sql, params = regulator_breakdown_query(
+        "harbison",
+        ["Carbon source"],
+        {"strain": {"type": "categorical", "value": ["BY4741"]}},
+    )
+    assert "BY4741" in params.values()
+    assert 'COUNT(DISTINCT "Carbon source")' in sql
+    # filters produce WHERE; the regulator IN clause must use AND, not a second WHERE
+    assert "AND regulator_locus_tag IN" in sql
+    assert sql.count("WHERE") == 3  # filters appear in both multi and per_reg CTEs
+
+
+def test_regulator_breakdown_query_no_filters_uses_where():
+    sql, params = regulator_breakdown_query("harbison", ["Carbon source"])
+    # no filters — regulator IN clause must open with WHERE, not AND
+    assert "WHERE regulator_locus_tag IN" in sql
