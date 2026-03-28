@@ -175,14 +175,34 @@ def regulator_breakdown_query(
         + (f", {per_reg_exprs}" if per_reg_exprs else "")
         + f"  FROM {db_name}_meta{where}"
         + (" AND" if where else " WHERE")
-        + f" regulator_locus_tag IN (SELECT regulator_locus_tag FROM multi)"
-        f"  GROUP BY regulator_locus_tag"
-        f") "
-        f"SELECT COUNT(*) AS n_multi"
+        + " regulator_locus_tag IN (SELECT regulator_locus_tag FROM multi)"
+        "  GROUP BY regulator_locus_tag"
+        ") "
+        "SELECT COUNT(*) AS n_multi"
         + (f", {agg_exprs}" if agg_exprs else "")
-        + f" FROM per_reg"
+        + " FROM per_reg"
     )
     return sql, params
+
+
+def regulator_display_labels_query(db_name: str) -> tuple[str, dict]:
+    """
+    Return ``(sql, params)`` for fetching distinct regulator locus tags and symbols.
+
+    Used to build the ``{locus_tag: "SYMBOL (LOCUS_TAG)"}`` display map for the
+    Regulator selectize in the filter modal.
+
+    :param db_name: Dataset name.
+    :return: ``(sql_string, params_dict)`` — rows have columns
+        ``regulator_locus_tag`` and ``regulator_symbol``.
+
+    """
+    return (
+        f"SELECT DISTINCT regulator_locus_tag, regulator_symbol"
+        f" FROM {db_name}_meta"
+        f" ORDER BY regulator_locus_tag",
+        {},
+    )
 
 
 __all__ = [
@@ -191,4 +211,5 @@ __all__ = [
     "sample_count_query",
     "regulator_locus_tags_query",
     "regulator_breakdown_query",
+    "regulator_display_labels_query",
 ]

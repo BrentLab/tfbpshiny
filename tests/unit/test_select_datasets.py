@@ -4,6 +4,7 @@ from tfbpshiny.modules.select_datasets.queries import (
     _build_where,
     metadata_query,
     regulator_breakdown_query,
+    regulator_display_labels_query,
     regulator_locus_tags_query,
     sample_count_query,
 )
@@ -89,6 +90,14 @@ def test_sample_count_query_with_regulators():
 def test_regulator_locus_tags_query():
     sql, params = regulator_locus_tags_query("harbison")
     assert "DISTINCT regulator_locus_tag" in sql
+    assert params == {}
+
+
+def test_regulator_display_labels_query():
+    sql, params = regulator_display_labels_query("harbison")
+    assert "regulator_locus_tag" in sql
+    assert "regulator_symbol" in sql
+    assert "harbison_meta" in sql
     assert params == {}
 
 

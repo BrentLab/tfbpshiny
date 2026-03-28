@@ -54,7 +54,7 @@ CSS variable reference (from ``app.css`` ``:root``)
 from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any
+from typing import Any, Literal
 
 from shiny import ui
 
@@ -100,6 +100,13 @@ def sidebar_shell(
 
     CSS: ``.context-sidebar``, ``.sidebar-header``, ``.sidebar-body``,
     ``.sidebar-footer``
+
+    .. note::
+        The Select Datasets sidebar uses ``context-sidebar selection-sidebar``
+        and ``sidebar-header-row`` CSS modifiers that are not factored into
+        component functions here. Those classes appear only once, in
+        ``select_datasets/server/sidebar.py``, and carry collapsed-state
+        conditional logic that makes a generic factory impractical.
     """
     children: list[Any] = [
         ui.div({"class": "sidebar-header"}, header),
@@ -148,24 +155,21 @@ def sidebar_subtitle(text: str) -> ui.Tag:
     return ui.div({"class": "subtitle"}, text)
 
 
-def sidebar_section_title(text: str) -> ui.Tag:
+def sidebar_section(title: str, *children: Any) -> ui.Tag:
     """
-    Label for a named group of controls within a sidebar section.
+    Wrapper div that groups related sidebar controls under a labelled heading.
 
-    CSS: ``.sidebar-section-title``
+    CSS: ``.sidebar-section``, ``.sidebar-section-title``
 
-    """
-    return ui.div({"class": "sidebar-section-title"}, text)
-
-
-def sidebar_section(*children: Any) -> ui.Tag:
-    """
-    Wrapper div that groups related sidebar controls with consistent spacing.
-
-    CSS: ``.sidebar-section``
+    :param title: Short label rendered above the controls (e.g. ``"Column"``).
+    :param children: One or more Shiny input elements placed below the title.
 
     """
-    return ui.div({"class": "sidebar-section"}, *children)
+    return ui.div(
+        {"class": "sidebar-section"},
+        ui.div({"class": "sidebar-section-title"}, title),
+        *children,
+    )
 
 
 def group_header(text: str) -> ui.Tag:
@@ -371,20 +375,117 @@ def modal_section(*cards: ui.Tag) -> ui.Tag:
 # ---------------------------------------------------------------------------
 
 
-def matrix_cell_button(id: str, label: str) -> ui.Tag:
+def matrix_cell_button(id: str, label: str, *, tooltip: str | None = None) -> ui.Tag:
     """
-    Full-width, borderless button that fills a matrix table cell.
+    Full-width, borderless Shiny action button that fills a matrix table cell.
 
     CSS: ``.matrix-cell-button``
 
-    These are plain ``<button>`` tags rather than Shiny action buttons because
-    they live inside a ``@render.ui`` that rebuilds the entire matrix; each
-    click is routed through a single observer via a JavaScript onclick.
+    :param id: Shiny input ID for the button (e.g. ``"diag_harbison"``).
+    :param label: Text displayed inside the button.
+    :param tooltip: When provided, sets the native ``title`` attribute so browsers
+        show a hover tooltip.
 
     """
-    return ui.tags.button(
-        {"class": "matrix-cell-button", "id": id},
-        label,
+    attrs: dict[str, str] = {"class": "matrix-cell-button"}
+    if tooltip is not None:
+        attrs["title"] = tooltip
+    return ui.input_action_button(id, label, **attrs)
+
+
+def matrix_header_cell(label: str, *, row: bool = False) -> ui.Tag:
+    """
+    Header cell (``<th>``) for the intersection matrix.
+
+    CSS:
+
+    - ``row=False`` (default) — column header: ``.matrix-col-header``,
+      ``.matrix-header-name``. Used for each dataset column in the top row.
+    - ``row=True`` — row header: ``.matrix-row-header``. Used for the first
+      ``<th>`` in the header row (typically labelled ``"Dataset"``).
+
+    :param label: Text shown in the header cell.
+    :param row: When ``True``, renders as a row header rather than a column header.
+
+    """
+    if row:
+        return ui.tags.th({"class": "matrix-row-header"}, label)
+    return ui.tags.th(
+        {"class": "matrix-col-header"},
+        ui.div({"class": "matrix-header-name"}, label),
+    )
+
+
+def matrix_row_label(label: str) -> ui.Tag:
+    """
+    Row label cell (``<td>``) showing the dataset name at the start of each row.
+
+    CSS: ``.matrix-row-label``
+
+    :param label: Dataset display name.
+
+    """
+    return ui.tags.td({"class": "matrix-row-label"}, label)
+
+
+def matrix_cell(
+    kind: Literal["empty", "diagonal", "interactive"],
+    button: ui.Tag | None = None,
+    *,
+    active: bool = False,
+) -> ui.Tag:
+    """
+    Data cell (``<td>``) in the intersection matrix.
+
+    CSS by ``kind``:
+
+    - ``"empty"`` — lower-triangle placeholder: ``.matrix-cell-empty``.
+      No button; ``button`` argument is ignored.
+    - ``"diagonal"`` — on-diagonal cell showing regulator/sample counts for one
+      dataset: ``.matrix-cell-diagonal``. Wraps a ``matrix_cell_button``.
+    - ``"interactive"`` — upper-triangle cell showing the common-regulator count
+      for a dataset pair: ``.matrix-cell-interactive``. Wraps a
+      ``matrix_cell_button``. When ``active=True`` also adds
+      ``.matrix-cell-active`` to highlight the pair whose intersection is the
+      current regulator filter.
+
+    :param kind: One of ``"empty"``, ``"diagonal"``, or ``"interactive"``.
+    :param button: A ``matrix_cell_button`` element. Required for ``"diagonal"``
+        and ``"interactive"``; ignored for ``"empty"``.
+    :param active: Only relevant for ``kind="interactive"``. Adds
+        ``.matrix-cell-active`` when ``True``.
+
+    """
+    if kind == "empty":
+        return ui.tags.td({"class": "matrix-cell-empty"}, "")
+    if kind == "diagonal":
+        return ui.tags.td({"class": "matrix-cell-diagonal"}, button)
+    # interactive
+    cls = (
+        "matrix-cell-interactive matrix-cell-active"
+        if active
+        else "matrix-cell-interactive"
+    )
+    return ui.tags.td({"class": cls}, button)
+
+
+def matrix_table(header_row: ui.Tag, *body_rows: ui.Tag) -> ui.Tag:
+    """
+    Full intersection matrix ``<table>``.
+
+    CSS: ``.matrix-summary-table``
+
+    :param header_row: A ``<tr>`` built from ``matrix_row_header`` and
+        ``matrix_col_header`` cells.
+    :param body_rows: One ``<tr>`` per active dataset, built from
+        ``matrix_row_label``, ``matrix_cell_empty``, ``matrix_cell_diagonal``,
+        and ``matrix_cell_interactive`` cells.
+
+    """
+    return ui.tags.table(
+        {"class": "matrix-summary-table"},
+        ui.tags.thead(header_row),
+        ui.tags.tbody(*body_rows),
     )
 
 
@@ -395,6 +496,7 @@ __all__ = [
     # sidebar typography
     "sidebar_heading",
     "sidebar_subtitle",
+    "sidebar_section",
     "group_header",
     "sidebar_text",
     # workspace typography
@@ -414,4 +516,8 @@ __all__ = [
     "modal_section",
     # matrix
     "matrix_cell_button",
+    "matrix_header_cell",
+    "matrix_row_label",
+    "matrix_cell",
+    "matrix_table",
 ]

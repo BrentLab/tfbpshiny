@@ -146,6 +146,7 @@ def dataset_filter_modal_ui(
     display_name: str | None = None,
     common_field_levels: dict[str, list[str]] | None = None,
     hidden_fields: set[str] | None = None,
+    regulator_display_labels: dict[str, str] | None = None,
 ) -> ui.Tag:
     """
     Build the filter modal for a given dataset from live metadata.
@@ -166,6 +167,9 @@ def dataset_filter_modal_ui(
     :param common_field_levels: For common categorical fields, the union of factor
         levels across all active datasets. Used to populate the selectize choices
         so that valid values from other datasets remain selectable.
+    :param regulator_display_labels: Maps ``locus_tag`` to ``"SYMBOL (LOCUS_TAG)"``
+        display strings. When provided, a Regulator card is prepended to the Common
+        Characteristics column with a combined searchable selectize.
 
     """
     saved = saved_filters or {}
@@ -198,8 +202,87 @@ def dataset_filter_modal_ui(
         else:
             specific_cards.append(card)
 
+    # --- regulator card (prepended to common column) ---
+    regulator_card: list[ui.Tag] = []
+    if regulator_display_labels is not None:
+        saved_reg = saved.get("regulator_locus_tag", {})
+        selected_reg = saved_reg.get("value", []) if saved_reg else []
+        from_pair: tuple[str, str] | None = (
+            saved_reg.get("from_pair") if saved_reg else None
+        )
+        apply_to_all_reg = saved_reg.get("apply_to_all", True) if saved_reg else True
+
+        if from_pair:
+            # Pairwise regulator filter is active: restrict choices to the intersection
+            # of this dataset's regulators with the active filter values; show a note.
+            # The selectize starts empty — the pairwise filter is implicit context,
+            # not a pre-selection. The user may optionally narrow further by picking
+            # from the available restricted choices.
+            restricted_choices = {
+                tag: label
+                for tag, label in regulator_display_labels.items()
+                if tag in selected_reg
+            }
+            regulator_card = [
+                ui.div(
+                    {"class": "filter-option-card"},
+                    ui.div(
+                        {"class": "filter-option-header"},
+                        ui.span({"class": "filter-option-title"}, "Regulator"),
+                    ),
+                    ui.p(
+                        {
+                            "class": "text-muted",
+                            "style": "font-size:0.8rem; margin-bottom:6px;",
+                        },
+                        f"Regulators are limited to the {len(selected_reg):,} common "
+                        f"regulators between {from_pair[0]} and {from_pair[1]}. "
+                        "To clear this, deselect the highlighted cell in the matrix.",
+                    ),
+                    ui.input_selectize(
+                        "filter_regulator_locus_tag",
+                        label=None,
+                        choices=restricted_choices,
+                        selected=[],
+                        multiple=True,
+                        options={"plugins": ["remove_button"]},
+                    ),
+                )
+            ]
+        else:
+            regulator_card = [
+                ui.div(
+                    {"class": "filter-option-card"},
+                    ui.div(
+                        {"class": "filter-option-header"},
+                        ui.span({"class": "filter-option-title"}, "Regulator"),
+                        ui.div(
+                            {"style": "display:flex; align-items:center; gap:0.5rem;"},
+                            ui.input_action_button(
+                                "modal_clear_regulator_filter",
+                                "Clear",
+                                class_="btn btn-sm btn-outline-secondary",
+                            ),
+                            ui.input_switch(
+                                "apply_to_all_regulator_locus_tag",
+                                "Apply to all datasets",
+                                value=apply_to_all_reg,
+                            ),
+                        ),
+                    ),
+                    ui.input_selectize(
+                        "filter_regulator_locus_tag",
+                        label=None,
+                        choices=regulator_display_labels,
+                        selected=selected_reg,
+                        multiple=True,
+                        options={"plugins": ["remove_button"]},
+                    ),
+                )
+            ]
+
     # --- common characteristics column ---
-    if common_cards:
+    if common_cards or regulator_card:
         common_col_children: list[ui.Tag] = [
             _section_heading("Common Characteristics"),
             ui.p(
@@ -209,6 +292,7 @@ def dataset_filter_modal_ui(
                 },
                 "These characteristics appear in every dataset.",
             ),
+            *regulator_card,
             *common_cards,
         ]
     else:
