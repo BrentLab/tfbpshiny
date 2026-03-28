@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import tempfile
 from logging import Logger
+from pathlib import Path
 from typing import Any
 
 import faicons as fa
@@ -11,8 +13,15 @@ import pandas as pd
 from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
 
+from tfbpshiny.components import export_download_button
+from tfbpshiny.modules.select_datasets.export import (
+    ExportDataset,
+    build_export_tarball,
+    get_dataset_description,
+)
 from tfbpshiny.modules.select_datasets.queries import (
     FIELD_TYPE_OVERRIDES,
+    full_data_query,
     metadata_query,
     regulator_display_labels_query,
 )
@@ -513,6 +522,61 @@ def select_datasets_sidebar_server(
         modal_open_for.set(None)
         modal_df.set(None)
 
+    @render.download(
+        filename=lambda: "tfbpshiny_export.tar.gz",
+        media_type="application/gzip",
+    )
+    def export_datasets():
+        """
+        Build and stream a .tar.gz archive of all active datasets.
+
+        :trigger: ``input.export_datasets`` — fires when the user clicks the
+            Export Selected Datasets download button.
+
+        """
+        all_active = _active_binding_datasets() + _active_perturbation_datasets()
+        if not all_active:
+            return
+
+        filters = dataset_filters()
+        export_list: list[ExportDataset] = []
+
+        for db_name in all_active:
+            ds_filters = filters.get(db_name)
+            display_name = dataset_dict[db_name].get("display_name", db_name)
+
+            try:
+                meta_sql, meta_params = metadata_query(db_name, ds_filters)
+                metadata_df = vdb.query(meta_sql, **meta_params)
+
+                data_sql, data_params = full_data_query(db_name, ds_filters)
+                data_df = vdb.query(data_sql, **data_params)
+            except Exception:
+                logger.exception("Failed to query dataset %s during export", db_name)
+                continue
+
+            description = get_dataset_description(vdb, db_name)
+
+            export_list.append(
+                ExportDataset(
+                    display_name=display_name,
+                    metadata_df=metadata_df,
+                    data_df=data_df,
+                    description=description,
+                )
+            )
+
+        if not export_list:
+            return
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tarball_path = build_export_tarball(
+                export_list, Path(tmp_dir) / "tfbpshiny_export.tar.gz"
+            )
+            with open(tarball_path, "rb") as f:
+                while chunk := f.read(65536):
+                    yield chunk
+
     @render.ui
     def sidebar_panel() -> ui.Tag:
         """
@@ -592,12 +656,10 @@ def select_datasets_sidebar_server(
                 )
             )
 
-        return ui.div(
-            {
-                "class": "context-sidebar selection-sidebar"
-                + (" collapsed" if is_collapsed else ""),
-                "id": "selection-sidebar",
-            },
+        has_active = bool(_active_binding_datasets() or _active_perturbation_datasets())
+        show_footer = has_active and not is_collapsed
+
+        children: list[Any] = [
             ui.div(
                 {"class": "sidebar-header"},
                 ui.div(
@@ -626,6 +688,23 @@ def select_datasets_sidebar_server(
                 {"class": "sidebar-body"},
                 ui.div({"class": "dataset-list"}, *section_tags),
             ),
+        ]
+
+        if show_footer:
+            children.append(
+                ui.div(
+                    {"class": "sidebar-footer"},
+                    export_download_button("export_datasets"),
+                )
+            )
+
+        return ui.div(
+            {
+                "class": "context-sidebar selection-sidebar"
+                + (" collapsed" if is_collapsed else ""),
+                "id": "selection-sidebar",
+            },
+            *children,
         )
 
     return _active_binding_datasets, _active_perturbation_datasets, dataset_filters

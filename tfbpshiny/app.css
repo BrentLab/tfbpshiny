@@ -414,6 +414,33 @@ body {
     color: #FFFFFF;
 }
 
+/* --- Export button (sidebar footer) ------------------------------------- */
+.selection-sidebar.collapsed .sidebar-footer {
+    display: none;
+}
+
+.btn-export-datasets {
+    width: 100%;
+    background: var(--color-primary);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: background var(--transition-fast);
+}
+
+.btn-export-datasets:hover {
+    background: var(--color-primary-dark);
+    color: #fff;
+}
+
 /* --- Dataset filter modal ----------------------------------------------- */
 .modal-section {
     display: flex;
