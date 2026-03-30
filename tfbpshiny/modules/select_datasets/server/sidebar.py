@@ -13,6 +13,7 @@ import pandas as pd
 from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
 
+from tfbpshiny import components
 from tfbpshiny.components import export_download_button
 from tfbpshiny.modules.select_datasets.export import (
     ExportDataset,
