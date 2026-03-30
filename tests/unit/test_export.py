@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import tarfile
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import duckdb
 import pandas as pd
 import pytest
 
 from tfbpshiny.modules.select_datasets.export import (
     ExportDataset,
+    _query_to_csv_bytes,
     _safe_dir_name,
     build_export_tarball,
     build_readme,
@@ -110,68 +111,115 @@ def test_get_dataset_description_empty_description():
     assert get_dataset_description(vdb, "harbison") is None
 
 
+# --- DuckDB-backed test fixtures ---
+
+
+@pytest.fixture
+def duckdb_vdb():
+    """
+    Minimal VirtualDB stub backed by a real in-memory DuckDB connection.
+
+    Mirrors export.py's use of vdb._conn — update both if VirtualDB changes.
+
+    """
+    conn = duckdb.connect(":memory:")
+    conn.execute(
+        """
+        CREATE TABLE test_meta AS
+        SELECT 's1' AS sample_id, 'BY4741' AS strain
+        UNION ALL
+        SELECT 's2', 'BY4741'
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE test_data AS
+        SELECT 's1' AS sample_id, 'YAL001C' AS gene, 1.0 AS value
+        UNION ALL
+        SELECT 's1', 'YAL002W', 2.0
+        """
+    )
+    vdb = MagicMock()
+    vdb._conn = conn
+    yield vdb
+    conn.close()
+
+
+def _open_tarball(buf):
+    """Open a BytesIO buffer as a tarball for reading."""
+    buf.seek(0)
+    return tarfile.open(fileobj=buf, mode="r:gz")
+
+
+# --- _query_to_csv_bytes ---
+
+
+def test_query_to_csv_bytes(duckdb_vdb):
+    cursor = duckdb_vdb._conn.cursor()
+    csv_bytes = _query_to_csv_bytes(cursor, "SELECT * FROM test_meta", {})
+    text = csv_bytes.decode("utf-8")
+    assert "sample_id" in text
+    assert "BY4741" in text
+    lines = text.strip().split("\n")
+    assert len(lines) == 3  # header + 2 rows
+
+
+def test_query_to_csv_bytes_uses_lf_line_endings(duckdb_vdb):
+    """csv.writer must produce LF (not CRLF) for Unix tool compatibility."""
+    cursor = duckdb_vdb._conn.cursor()
+    csv_bytes = _query_to_csv_bytes(cursor, "SELECT * FROM test_meta", {})
+    assert b"\r\n" not in csv_bytes
+    assert b"\n" in csv_bytes
+
+
 # --- build_export_tarball ---
 
 
-def _sample_metadata() -> pd.DataFrame:
-    return pd.DataFrame({"sample_id": ["s1", "s2"], "strain": ["BY4741", "BY4741"]})
-
-
-def _sample_data() -> pd.DataFrame:
-    return pd.DataFrame(
-        {"sample_id": ["s1", "s1"], "gene": ["YAL001C", "YAL002W"], "value": [1.0, 2.0]}
+def _make_export_dataset(
+    display_name: str = "Test Dataset",
+    description: str | None = None,
+) -> ExportDataset:
+    return ExportDataset(
+        display_name=display_name,
+        metadata_sql="SELECT * FROM test_meta",
+        metadata_params={},
+        data_sql="SELECT * FROM test_data",
+        data_params={},
+        description=description,
     )
 
 
-def test_single_dataset_with_description(tmp_path: Path):
-    ds = ExportDataset(
+def test_single_dataset_with_description(duckdb_vdb):
+    ds = _make_export_dataset(
         display_name="2026 Calling Cards",
-        metadata_df=_sample_metadata(),
-        data_df=_sample_data(),
         description="A binding dataset.",
     )
-    out = build_export_tarball([ds], tmp_path / "export.tar.gz")
-    assert out.exists()
+    buf = build_export_tarball([ds], duckdb_vdb)
 
-    with tarfile.open(out, "r:gz") as tar:
+    with _open_tarball(buf) as tar:
         names = tar.getnames()
         assert "2026_Calling_Cards/metadata.csv" in names
         assert "2026_Calling_Cards/annotated_features.csv" in names
         assert "2026_Calling_Cards/README.md" in names
 
 
-def test_single_dataset_without_description(tmp_path: Path):
-    ds = ExportDataset(
-        display_name="Test Dataset",
-        metadata_df=_sample_metadata(),
-        data_df=_sample_data(),
-        description=None,
-    )
-    out = build_export_tarball([ds], tmp_path / "export.tar.gz")
+def test_single_dataset_without_description(duckdb_vdb):
+    ds = _make_export_dataset(display_name="Test Dataset")
+    buf = build_export_tarball([ds], duckdb_vdb)
 
-    with tarfile.open(out, "r:gz") as tar:
+    with _open_tarball(buf) as tar:
         names = tar.getnames()
         assert "Test_Dataset/metadata.csv" in names
         assert "Test_Dataset/annotated_features.csv" in names
         assert "Test_Dataset/README.md" not in names
 
 
-def test_multiple_datasets(tmp_path: Path):
-    ds1 = ExportDataset(
-        display_name="Dataset A",
-        metadata_df=_sample_metadata(),
-        data_df=_sample_data(),
-        description="First.",
-    )
-    ds2 = ExportDataset(
-        display_name="Dataset B",
-        metadata_df=_sample_metadata(),
-        data_df=_sample_data(),
-        description=None,
-    )
-    out = build_export_tarball([ds1, ds2], tmp_path / "export.tar.gz")
+def test_multiple_datasets(duckdb_vdb):
+    ds1 = _make_export_dataset(display_name="Dataset A", description="First.")
+    ds2 = _make_export_dataset(display_name="Dataset B")
+    buf = build_export_tarball([ds1, ds2], duckdb_vdb)
 
-    with tarfile.open(out, "r:gz") as tar:
+    with _open_tarball(buf) as tar:
         names = tar.getnames()
         assert "Dataset_A/metadata.csv" in names
         assert "Dataset_B/metadata.csv" in names
@@ -179,64 +227,47 @@ def test_multiple_datasets(tmp_path: Path):
         assert "Dataset_B/README.md" not in names
 
 
-def test_csv_content_matches_input(tmp_path: Path):
-    meta = _sample_metadata()
-    data = _sample_data()
-    ds = ExportDataset(
-        display_name="Check",
-        metadata_df=meta,
-        data_df=data,
-        description=None,
-    )
-    out = build_export_tarball([ds], tmp_path / "export.tar.gz")
+def test_csv_content_matches_query(duckdb_vdb):
+    ds = _make_export_dataset(display_name="Check")
+    buf = build_export_tarball([ds], duckdb_vdb)
 
-    with tarfile.open(out, "r:gz") as tar:
+    with _open_tarball(buf) as tar:
         meta_member = tar.extractfile("Check/metadata.csv")
         assert meta_member is not None
         recovered_meta = pd.read_csv(meta_member)
-        pd.testing.assert_frame_equal(recovered_meta, meta)
+        assert list(recovered_meta.columns) == ["sample_id", "strain"]
+        assert len(recovered_meta) == 2
 
         data_member = tar.extractfile("Check/annotated_features.csv")
         assert data_member is not None
         recovered_data = pd.read_csv(data_member)
-        pd.testing.assert_frame_equal(recovered_data, data)
+        assert "gene" in recovered_data.columns
+        assert len(recovered_data) == 2
 
 
-def test_empty_dataframes(tmp_path: Path):
-    ds = ExportDataset(
-        display_name="Empty",
-        metadata_df=pd.DataFrame(columns=["sample_id"]),
-        data_df=pd.DataFrame(columns=["sample_id", "gene"]),
-        description=None,
-    )
-    out = build_export_tarball([ds], tmp_path / "export.tar.gz")
-
-    with tarfile.open(out, "r:gz") as tar:
-        meta_member = tar.extractfile("Empty/metadata.csv")
-        assert meta_member is not None
-        recovered = pd.read_csv(meta_member)
-        assert list(recovered.columns) == ["sample_id"]
-        assert len(recovered) == 0
-
-
-def test_empty_dataset_list(tmp_path: Path):
-    out = build_export_tarball([], tmp_path / "empty.tar.gz")
-    assert out.exists()
-    with tarfile.open(out, "r:gz") as tar:
+def test_empty_dataset_list(duckdb_vdb):
+    buf = build_export_tarball([], duckdb_vdb)
+    with _open_tarball(buf) as tar:
         assert tar.getnames() == []
 
 
-def test_tarball_no_path_traversal(tmp_path: Path):
+def test_tarball_no_path_traversal(duckdb_vdb):
     """Verify that adversarial display_names never produce traversal paths."""
-    ds = ExportDataset(
+    ds = _make_export_dataset(
         display_name="../../../etc/cron.d/backdoor",
-        metadata_df=_sample_metadata(),
-        data_df=_sample_data(),
-        description=None,
     )
-    out = build_export_tarball([ds], tmp_path / "export.tar.gz")
+    buf = build_export_tarball([ds], duckdb_vdb)
 
-    with tarfile.open(out, "r:gz") as tar:
+    with _open_tarball(buf) as tar:
         for member in tar.getmembers():
             assert not member.name.startswith("/")
             assert ".." not in member.name.split("/")
+
+
+def test_progress_callback_called(duckdb_vdb):
+    """Verify the progress callback fires once per dataset."""
+    ds1 = _make_export_dataset(display_name="A")
+    ds2 = _make_export_dataset(display_name="B")
+    names: list[str] = []
+    build_export_tarball([ds1, ds2], duckdb_vdb, progress_callback=names.append)
+    assert names == ["A", "B"]

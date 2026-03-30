@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+import csv
 import io
 import logging
 import re
 import tarfile
+from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
-from typing import TYPE_CHECKING
-
-import pandas as pd
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from duckdb import DuckDBPyConnection
     from labretriever import VirtualDB
 
 logger = logging.getLogger("shiny")
@@ -39,18 +39,19 @@ def _safe_dir_name(display_name: str) -> str:
 @dataclass(frozen=True)
 class ExportDataset:
     """
-    One dataset's worth of export data.
+    One dataset's export specification — SQL queries to execute, not materialised
+    DataFrames.
 
-    .. note::
-        ``frozen=True`` prevents attribute reassignment but does not prevent
-        in-place mutation of the contained DataFrames. Callers should treat
-        ``metadata_df`` and ``data_df`` as read-only.
+    Queries are executed lazily inside :func:`build_export_tarball` so that
+    only one dataset's data is in memory at a time.
 
     """
 
     display_name: str
-    metadata_df: pd.DataFrame
-    data_df: pd.DataFrame
+    metadata_sql: str
+    metadata_params: dict[str, Any]
+    data_sql: str
+    data_params: dict[str, Any]
     description: str | None = None
 
 
@@ -104,54 +105,127 @@ def get_dataset_description(vdb: VirtualDB, db_name: str) -> str | None:
         return config.description or None
     except Exception:
         logger.warning(
-            "Failed to retrieve DataCard description for %s (private API)", db_name
+            "Failed to retrieve DataCard description for %s (private API)",
+            db_name,
+            exc_info=True,
         )
         return None
 
 
-def build_export_tarball(datasets: list[ExportDataset], output_path: Path) -> Path:
+def _query_to_csv_bytes(
+    cursor: DuckDBPyConnection, sql: str, params: dict[str, Any]
+) -> bytes:
     """
-    Assemble a ``.tar.gz`` archive from a list of export datasets.
+    Execute a SQL query on a DuckDB cursor and return the result serialized as CSV bytes
+    with LF line endings.
+
+    Uses ``csv.writer`` instead of ``pd.DataFrame.to_csv`` to avoid pandas
+    serialization overhead.
+
+    .. todo:: Replace ``vdb._conn.cursor()`` access with public API (issue #213).
+
+    :param cursor: A DuckDB cursor (thread-safe for reads when each thread
+        holds its own cursor obtained via ``conn.cursor()``).
+    :param sql: SQL query string.
+    :param params: Bound parameter values.
+    :returns: UTF-8 encoded CSV bytes.
+
+    """
+    result = cursor.execute(sql, params) if params else cursor.execute(sql)
+    cols = [d[0] for d in result.description]
+    rows = result.fetchall()
+
+    buf = io.BytesIO()
+    wrapper = io.TextIOWrapper(buf, encoding="utf-8", newline="")
+    writer = csv.writer(wrapper, lineterminator="\n")
+    writer.writerow(cols)
+    writer.writerows(rows)
+    wrapper.flush()
+    wrapper.detach()
+    return buf.getvalue()
+
+
+def build_export_tarball(
+    datasets: list[ExportDataset],
+    vdb: VirtualDB,
+    progress_callback: Callable[[str], None] | None = None,
+) -> io.BytesIO:
+    """
+    Assemble a ``.tar.gz`` archive in memory from a list of export dataset
+    specifications.
 
     Each dataset becomes a subdirectory with a sanitized name (see
-    :func:`_safe_dir_name`).
-    The subdirectory contains ``metadata.csv``, ``annotated_features.csv``, and
-    optionally ``README.md`` (when the dataset has a description).
+    :func:`_safe_dir_name`).  SQL queries are executed one at a time via
+    :func:`_query_to_csv_bytes` so only one dataset's data is in memory at
+    once.
 
-    :param datasets: Datasets to include.
-    :param output_path: Path for the resulting ``.tar.gz`` file.
-    :returns: ``output_path``.
+    Uses ``tarfile`` pipe mode (``w|gz``) for streaming writes into an
+    in-memory ``BytesIO`` buffer — no temp files on disk.  The full buffer
+    is returned to the caller for chunked yielding.
+
+    A thread-safe DuckDB cursor is created via ``vdb._conn.cursor()`` so
+    this function can safely run in a worker thread while the main event
+    loop continues to use ``vdb._conn`` for reactive queries.
+
+    :param datasets: Dataset export specs (SQL queries, not DataFrames).
+    :param vdb: VirtualDB instance for executing queries.
+    :param progress_callback: Optional callable invoked with the display name
+        of each dataset after it has been written to the tarball.
+    :returns: ``BytesIO`` buffer positioned at the start, ready for reading.
 
     """
-    with tarfile.open(output_path, "w:gz") as tar:
-        for ds in datasets:
-            dir_name = _safe_dir_name(ds.display_name)
+    # Create a thread-local cursor so we don't race with the event loop's
+    # use of vdb._conn.  DuckDB cursors are safe for concurrent reads.
+    cursor = vdb._conn.cursor()
 
-            # metadata.csv
-            meta_buf = io.BytesIO()
-            ds.metadata_df.to_csv(meta_buf, index=False)
-            meta_buf.seek(0)
-            meta_info = tarfile.TarInfo(name=f"{dir_name}/metadata.csv")
-            meta_info.size = len(meta_buf.getvalue())
-            tar.addfile(meta_info, meta_buf)
+    out = io.BytesIO()
+    try:
+        with tarfile.open(mode="w|gz", fileobj=out) as tar:
+            for ds in datasets:
+                dir_name = _safe_dir_name(ds.display_name)
 
-            # annotated_features.csv
-            data_buf = io.BytesIO()
-            ds.data_df.to_csv(data_buf, index=False)
-            data_buf.seek(0)
-            data_info = tarfile.TarInfo(name=f"{dir_name}/annotated_features.csv")
-            data_info.size = len(data_buf.getvalue())
-            tar.addfile(data_info, data_buf)
+                # Query both files before writing either — if one fails,
+                # skip the entire dataset rather than leaving a partial
+                # directory.
+                try:
+                    meta_bytes = _query_to_csv_bytes(
+                        cursor, ds.metadata_sql, ds.metadata_params
+                    )
+                    data_bytes = _query_to_csv_bytes(
+                        cursor, ds.data_sql, ds.data_params
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to query dataset %s during export",
+                        ds.display_name,
+                    )
+                    continue
 
-            # README.md (optional)
-            if ds.description:
-                readme_content = build_readme(ds.display_name, ds.description)
-                readme_buf = io.BytesIO(readme_content.encode("utf-8"))
-                readme_info = tarfile.TarInfo(name=f"{dir_name}/README.md")
-                readme_info.size = len(readme_buf.getvalue())
-                tar.addfile(readme_info, readme_buf)
+                # metadata.csv
+                meta_info = tarfile.TarInfo(name=f"{dir_name}/metadata.csv")
+                meta_info.size = len(meta_bytes)
+                tar.addfile(meta_info, io.BytesIO(meta_bytes))
 
-    return output_path
+                # annotated_features.csv
+                data_info = tarfile.TarInfo(name=f"{dir_name}/annotated_features.csv")
+                data_info.size = len(data_bytes)
+                tar.addfile(data_info, io.BytesIO(data_bytes))
+
+                # README.md (optional)
+                if ds.description:
+                    readme_content = build_readme(ds.display_name, ds.description)
+                    readme_bytes = readme_content.encode("utf-8")
+                    readme_info = tarfile.TarInfo(name=f"{dir_name}/README.md")
+                    readme_info.size = len(readme_bytes)
+                    tar.addfile(readme_info, io.BytesIO(readme_bytes))
+
+                if progress_callback:
+                    progress_callback(ds.display_name)
+    finally:
+        cursor.close()
+
+    out.seek(0)
+    return out
 
 
 __all__ = [
@@ -160,4 +234,5 @@ __all__ = [
     "get_dataset_description",
     "build_export_tarball",
     "_safe_dir_name",
+    "_query_to_csv_bytes",
 ]
