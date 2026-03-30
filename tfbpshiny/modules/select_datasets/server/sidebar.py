@@ -88,14 +88,32 @@ def select_datasets_sidebar_server(
         if tags.get("data_type") in ["binding", "perturbation"]:
             dataset_dict[db_name] = tags
 
-    # list of (db_name, display_name) tuples for the binding and perturbation sections
-    binding_datasets: list[tuple[str, str]] = [
-        (db_name, tags.get("display_name", db_name))
+    # Build description lookup from DataCard configs (via VirtualDB internals).
+    # TODO: replace with a public VirtualDB method when one is available.
+    descriptions: dict[str, str] = {}
+    for db_name in dataset_dict:
+        try:
+            repo_id, config_name = vdb._db_name_map[db_name]
+            card = vdb._datacards.get(repo_id)
+            if card:
+                cfg = card.get_config(config_name)
+                if cfg and cfg.description:
+                    descriptions[db_name] = cfg.description
+        except (AttributeError, KeyError):
+            logger.warning(
+                f"Failed to fetch description for {db_name} from VirtualDB "
+                "datacard config"
+            )
+            descriptions[db_name] = "No description available."
+
+    # list of (db_name, display_name, description) tuples
+    binding_datasets: list[tuple[str, str, str]] = [
+        (db_name, tags.get("display_name", db_name), descriptions.get(db_name, ""))
         for db_name, tags in dataset_dict.items()
         if tags.get("data_type") == "binding"
     ]
-    perturbation_datasets: list[tuple[str, str]] = [
-        (db_name, tags.get("display_name", db_name))
+    perturbation_datasets: list[tuple[str, str, str]] = [
+        (db_name, tags.get("display_name", db_name), descriptions.get(db_name, ""))
         for db_name, tags in dataset_dict.items()
         if tags.get("data_type") == "perturbation"
     ]
@@ -120,7 +138,7 @@ def select_datasets_sidebar_server(
     # Per-dataset toggle state — persists so toggles restore correctly on re-render
     _toggle_state: dict[str, reactive.Value[bool]] = {
         db_name: reactive.value(False)
-        for db_name, _ in binding_datasets + perturbation_datasets
+        for db_name, _, _ in binding_datasets + perturbation_datasets
     }
 
     @reactive.effect
@@ -170,7 +188,7 @@ def select_datasets_sidebar_server(
     for db_name, tags in dataset_dict.items():
         _make_toggle_effect(db_name, tags.get("data_type", ""))
 
-    for _db_name, _ in binding_datasets + perturbation_datasets:
+    for _db_name, _, _ in binding_datasets + perturbation_datasets:
 
         def _make_filter_effect(db_name: str) -> None:
             @reactive.effect
@@ -270,7 +288,7 @@ def select_datasets_sidebar_server(
         db_name = modal_open_for()
         if db_name is not None:
             current = dict(dataset_filters())
-            all_db_names = [d for d, _ in binding_datasets + perturbation_datasets]
+            all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
             # clear common-field filters from every dataset
             for ds in all_db_names:
                 if ds in current:
@@ -303,7 +321,7 @@ def select_datasets_sidebar_server(
         db_name = modal_open_for()
         if db_name is None:
             return
-        all_db_names = [d for d, _ in binding_datasets + perturbation_datasets]
+        all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
         current = dict(dataset_filters())
         for ds in all_db_names:
             ds_filters = dict(current.get(ds, {}))
@@ -422,7 +440,7 @@ def select_datasets_sidebar_server(
         }
 
         current = dict(dataset_filters())
-        all_db_names = [d for d, _ in binding_datasets + perturbation_datasets]
+        all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
 
         # apply regulator filter (or clear it if empty)
         if reg_filter:
@@ -510,10 +528,13 @@ def select_datasets_sidebar_server(
             _toggle_state[db_name].set(True)
             current_b = list(_active_binding_datasets())
             current_p = list(_active_perturbation_datasets())
-            if db_name in [d for d, _ in binding_datasets] and db_name not in current_b:
+            if (
+                db_name in [d for d, _, _ in binding_datasets]
+                and db_name not in current_b
+            ):
                 _active_binding_datasets.set(current_b + [db_name])
             elif (
-                db_name in [d for d, _ in perturbation_datasets]
+                db_name in [d for d, _, _ in perturbation_datasets]
                 and db_name not in current_p
             ):
                 _active_perturbation_datasets.set(current_p + [db_name])
@@ -599,18 +620,23 @@ def select_datasets_sidebar_server(
             except Exception:
                 pass
 
-        def _dataset_row(db_name: str, label: str) -> ui.Tag:
+        def _dataset_row(db_name: str, label: str, description: str) -> ui.Tag:
             current_val = _toggle_state[db_name]()
             if is_collapsed:
                 return ui.div(
                     {"class": "dataset-row"},
                     ui.input_switch(_toggle_id(db_name), label=None, value=current_val),
                 )
+            label_span = ui.span({"class": "dataset-row-label sidebar-text"}, label)
+            if description:
+                label_span = components.tooltip(
+                    label_span, description, placement="right"
+                )
             return ui.div(
                 {"class": "dataset-row"},
                 ui.input_switch(
                     _toggle_id(db_name),
-                    label=ui.span({"class": "dataset-row-label sidebar-text"}, label),
+                    label=label_span,
                     value=current_val,
                 ),
                 ui.input_action_button(
@@ -623,8 +649,8 @@ def select_datasets_sidebar_server(
         section_tags: list[ui.Tag] = []
 
         visible_binding = [
-            (db_name, label)
-            for db_name, label in binding_datasets
+            (db_name, label, desc)
+            for db_name, label, desc in binding_datasets
             if not search_term or search_term in label.lower()
         ]
         if visible_binding:
@@ -632,12 +658,12 @@ def select_datasets_sidebar_server(
                 section_tags.append(
                     ui.div({"class": "group-header sidebar-text"}, "Binding")
                 )
-            for db_name, label in visible_binding:
-                section_tags.append(_dataset_row(db_name, label))
+            for db_name, label, desc in visible_binding:
+                section_tags.append(_dataset_row(db_name, label, desc))
 
         visible_perturbation = [
-            (db_name, label)
-            for db_name, label in perturbation_datasets
+            (db_name, label, desc)
+            for db_name, label, desc in perturbation_datasets
             if not search_term or search_term in label.lower()
         ]
         if visible_perturbation:
@@ -645,8 +671,8 @@ def select_datasets_sidebar_server(
                 section_tags.append(
                     ui.div({"class": "group-header sidebar-text"}, "Perturbation")
                 )
-            for db_name, label in visible_perturbation:
-                section_tags.append(_dataset_row(db_name, label))
+            for db_name, label, desc in visible_perturbation:
+                section_tags.append(_dataset_row(db_name, label, desc))
 
         if not section_tags:
             section_tags.append(
