@@ -15,7 +15,7 @@ def _nav_link(label: str, target_id: str) -> ui.Tag:
         label,
         href="#",
         onclick=f"document.getElementById('{target_id}').click(); return false;",
-        style="font-weight: bold;",
+        style="font-weight: bold; color: var(--color-nav);",
     )
 
 
