@@ -27,7 +27,7 @@ def _feature_card(
     image: str | None = None,
 ) -> ui.Tag:
     """
-    Feature card for the home page grid.
+    Feature card for the home page grid using Bootstrap card classes.
 
     :param title: Card heading (rendered as a nav link).
     :param target_id: Shiny input ID of the nav button to navigate to.
@@ -36,22 +36,34 @@ def _feature_card(
 
     """
     content = ui.div(
-        {"class": "home-card-content"},
-        ui.div({"class": "home-card-title"}, _nav_link(title, target_id)),
-        ui.div({"class": "home-card-text"}, description),
+        ui.div(
+            {"class": "fw-bold fs-5 mb-1"},
+            _nav_link(title, target_id),
+        ),
+        ui.div(description),
     )
     if image is not None:
         return ui.div(
-            {"class": "home-card"},
-            ui.img(src=image, alt=title),
-            content,
+            {"class": "card mb-3"},
+            ui.div(
+                {"class": "card-body d-flex align-items-center gap-4"},
+                ui.img(
+                    src=image,
+                    alt=title,
+                    style="width:100px; height:100px; object-fit:contain; flex-shrink:0;",
+                ),
+                content,
+            ),
         )
-    return ui.div({"class": "home-card"}, content)
+    return ui.div(
+        {"class": "card mb-3"},
+        ui.div({"class": "card-body"}, content),
+    )
 
 
 def home_ui() -> ui.Tag:
     return ui.div(
-        {"class": "home-content p-4"},
+        {"class": "p-4"},
         ui.div(
             {"class": "alert alert-warning", "role": "alert"},
             ui.strong("Under development: "),
@@ -71,7 +83,7 @@ def home_ui() -> ui.Tag:
             "The tabs above take you to pages for selecting and comparing " "datasets."
         ),
         ui.div(
-            {"class": "home-cards"},
+            {"class": "mt-3"},
             _feature_card(
                 "Dataset selection",
                 "selection",
