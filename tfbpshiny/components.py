@@ -34,20 +34,17 @@ CSS variable reference (from ``app.css`` ``:root``)
 --color-primary        #2C7A7B
 --color-primary-light  #E6FFFA
 --color-primary-dark   #1A5456
---color-accent         #38B2AC
---color-bg             #F7FAFC
---color-surface        #FFFFFF
 --color-border         #E2E8F0
 --color-text           #1A202C
---color-text-muted     #718096
---color-text-light     #A0AEC0
 --radius-sm            6px
 --radius-md            10px
---shadow-sm            0 1px 3px rgba(0,0,0,.08)
 --nav-height           52px
 --sidebar-width        380px
---sidebar-font-size    0.8125rem   (rescales all sidebar text at once)
+--font-size-label      0.875rem
 --transition-fast      150ms ease
+--color-nav            #722F37
+--color-nav-hover      #8B3A42
+--color-nav-active     #4A0E1A
 
 """
 
@@ -377,19 +374,26 @@ def filter_option_card(title: str, *controls: ui.Tag) -> ui.Tag:
     """
     Bordered card containing a single filter control (slider, selectize, switch).
 
-    CSS: ``.filter-option-card``, ``.filter-option-header``, ``.filter-option-title``
+    Uses Bootstrap ``.card`` / ``.card-body`` for structure. The title is rendered
+    as bold text in a flex header row; controls appear below it.
 
     :param title: Field name shown in bold at the top of the card.
     :param controls: One or more Shiny input elements placed below the header.
 
     """
     return ui.div(
-        {"class": "filter-option-card"},
+        {"class": "card"},
         ui.div(
-            {"class": "filter-option-header"},
-            ui.span({"class": "filter-option-title"}, title),
+            {"class": "card-body p-2"},
+            ui.div(
+                {
+                    "class": "d-flex align-items-center "
+                    "justify-content-between gap-2 mb-2"
+                },
+                ui.span({"class": "fw-bold small"}, title),
+            ),
+            *controls,
         ),
-        *controls,
     )
 
 
@@ -397,10 +401,10 @@ def modal_section(*cards: ui.Tag) -> ui.Tag:
     """
     Vertical stack of ``filter_option_card`` elements inside a modal column.
 
-    CSS: ``.modal-section``
+    Uses Bootstrap ``d-flex flex-column gap-2``.
 
     """
-    return ui.div({"class": "modal-section"}, *cards)
+    return ui.div({"class": "d-flex flex-column gap-2"}, *cards)
 
 
 # ---------------------------------------------------------------------------
