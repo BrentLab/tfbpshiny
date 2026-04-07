@@ -28,64 +28,6 @@ from tfbpshiny.modules.select_datasets.ui import (
 from tfbpshiny.utils.ratelimit import debounce
 
 
-def _compute_matrix(
-    active: list[str],
-    filters: dict[str, Any],
-    vdb: VirtualDB,
-) -> dict[str, Any]:
-    """
-    Run all DB queries for the intersection matrix and return the result dict.
-
-    Extracted from the server so it can be called from ``_matrix_data``
-    without duplicating query logic.
-
-    :param active: Ordered list of active dataset db_name strings.
-    :param filters: Current dataset filters keyed by db_name.
-    :param vdb: VirtualDB instance for running queries.
-    :returns: Dict with keys ``"diagonal"`` and ``"cross_dataset"``.
-
-    """
-    regulator_sets: dict[str, set[str]] = {}
-    diagonal: dict[str, dict[str, int]] = {}
-
-    for db_name in active:
-        db_filters = filters.get(db_name)
-
-        sql, params = regulator_locus_tags_query(db_name, db_filters)
-        reg_df = vdb.query(sql, **params)
-        regulators = set(reg_df["regulator_locus_tag"].dropna().astype(str))
-        regulator_sets[db_name] = regulators
-
-        sql, params = sample_count_query(db_name, db_filters)
-        n_samples = int(vdb.query(sql, **params).iloc[0, 0])
-
-        diagonal[db_name] = {"regulators": len(regulators), "samples": n_samples}
-
-    cross_dataset: dict[tuple[str, str], dict[str, int]] = {}
-
-    for i, db_a in enumerate(active):
-        for db_b in active[i + 1 :]:
-            common = regulator_sets[db_a] & regulator_sets[db_b]
-            common_list = list(common)
-
-            sql_a, params_a = sample_count_query(
-                db_a, filters.get(db_a), restrict_to_regulators=common_list
-            )
-            sql_b, params_b = sample_count_query(
-                db_b, filters.get(db_b), restrict_to_regulators=common_list
-            )
-            n_a = int(vdb.query(sql_a, **params_a).iloc[0, 0])
-            n_b = int(vdb.query(sql_b, **params_b).iloc[0, 0])
-
-            cross_dataset[(db_a, db_b)] = {
-                "common_regulators": len(common),
-                "samples_a": n_a,
-                "samples_b": n_b,
-            }
-
-    return {"diagonal": diagonal, "cross_dataset": cross_dataset}
-
-
 @module.server
 def select_datasets_workspace_server(
     input: Any,
@@ -126,10 +68,53 @@ def select_datasets_workspace_server(
 
         :trigger: ``_settled_datasets`` — re-runs after rapid toggle changes settle.
             ``dataset_filters`` — re-runs when any filter changes.
-        :returns: Dict with keys ``"diagonal"`` and ``"cross_dataset"``.
+        :returns: Dict with keys ``"diagonal"`` — ``{db_name: {"regulators": int,
+            "samples": int}}``; ``"cross_dataset"`` — ``{(db_i, db_j):
+            {"common_regulators": int, "samples_a": int, "samples_b": int}}``.
 
         """
-        return _compute_matrix(_settled_datasets(), dataset_filters(), vdb)
+        active = _settled_datasets()
+        filters = dataset_filters()
+
+        regulator_sets: dict[str, set[str]] = {}
+        diagonal: dict[str, dict[str, int]] = {}
+
+        for db_name in active:
+            db_filters = filters.get(db_name)
+
+            sql, params = regulator_locus_tags_query(db_name, db_filters)
+            reg_df = vdb.query(sql, **params)
+            regulators = set(reg_df["regulator_locus_tag"].dropna().astype(str))
+            regulator_sets[db_name] = regulators
+
+            sql, params = sample_count_query(db_name, db_filters)
+            n_samples = int(vdb.query(sql, **params).iloc[0, 0])
+
+            diagonal[db_name] = {"regulators": len(regulators), "samples": n_samples}
+
+        cross_dataset: dict[tuple[str, str], dict[str, int]] = {}
+
+        for i, db_a in enumerate(active):
+            for db_b in active[i + 1 :]:
+                common = regulator_sets[db_a] & regulator_sets[db_b]
+                common_list = list(common)
+
+                sql_a, params_a = sample_count_query(
+                    db_a, filters.get(db_a), restrict_to_regulators=common_list
+                )
+                sql_b, params_b = sample_count_query(
+                    db_b, filters.get(db_b), restrict_to_regulators=common_list
+                )
+                n_a = int(vdb.query(sql_a, **params_a).iloc[0, 0])
+                n_b = int(vdb.query(sql_b, **params_b).iloc[0, 0])
+
+                cross_dataset[(db_a, db_b)] = {
+                    "common_regulators": len(common),
+                    "samples_a": n_a,
+                    "samples_b": n_b,
+                }
+
+        return {"diagonal": diagonal, "cross_dataset": cross_dataset}
 
     def _make_diagonal_effect(db_name: str) -> None:
         """
