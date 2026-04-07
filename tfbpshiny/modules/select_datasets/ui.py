@@ -75,7 +75,10 @@ def _filter_control(
             ui.div(
                 {"class": "card-body p-2"},
                 ui.div(
-                    {"class": "d-flex align-items-center justify-content-between gap-2 mb-2"},
+                    {
+                        "class": "d-flex align-items-center "
+                        "justify-content-between gap-2 mb-2"
+                    },
                     ui.span({"class": "fw-bold small"}, field),
                     _apply_to_all_toggle() if is_common else ui.span(),
                 ),
@@ -97,11 +100,16 @@ def _filter_control(
             ui.div(
                 {"class": "card-body p-2"},
                 ui.div(
-                    {"class": "d-flex align-items-center justify-content-between gap-2 mb-2"},
+                    {
+                        "class": "d-flex align-items-center "
+                        "justify-content-between gap-2 mb-2"
+                    },
                     ui.span({"class": "fw-bold small"}, field),
                     _apply_to_all_toggle() if is_common else ui.span(),
                 ),
-                ui.input_switch(f"filter_{_slugify(field)}", label=field, value=saved_val),
+                ui.input_switch(
+                    f"filter_{_slugify(field)}", label=field, value=saved_val
+                ),
             ),
         )
 
@@ -120,7 +128,10 @@ def _filter_control(
             ui.div(
                 {"class": "card-body p-2"},
                 ui.div(
-                    {"class": "d-flex align-items-center justify-content-between gap-2 mb-2"},
+                    {
+                        "class": "d-flex align-items-center "
+                        "justify-content-between gap-2 mb-2"
+                    },
                     ui.span({"class": "fw-bold small"}, field),
                     _apply_to_all_toggle() if is_common else ui.span(),
                 ),
@@ -238,14 +249,19 @@ def dataset_filter_modal_ui(
                     ui.div(
                         {"class": "card-body p-2"},
                         ui.div(
-                            {"class": "d-flex align-items-center justify-content-between gap-2 mb-2"},
+                            {
+                                "class": "d-flex align-items-center "
+                                "justify-content-between gap-2 mb-2"
+                            },
                             ui.span({"class": "fw-bold small"}, "Regulator"),
                         ),
                         ui.p(
                             {"class": "text-muted small mb-2"},
-                            f"Regulators are limited to the {len(selected_reg):,} common "
+                            "Regulators are limited to the "
+                            f"{len(selected_reg):,} common "
                             f"regulators between {from_pair[0]} and {from_pair[1]}. "
-                            "To clear this, deselect the highlighted cell in the matrix.",
+                            "To clear this, deselect the highlighted "
+                            "cell in the matrix.",
                         ),
                         ui.input_selectize(
                             "filter_regulator_locus_tag",
@@ -265,7 +281,10 @@ def dataset_filter_modal_ui(
                     ui.div(
                         {"class": "card-body p-2"},
                         ui.div(
-                            {"class": "d-flex align-items-center justify-content-between gap-2 mb-2"},
+                            {
+                                "class": "d-flex align-items-center "
+                                "justify-content-between gap-2 mb-2"
+                            },
                             ui.span({"class": "fw-bold small"}, "Regulator"),
                             ui.div(
                                 {"class": "d-flex align-items-center gap-2"},
@@ -339,8 +358,12 @@ def dataset_filter_modal_ui(
         ]
 
     body = ui.row(
-        ui.column(6, ui.div({"class": "d-flex flex-column gap-2"},*common_col_children)),
-        ui.column(6, ui.div({"class": "d-flex flex-column gap-2"},*specific_col_children)),
+        ui.column(
+            6, ui.div({"class": "d-flex flex-column gap-2"}, *common_col_children)
+        ),
+        ui.column(
+            6, ui.div({"class": "d-flex flex-column gap-2"}, *specific_col_children)
+        ),
     )
 
     return ui.modal(

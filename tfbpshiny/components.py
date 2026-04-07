@@ -386,7 +386,10 @@ def filter_option_card(title: str, *controls: ui.Tag) -> ui.Tag:
         ui.div(
             {"class": "card-body p-2"},
             ui.div(
-                {"class": "d-flex align-items-center justify-content-between gap-2 mb-2"},
+                {
+                    "class": "d-flex align-items-center "
+                    "justify-content-between gap-2 mb-2"
+                },
                 ui.span({"class": "fw-bold small"}, title),
             ),
             *controls,

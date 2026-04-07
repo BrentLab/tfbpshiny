@@ -50,7 +50,8 @@ def _feature_card(
                 ui.img(
                     src=image,
                     alt=title,
-                    style="width:100px; height:100px; object-fit:contain; flex-shrink:0;",
+                    style="width:100px; height:100px; "
+                    "object-fit:contain; flex-shrink:0;",
                 ),
                 content,
             ),
