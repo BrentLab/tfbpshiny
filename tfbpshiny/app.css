@@ -501,6 +501,20 @@ body {
     font-weight: 600;
 }
 
+/* --- Home page ---------------------------------------------------------- */
+.home-content h2 {
+    font-size: 1.75rem;
+}
+
+.home-content h3 {
+    font-size: 1.3rem;
+}
+
+.home-content > p {
+    font-size: 1.1rem;
+    line-height: 1.6;
+}
+
 /* --- Home page feature cards -------------------------------------------- */
 .home-cards {
     display: flex;
@@ -529,7 +543,7 @@ body {
 
 .home-card-title {
     font-weight: bold;
-    font-size: 1.05rem;
+    font-size: 1.2rem;
     margin-bottom: 4px;
 }
 
@@ -545,8 +559,8 @@ body {
 
 .home-card-text {
     color: var(--color-text);
-    font-size: var(--font-size-base);
-    line-height: 1.5;
+    font-size: 1.05rem;
+    line-height: 1.55;
 }
 
 /* --- Dataset tooltip ----------------------------------------------------- */
