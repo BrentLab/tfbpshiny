@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from logging import Logger
 from typing import Any
 
@@ -26,6 +25,65 @@ from tfbpshiny.modules.select_datasets.ui import (
     diagonal_cell_modal_ui,
     off_diagonal_cell_modal_ui,
 )
+from tfbpshiny.utils.ratelimit import debounce
+
+
+def _compute_matrix(
+    active: list[str],
+    filters: dict[str, Any],
+    vdb: VirtualDB,
+) -> dict[str, Any]:
+    """
+    Run all DB queries for the intersection matrix and return the result dict.
+
+    Extracted from the server so it can be called from ``_matrix_data``
+    without duplicating query logic.
+
+    :param active: Ordered list of active dataset db_name strings.
+    :param filters: Current dataset filters keyed by db_name.
+    :param vdb: VirtualDB instance for running queries.
+    :returns: Dict with keys ``"diagonal"`` and ``"cross_dataset"``.
+
+    """
+    regulator_sets: dict[str, set[str]] = {}
+    diagonal: dict[str, dict[str, int]] = {}
+
+    for db_name in active:
+        db_filters = filters.get(db_name)
+
+        sql, params = regulator_locus_tags_query(db_name, db_filters)
+        reg_df = vdb.query(sql, **params)
+        regulators = set(reg_df["regulator_locus_tag"].dropna().astype(str))
+        regulator_sets[db_name] = regulators
+
+        sql, params = sample_count_query(db_name, db_filters)
+        n_samples = int(vdb.query(sql, **params).iloc[0, 0])
+
+        diagonal[db_name] = {"regulators": len(regulators), "samples": n_samples}
+
+    cross_dataset: dict[tuple[str, str], dict[str, int]] = {}
+
+    for i, db_a in enumerate(active):
+        for db_b in active[i + 1 :]:
+            common = regulator_sets[db_a] & regulator_sets[db_b]
+            common_list = list(common)
+
+            sql_a, params_a = sample_count_query(
+                db_a, filters.get(db_a), restrict_to_regulators=common_list
+            )
+            sql_b, params_b = sample_count_query(
+                db_b, filters.get(db_b), restrict_to_regulators=common_list
+            )
+            n_a = int(vdb.query(sql_a, **params_a).iloc[0, 0])
+            n_b = int(vdb.query(sql_b, **params_b).iloc[0, 0])
+
+            cross_dataset[(db_a, db_b)] = {
+                "common_regulators": len(common),
+                "samples_a": n_a,
+                "samples_b": n_b,
+            }
+
+    return {"diagonal": diagonal, "cross_dataset": cross_dataset}
 
 
 @module.server
@@ -46,149 +104,32 @@ def select_datasets_workspace_server(
         for db_name in vdb.get_datasets()
     }
 
+    @debounce(0.3)
     @reactive.calc
-    def _active_datasets() -> list[str]:
+    def _settled_datasets() -> list[str]:
         """
-        Combined list of all currently active binding and perturbation datasets.
+        Combined list of all active datasets, debounced to coalesce rapid toggle clicks.
 
         :trigger: ``active_binding_datasets``, ``active_perturbation_datasets`` —
-            re-runs whenever either list changes.
+            re-runs whenever either list changes, but downstream is only notified
+            after a specified quiet period.
         :returns: Concatenated list of active db_name strings, binding first.
 
         """
         return active_binding_datasets() + active_perturbation_datasets()
 
-    # Debounced version of _active_datasets — waits for rapid toggle clicks to
-    # settle before propagating to expensive downstream computations.
-    # Uses Shiny-native reactive.invalidate_later() instead of asyncio tasks so
-    # that all invalidation runs inside Shiny's reactive session context.
-    _settled_datasets: reactive.Value[list[str]] = reactive.value([])
-    _last_seen: list[str] = []
-    _debounce_start: float | None = None
-    _DEBOUNCE_SECONDS = 0.3
-    _MAX_DEBOUNCE_SECONDS = 2.0
-
-    @reactive.effect
-    def _debounce_active_datasets() -> None:
-        """
-        Coalesce rapid active-dataset changes into a single update after a quiet period.
-
-        How it works: when ``_active_datasets`` changes, the new value is
-        captured in ``_last_seen`` and ``reactive.invalidate_later`` schedules
-        this effect to re-run after ``_DEBOUNCE_SECONDS``.  If
-        ``_active_datasets`` changes again before the timer fires, the effect
-        re-runs immediately (resetting the timer).  When the timer fires and
-        ``_active_datasets`` has not changed since, the value is propagated to
-        ``_settled_datasets``.
-
-        Special cases:
-        - First activation (empty → non-empty): flushes immediately.
-        - Starvation cap: if the user keeps toggling for longer than
-          ``_MAX_DEBOUNCE_SECONDS``, the current value is flushed.
-
-        :trigger: ``_active_datasets`` — re-runs on every toggle change.
-
-        """
-        nonlocal _last_seen, _debounce_start
-
-        active = _active_datasets()
-        now = time.monotonic()
-
-        # isolate: read _settled_datasets without creating a reactive dependency
-        with reactive.isolate():
-            settled = _settled_datasets()
-
-        # First activation: flush immediately to avoid empty-state flash.
-        # Also fires when returning from a fully-deactivated state.
-        if not _last_seen and active:
-            _settled_datasets.set(active)
-            _last_seen = list(active)
-            _debounce_start = None
-            return
-
-        if active != _last_seen:
-            # Source changed — record it and start/restart timer.
-            _last_seen = list(active)
-
-            # Starvation cap: flush if we've been debouncing too long.
-            if _debounce_start is None:
-                _debounce_start = now
-            elif (now - _debounce_start) >= _MAX_DEBOUNCE_SECONDS:
-                _debounce_start = None
-                _settled_datasets.set(active)
-                return
-
-            # Schedule this effect to re-run after the debounce delay.
-            # If _active_datasets changes again before then, the effect
-            # re-runs immediately (dependency trigger), and the old timer
-            # is discarded with the old reactive context.
-            reactive.invalidate_later(_DEBOUNCE_SECONDS)
-            return
-
-        # Timer fired and source hasn't changed — propagate.
-        if active != settled:
-            _debounce_start = None
-            _settled_datasets.set(active)
-
     @reactive.calc
     def _matrix_data() -> dict[str, Any]:
         """
-        Compute per-dataset regulator/sample counts and pairwise common-regulator counts
-        with restricted sample counts.
+        Compute per-dataset regulator/sample counts and pairwise common-regulator
+        counts.
 
-        :trigger: ``_settled_datasets`` — re-runs after rapid toggle changes
-            settle (debounced).
-            ``dataset_filters`` — re-runs when any filter changes, since filters
-            affect regulator and sample counts.
-        :returns: Dict with keys: ``"diagonal"`` — ``{db_name: {"regulators": int,
-            "samples": int}}``; ``"cross_dataset"`` — ``{(db_i, db_j):
-            {"common_regulators": int, "samples_a": int, "samples_b": int}}``.
+        :trigger: ``_settled_datasets`` — re-runs after rapid toggle changes settle.
+            ``dataset_filters`` — re-runs when any filter changes.
+        :returns: Dict with keys ``"diagonal"`` and ``"cross_dataset"``.
 
         """
-        active = _settled_datasets()
-        filters = dataset_filters()
-
-        # --- diagonal pass: regulator sets + sample counts per dataset ---
-        regulator_sets: dict[str, set[str]] = {}
-        diagonal: dict[str, dict[str, int]] = {}
-
-        for db_name in active:
-            db_filters = filters.get(db_name)
-
-            sql, params = regulator_locus_tags_query(db_name, db_filters)
-            reg_df = vdb.query(sql, **params)
-            regulators = set(reg_df["regulator_locus_tag"].dropna().astype(str))
-            regulator_sets[db_name] = regulators
-
-            sql, params = sample_count_query(db_name, db_filters)
-            n_samples = int(vdb.query(sql, **params).iloc[0, 0])
-
-            diagonal[db_name] = {"regulators": len(regulators), "samples": n_samples}
-
-        # --- off-diagonal pass: common regulators + restricted sample counts ---
-        cross_dataset: dict[tuple[str, str], dict[str, int]] = {}
-
-        for i, db_a in enumerate(active):
-            for db_b in active[i + 1 :]:
-                common = regulator_sets[db_a] & regulator_sets[db_b]
-                common_list = list(common)
-
-                sql_a, params_a = sample_count_query(
-                    db_a, filters.get(db_a), restrict_to_regulators=common_list
-                )
-                sql_b, params_b = sample_count_query(
-                    db_b, filters.get(db_b), restrict_to_regulators=common_list
-                )
-                n_a = int(vdb.query(sql_a, **params_a).iloc[0, 0])
-                n_b = int(vdb.query(sql_b, **params_b).iloc[0, 0])
-
-                cross_dataset[(db_a, db_b)] = {
-                    "common_regulators": len(common),
-                    "samples_a": n_a,
-                    "samples_b": n_b,
-                }
-
-        return {"diagonal": diagonal, "cross_dataset": cross_dataset}
+        return _compute_matrix(_settled_datasets(), dataset_filters(), vdb)
 
     def _make_diagonal_effect(db_name: str) -> None:
         """
@@ -363,12 +304,12 @@ def select_datasets_workspace_server(
         Register click effects for any newly active dataset cells that have not yet been
         registered, avoiding duplicate effect registration.
 
-        :trigger: ``_active_datasets`` — re-runs whenever the active dataset list
-            changes so that new diagonal and off-diagonal cell effects are created
+        :trigger: ``_settled_datasets`` — re-runs whenever the active dataset list
+            settles so that new diagonal and off-diagonal cell effects are created
             for any newly added datasets.
 
         """
-        active = _active_datasets()
+        active = _settled_datasets()
         for db_name in active:
             if db_name not in _registered_effects:
                 _make_diagonal_effect(db_name)
