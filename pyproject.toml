@@ -14,7 +14,7 @@ shiny = "^1.4.0"
 shinywidgets = "^0.7.1"
 upsetjs-jupyter-widget = "^1.9.0"
 scikit-learn = "^1.6.1"
-plotly = "^6.0.1"
+plotly = "^6.7.0"
 python-dotenv = "^1.1.0"
 faicons = "^0.2.2"
 
