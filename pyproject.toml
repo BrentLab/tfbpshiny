@@ -10,7 +10,7 @@ readme = "README.md"
 python = "^3.11"
 # use `rev` to pin to a specific hash, or tag, from the git repo
 labretriever = {git = "https://github.com/cmatKhan/labretriever.git", rev = "ad9025d"}
-shiny = "^1.4.0"
+shiny = "^1.6.0"
 shinywidgets = "^0.7.1"
 upsetjs-jupyter-widget = "^1.9.0"
 scikit-learn = "^1.6.1"
