@@ -82,7 +82,8 @@ def binding_workspace_server(
                         raw[tag] = sym
             except Exception as exc:
                 logger.warning(
-                    "binding _sym_map: failed to query regulator symbols for dataset %s: %s",
+                    "binding _sym_map: failed to query regulator "
+                    "symbols for dataset %s: %s",
                     db,
                     exc,
                 )
