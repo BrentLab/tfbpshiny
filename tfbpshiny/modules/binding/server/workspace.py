@@ -80,8 +80,12 @@ def binding_workspace_server(
                 ):
                     if tag not in raw:
                         raw[tag] = sym
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "binding _sym_map: failed to query regulator symbols for dataset %s: %s",
+                    db,
+                    exc,
+                )
         return {
             tag: (f"{sym} ({tag})" if sym and str(sym) != "nan" and sym != tag else tag)
             for tag, sym in raw.items()

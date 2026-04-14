@@ -79,8 +79,12 @@ def perturbation_workspace_server(
                 ):
                     if tag not in raw:
                         raw[tag] = sym
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "Failed to load regulator symbols for perturbation dataset %s: %s",
+                    db,
+                    exc,
+                )
         return {
             tag: (f"{sym} ({tag})" if sym and str(sym) != "nan" and sym != tag else tag)
             for tag, sym in raw.items()
