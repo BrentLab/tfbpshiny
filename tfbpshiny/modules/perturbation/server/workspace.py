@@ -208,6 +208,7 @@ def perturbation_workspace_server(
         sel_x: list[str] = []
         sel_y: list[float] = []
         sel_hover: list[str] = []
+        sel_tags: list[str] = []
         for db_a, db_b in pairs:
             df = corr_data.get((db_a, db_b), pd.DataFrame())
             label_a = display_names.get(db_a, db_a)
@@ -227,6 +228,7 @@ def perturbation_workspace_server(
                         sel_x.append(pair_label)
                         sel_y.append(corr)
                         sel_hover.append(display)
+                        sel_tags.append(tag)
 
         fig.add_trace(
             go.Box(
@@ -252,6 +254,7 @@ def perturbation_workspace_server(
                     y=sel_y,
                     mode="markers",
                     text=sel_hover,
+                    customdata=sel_tags,
                     hovertemplate="%{text}<br>r = %{y:.3f}<extra></extra>",
                     marker=dict(size=10, color="black", symbol="circle"),
                     showlegend=False,
