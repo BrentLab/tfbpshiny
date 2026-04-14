@@ -385,17 +385,26 @@ def regulator_scatter_sql(
 
     is_pvalue_a = "pval" in col_a.lower()
     is_pvalue_b = "pval" in col_b.lower()
-    order_a = f"{col_a} ASC" if is_pvalue_a else f"ABS({col_a}) DESC"
-    order_b = f"{col_b} ASC" if is_pvalue_b else f"ABS({col_b}) DESC"
+    order_val_a = "val_a ASC" if is_pvalue_a else "ABS(val_a) DESC"
+    order_val_b = "val_b ASC" if is_pvalue_b else "ABS(val_b) DESC"
 
     if method == "spearman":
+        # Project qualified aliases first so ORDER BY is unambiguous even when
+        # col_a == col_b (e.g. both datasets use "poisson_pval").
         sql = f"""
-            WITH a AS ({sql_a}), b AS ({sql_b})
+            WITH a AS ({sql_a}), b AS ({sql_b}),
+            joined AS (
+              SELECT
+                a.target_locus_tag,
+                a.{col_a} AS val_a,
+                b.{col_b} AS val_b
+              FROM a JOIN b ON a.target_locus_tag = b.target_locus_tag
+            )
             SELECT
-              a.target_locus_tag,
-              RANK() OVER (ORDER BY {order_a}) AS _val_a,
-              RANK() OVER (ORDER BY {order_b}) AS _val_b
-            FROM a JOIN b ON a.target_locus_tag = b.target_locus_tag
+              target_locus_tag,
+              RANK() OVER (ORDER BY {order_val_a}) AS _val_a,
+              RANK() OVER (ORDER BY {order_val_b}) AS _val_b
+            FROM joined
         """
     else:
         sql = f"""
