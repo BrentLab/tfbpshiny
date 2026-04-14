@@ -367,9 +367,9 @@ def regulator_scatter_sql(
     prefix = f"rp{idx}"
     params_a = {f"{prefix}a_{k}": v for k, v in params_a.items()}
     params_b = {f"{prefix}b_{k}": v for k, v in params_b.items()}
-    for old, new in [(k[len(f"{prefix}a_"):], k) for k in params_a]:
+    for old, new in [(k[len(f"{prefix}a_") :], k) for k in params_a]:
         sql_a = sql_a.replace(f"${old}", f"${new}")
-    for old, new in [(k[len(f"{prefix}b_"):], k) for k in params_b]:
+    for old, new in [(k[len(f"{prefix}b_") :], k) for k in params_b]:
         sql_b = sql_b.replace(f"${old}", f"${new}")
 
     reg_key_a = f"{prefix}reg_a"

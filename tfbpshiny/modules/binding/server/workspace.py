@@ -61,10 +61,10 @@ def binding_workspace_server(
         """
         Map of regulator locus tag to ``"SYMBOL (LOCUS_TAG)"`` display string.
 
-        Queries all active binding datasets and merges results, so regulators
-        that appear only in a non-first dataset still receive their symbol.
-        Later datasets do not overwrite symbols already found in earlier ones.
-        Falls back to an empty dict if no dataset is available or all queries fail.
+        Queries all active binding datasets and merges results, so regulators that
+        appear only in a non-first dataset still receive their symbol. Later datasets do
+        not overwrite symbols already found in earlier ones. Falls back to an empty dict
+        if no dataset is available or all queries fail.
 
         :trigger active_binding_datasets: re-runs when the active dataset set changes.
         :returns: Dict keyed by locus tag with display string values.
@@ -83,11 +83,7 @@ def binding_workspace_server(
             except Exception:
                 pass
         return {
-            tag: (
-                f"{sym} ({tag})"
-                if sym and str(sym) != "nan" and sym != tag
-                else tag
-            )
+            tag: (f"{sym} ({tag})" if sym and str(sym) != "nan" and sym != tag else tag)
             for tag, sym in raw.items()
         }
 
@@ -272,7 +268,7 @@ def binding_workspace_server(
             "  div.on('plotly_click', function(data) {"
             "    var pt = data.points[0];"
             "    if (!pt || pt.customdata === undefined) return;"
-            f"    Shiny.setInputValue('{input_id}', pt.customdata, {{priority: 'event'}});"
+            f"    Shiny.setInputValue('{input_id}', pt.customdata, {{priority: 'event'}});"  # type: ignore # noqa:E501
             "  });"
             "})();"
         )
@@ -446,8 +442,7 @@ def binding_workspace_server(
                     marker=dict(size=4, opacity=0.6, color="#4A90D9"),
                     text=merged["target_locus_tag"],
                     hovertemplate=(
-                        f"{la}: %{{x:.3f}}<br>"
-                        + f"{lb}: %{{y:.3f}}<extra></extra>"
+                        f"{la}: %{{x:.3f}}<br>" + f"{lb}: %{{y:.3f}}<extra></extra>"
                     ),
                     showlegend=False,
                 )
