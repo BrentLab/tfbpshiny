@@ -18,7 +18,6 @@ from tfbpshiny.components import export_download_button
 from tfbpshiny.modules.select_datasets.export import (
     ExportDataset,
     build_export_tarball,
-    get_dataset_description,
 )
 from tfbpshiny.modules.select_datasets.queries import (
     FIELD_TYPE_OVERRIDES,
@@ -30,28 +29,7 @@ from tfbpshiny.modules.select_datasets.ui import (
     _slugify,
     dataset_filter_modal_ui,
 )
-
-# Metadata fields to suppress from the filter UI, keyed by db_name.
-# Fields to suppress from the filter UI. Use "*" for fields hidden across all
-# datasets; use the db_name key for dataset-specific exclusions. The effective
-# hidden set for a given dataset is the union of "*" and its own entry.
-HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
-    "*": {
-        "regulator_locus_tag",
-        "regulator_symbol",
-        "Regulator locus tag",
-        "Regulator symbol",
-    },
-    "callingcards": {"background_total_hops", "experiment_total_hops"},
-    "harbison": {"condition"},
-    "chec_m2025": {"condition", "mahendrawada_symbol"},
-    "degron": {"env_condition", "timepoint"},
-    "rossi": {"antibody", "growth_media"},
-    "hackett": {"date", "mechanism", "restriction", "strain"},
-    "hu_reimand": {"average_od_of_replicates", "heat_shock"},
-    "hughes_overexpression": {"del_passed_qc", "sgd_description"},
-    "hughes_knockout": {"oe_passed_qc", "sgd_description"},
-}
+from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS, AppDatasets
 
 
 def _toggle_id(db_name: str) -> str:
@@ -64,12 +42,45 @@ def _filter_btn_id(db_name: str) -> str:
     return f"ds_filter_{digest}"
 
 
+def _build_condition_choices(
+    df: pd.DataFrame,
+    mask: pd.Series[bool],
+    condition_cols: list[str],
+    db_meta: dict[str, ColumnMeta],
+) -> dict[str, dict[str, str]]:
+    """
+    Return condition column choices filtered by mask, sorted by descending count.
+
+    :param df: Full metadata DataFrame for the dataset.
+    :param mask: Boolean mask to apply before counting levels.
+    :param condition_cols: Column names with role ``experimental_condition``.
+    :param db_meta: Per-column metadata for the dataset.
+    :returns: Dict mapping condition column name to ``{value: label}`` choices.
+
+    """
+    result: dict[str, dict[str, str]] = {}
+    for cond_col in condition_cols:
+        if cond_col not in df.columns:
+            continue
+        valid = (
+            df.loc[mask, cond_col].dropna().astype(str).value_counts().index.tolist()
+        )
+        col_m = db_meta.get(cond_col)
+        level_defs = col_m.level_definitions if col_m else {}
+        result[cond_col] = {
+            v: (f"{level_defs[v]} ({v})" if level_defs and level_defs.get(v) else v)
+            for v in valid
+        }
+    return result
+
+
 @module.server
 def select_datasets_sidebar_server(
     input: Any,
     output: Any,
     session: Any,
     vdb: VirtualDB,
+    app_datasets: AppDatasets,
     logger: Logger,
     active_module: reactive.Value[str] | None = None,
 ) -> tuple[
@@ -96,32 +107,22 @@ def select_datasets_sidebar_server(
         if tags.get("data_type") in ["binding", "perturbation"]:
             dataset_dict[db_name] = tags
 
-    # Build description lookup from DataCard configs (via VirtualDB internals).
-    # TODO: replace with a public VirtualDB method when one is available.
-    descriptions: dict[str, str] = {}
-    for db_name in dataset_dict:
-        try:
-            repo_id, config_name = vdb._db_name_map[db_name]
-            card = vdb._datacards.get(repo_id)
-            if card:
-                cfg = card.get_config(config_name)
-                if cfg and cfg.description:
-                    descriptions[db_name] = cfg.description
-        except (AttributeError, KeyError):
-            logger.warning(
-                f"Failed to fetch description for {db_name} from VirtualDB "
-                "datacard config"
-            )
-            descriptions[db_name] = "No description available."
-
     # list of (db_name, display_name, description) tuples
     binding_datasets: list[tuple[str, str, str]] = [
-        (db_name, tags.get("display_name", db_name), descriptions.get(db_name, ""))
+        (
+            db_name,
+            tags.get("display_name", db_name),
+            vdb.get_dataset_description(db_name) or "",
+        )
         for db_name, tags in dataset_dict.items()
         if tags.get("data_type") == "binding"
     ]
     perturbation_datasets: list[tuple[str, str, str]] = [
-        (db_name, tags.get("display_name", db_name), descriptions.get(db_name, ""))
+        (
+            db_name,
+            tags.get("display_name", db_name),
+            vdb.get_dataset_description(db_name) or "",
+        )
         for db_name, tags in dataset_dict.items()
         if tags.get("data_type") == "perturbation"
     ]
@@ -315,116 +316,64 @@ def select_datasets_sidebar_server(
         _make_filter_effect(_db_name)
 
     # One-directional cascade: upstream categoricals (carbon source, temperature, etc.)
-    # narrow the available condition checkbox choices.  Condition selections do not
-    # feed back into upstream selectizes — selecting additional conditions should expand
-    # (not restrict) the available upstream values.
-    def _make_cascade_effects(
-        db_name: str,
-        condition_cols: list[str],
-        other_cols: list[str],
-    ) -> None:
-        """
-        Register upstream-to-condition cascade effects for one dataset.
+    # narrow the available condition checkbox choices. Condition selections do not feed
+    # back into upstream selectizes — selecting additional conditions should expand (not
+    # restrict) the available upstream values. Column classification is pre-computed in
+    # app_datasets at startup; we only register the reactive effects here.
+    for _db_name, _u_cols in app_datasets.upstream_cols.items():
+        _cond_cols = app_datasets.condition_cols[_db_name]
+        _db_meta = all_col_meta.get(_db_name, {})
 
-        Each non-condition selectize narrows the condition checkbox choices to levels
-        that co-occur with the current upstream selection.  The reverse direction is
-        not registered: condition selections do not restrict upstream choices.
+        for _upstream_col in _u_cols:
+            _u_id = f"filter_{_slugify(_upstream_col)}"
 
-        :param db_name: Dataset identifier.
-        :param condition_cols: Column names with role=experimental_condition.
-        :param other_cols: Upstream categorical column names that drive the cascade.
-
-        """
-        for driving_col in other_cols:
-            driving_id = f"filter_{_slugify(driving_col)}"
-
-            def _make_other_drives_condition(d_id: str, d_col: str) -> None:
+            def _reg(
+                db_name: str,
+                u_id: str,
+                u_col: str,
+                cond_cols: list[str],
+                db_meta: dict[str, ColumnMeta],
+            ) -> None:
                 @reactive.effect
-                @reactive.event(input[d_id])
-                def _cascade_to_condition() -> None:
+                @reactive.event(input[u_id])
+                def _cascade() -> None:
                     """
                     Narrow condition checkbox choices to levels that co-occur with the
-                    current selection in the driving categorical column.  Only updates
-                    ``choices``; the user's checkbox selection is preserved so that
-                    previously checked conditions that are no longer valid are simply
-                    removed from the available set without triggering a further cascade.
+                    current upstream selection. Only updates ``choices``; the user's
+                    checkbox selection is preserved so that previously checked
+                    conditions that are no longer valid are removed without triggering a
+                    further cascade.
 
-                    :trigger input[d_id]: fires when the driving selectize changes.
+                    :trigger input[u_id]: fires when the upstream selectize changes.
 
                     """
                     if modal_open_for() != db_name:
                         return
                     df = modal_df()
-                    if df is None or d_col not in df.columns:
+                    if df is None or u_col not in df.columns:
                         return
                     try:
-                        sel = list(input[d_id]())
+                        sel = list(input[u_id]())
                     except Exception:
                         sel = []
                     mask = (
-                        df[d_col].isin(sel)
-                        if sel
-                        else pd.Series([True] * len(df), index=df.index)
+                        df[u_col].isin(sel) if sel else pd.Series(True, index=df.index)
                     )
-                    db_meta = all_col_meta.get(db_name, {})
-                    for cond_col in condition_cols:
-                        if cond_col not in df.columns:
-                            continue
-                        valid = (
-                            df.loc[mask, cond_col]
-                            .dropna()
-                            .astype(str)
-                            .value_counts()
-                            .index.tolist()
-                        )
-                        col_m = db_meta.get(cond_col)
-                        level_defs = col_m.level_definitions if col_m else {}
-                        choices = {
-                            v: (
-                                f"{level_defs[v]} ({v})"
-                                if level_defs and level_defs.get(v)
-                                else v
-                            )
-                            for v in valid
-                        }
-                        # Preserve the user's current checkbox selection; only narrow
-                        # the available choices.  Shiny drops checked values that are
-                        # no longer in choices automatically.
+                    for cond_col, choices in _build_condition_choices(
+                        df, mask, cond_cols, db_meta
+                    ).items():
+                        cond_id = f"filter_{_slugify(cond_col)}"
                         try:
-                            current_sel = list(input[f"filter_{_slugify(cond_col)}"]())
+                            cur = list(input[cond_id]())
                         except Exception:
-                            current_sel = valid
+                            cur = list(choices)
                         ui.update_checkbox_group(
-                            f"filter_{_slugify(cond_col)}",
+                            cond_id,
                             choices=choices,
-                            selected=[v for v in current_sel if v in valid],
+                            selected=[v for v in cur if v in choices],
                         )
 
-            _make_other_drives_condition(driving_id, driving_col)
-
-    _hidden_global = HIDDEN_FILTER_FIELDS.get("*", set())
-    for _db_name, _, _ in binding_datasets + perturbation_datasets:
-        _db_meta = all_col_meta.get(_db_name, {})
-        _hidden_db = _hidden_global | HIDDEN_FILTER_FIELDS.get(_db_name, set())
-        _cond_cols = [
-            col
-            for col, m in _db_meta.items()
-            if m.role == "experimental_condition"
-            and m.level_definitions is not None
-            and col not in _hidden_db
-        ]
-        _other_cols = [
-            col
-            for col, m in _db_meta.items()
-            if col not in _cond_cols and col not in _hidden_db and col != "sample_id"
-            # Only register for categorical-ish columns (object/category role).
-            # We don't have the DataFrame here, so we use the absence of
-            # level_definitions and non-condition role as a proxy; the effect
-            # guards on df column existence at runtime.
-            and m.role not in ("regulator_identifier", "target_identifier")
-        ]
-        if _cond_cols and _other_cols:
-            _make_cascade_effects(_db_name, _cond_cols, _other_cols)
+            _reg(_db_name, _u_id, _upstream_col, _cond_cols, _db_meta)
 
     @reactive.effect
     @reactive.event(input.modal_reset_filters)
@@ -728,7 +677,7 @@ def select_datasets_sidebar_server(
 
             meta_sql, meta_params = metadata_query(db_name, ds_filters)
             data_sql, data_params = full_data_query(db_name, ds_filters)
-            description = get_dataset_description(vdb, db_name)
+            description = vdb.get_dataset_description(db_name)
 
             export_list.append(
                 ExportDataset(
