@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import io
 from logging import Logger
 from typing import Any
@@ -12,8 +11,8 @@ import faicons as fa
 import pandas as pd
 from labretriever import ColumnMeta, VirtualDB
 from shiny import module, reactive, render, ui
+from shiny.types import SilentException
 
-from tfbpshiny import components
 from tfbpshiny.components import export_download_button
 from tfbpshiny.modules.select_datasets.export import (
     ExportDataset,
@@ -23,26 +22,16 @@ from tfbpshiny.modules.select_datasets.queries import (
     FIELD_TYPE_OVERRIDES,
     full_data_query,
     metadata_query,
-    regulator_display_labels_query,
 )
-from tfbpshiny.modules.select_datasets.ui import (
-    _slugify,
-    dataset_filter_modal_ui,
+from tfbpshiny.modules.select_datasets.server.dataset_row import (
+    dataset_row_server,
+    dataset_row_ui,
 )
-from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS, AppDatasets
+from tfbpshiny.modules.select_datasets.ui import _slugify
+from tfbpshiny.utils.vdb_init import AppDatasets
 
 
-def _toggle_id(db_name: str) -> str:
-    digest = hashlib.sha1(db_name.encode()).hexdigest()[:10]
-    return f"ds_toggle_{digest}"
-
-
-def _filter_btn_id(db_name: str) -> str:
-    digest = hashlib.sha1(db_name.encode()).hexdigest()[:10]
-    return f"ds_filter_{digest}"
-
-
-def _build_condition_choices(
+def _build_experimental_condition_field_choices(
     df: pd.DataFrame,
     mask: pd.Series[bool],
     condition_cols: list[str],
@@ -97,35 +86,45 @@ def select_datasets_sidebar_server(
 
     """
 
-    # dataset dict is structure
-    # {<db_name>: {"data_type": "binding" or "perturbation",
-    #              "display_name": str,
-    #              "assay": str}, ...}
+    # dataset_dict: {db_name: {"data_type": "binding"|"perturbation",
+    #                           "display_name": str, "assay": str, ...}}
+    # Kept as a lookup map for display_name (used in export_datasets and
+    # passed to dataset_row_server for the filter-modal title). The two
+    # sorted lists below are derived views that provide rendering order and
+    # the active-dataset calcs. They also carry description so it is
+    # fetched once at startup rather than on every render.
     dataset_dict: dict[str, dict[str, str]] = {}
     for db_name in vdb.get_datasets():
         tags = vdb.get_tags(db_name)
         if tags.get("data_type") in ["binding", "perturbation"]:
             dataset_dict[db_name] = tags
 
-    # list of (db_name, display_name, description) tuples
-    binding_datasets: list[tuple[str, str, str]] = [
-        (
-            db_name,
-            tags.get("display_name", db_name),
-            vdb.get_dataset_description(db_name) or "",
-        )
-        for db_name, tags in dataset_dict.items()
-        if tags.get("data_type") == "binding"
-    ]
-    perturbation_datasets: list[tuple[str, str, str]] = [
-        (
-            db_name,
-            tags.get("display_name", db_name),
-            vdb.get_dataset_description(db_name) or "",
-        )
-        for db_name, tags in dataset_dict.items()
-        if tags.get("data_type") == "perturbation"
-    ]
+    # list of (db_name, display_name, description) tuples, sorted by year
+    # (display_name always starts with the 4-digit year)
+    binding_datasets: list[tuple[str, str, str]] = sorted(
+        [
+            (
+                db_name,
+                tags.get("display_name", db_name),
+                vdb.get_dataset_description(db_name) or "",
+            )
+            for db_name, tags in dataset_dict.items()
+            if tags.get("data_type") == "binding"
+        ],
+        key=lambda t: t[1],
+    )
+    perturbation_datasets: list[tuple[str, str, str]] = sorted(
+        [
+            (
+                db_name,
+                tags.get("display_name", db_name),
+                vdb.get_dataset_description(db_name) or "",
+            )
+            for db_name, tags in dataset_dict.items()
+            if tags.get("data_type") == "perturbation"
+        ],
+        key=lambda t: t[1],
+    )
     # there are some common fields across datasets. In the dataset filters,
     # these common fields are displayed in their own section of the modal, and when
     # they are set on any dataset, they are applied to all datasets.
@@ -148,11 +147,10 @@ def select_datasets_sidebar_server(
     modal_df: reactive.Value[pd.DataFrame | None] = reactive.value(None)
 
     # Per-dataset toggle state — persists so toggles restore correctly on re-render.
-    # Keys are fixed at init time and match dataset_dict keys exactly.
-    _toggle_state: dict[str, reactive.Value[bool]] = {
-        db_name: reactive.value(False)
-        for db_name, _, _ in binding_datasets + perturbation_datasets
-    }
+    # Stored as a single reactive dict so all toggles are updated atomically.
+    _toggle_state: reactive.Value[dict[str, bool]] = reactive.value(
+        {db_name: False for db_name, _, _ in binding_datasets + perturbation_datasets}
+    )
 
     # Active dataset lists derived from toggle state. Using @reactive.calc
     # instead of manually maintained reactive.Value eliminates redundant writes
@@ -162,22 +160,22 @@ def select_datasets_sidebar_server(
         """
         Binding datasets currently toggled on.
 
-        :trigger: ``_toggle_state[db]`` for each binding dataset — re-runs
-            whenever any binding toggle changes.
+        :trigger: ``_toggle_state`` — re-runs whenever any toggle changes.
 
         """
-        return [db for db, _, _ in binding_datasets if _toggle_state[db]()]
+        state = _toggle_state()
+        return [db for db, _, _ in binding_datasets if state.get(db, False)]
 
     @reactive.calc
     def _active_perturbation_datasets() -> list[str]:
         """
         Perturbation datasets currently toggled on.
 
-        :trigger: ``_toggle_state[db]`` for each perturbation dataset — re-runs
-            whenever any perturbation toggle changes.
+        :trigger: ``_toggle_state`` — re-runs whenever any toggle changes.
 
         """
-        return [db for db, _, _ in perturbation_datasets if _toggle_state[db]()]
+        state = _toggle_state()
+        return [db for db, _, _ in perturbation_datasets if state.get(db, False)]
 
     @reactive.effect
     @reactive.event(input.toggle_sidebar)
@@ -191,129 +189,28 @@ def select_datasets_sidebar_server(
         """
         collapsed.set(not collapsed())
 
-    def _make_toggle_effect(db_name: str) -> None:
-        @reactive.effect
-        @reactive.event(input[_toggle_id(db_name)])
-        def _on_toggle() -> None:
-            """
-            Update persistent toggle state when a dataset switch is changed.
-
-            When a dataset is toggled off its filters are cleared so the filter
-            button returns to its inactive style and stale filters do not persist
-            if the dataset is later re-enabled.
-
-            The active-dataset lists are derived via ``@reactive.calc`` from
-            ``_toggle_state``, so only a single write is needed here.  The
-            guard avoids redundant ``.set()`` calls (e.g. when
-            ``ui.update_switch`` echoes back the same value).
-
-            :trigger input[_toggle_id(db_name)]: fires when the user flips the switch
-            for this specific dataset.
-
-            """
-            try:
-                val = bool(input[_toggle_id(db_name)]())
-            except (KeyError, AttributeError):
-                return
-            with reactive.isolate():
-                if _toggle_state[db_name]() == val:
-                    return
-            _toggle_state[db_name].set(val)
-            if not val:
-                current = dict(dataset_filters())
-                current.pop(db_name, None)
-                dataset_filters.set(current)
+    # Instantiate one row sub-module per dataset. Each module owns the toggle
+    # and filter-open effects for its row; all shared reactive state is passed
+    # by reference so the row module can read and write it directly.
+    def _all_active() -> list[str]:
+        return _active_binding_datasets() + _active_perturbation_datasets()
 
     for db_name, _, _ in binding_datasets + perturbation_datasets:
-        _make_toggle_effect(db_name)
-
-    for _db_name, _, _ in binding_datasets + perturbation_datasets:
-
-        def _make_filter_effect(db_name: str) -> None:
-            @reactive.effect
-            @reactive.event(input[_filter_btn_id(db_name)])
-            def _open_filter_modal() -> None:
-                """
-                Fetch metadata, compute common-field union levels, and show the filter
-                modal for this dataset.
-
-                :trigger input[_filter_btn_id(db_name)]: fires when the user     clicks
-                the Filter button on this dataset's row.
-
-                """
-                existing_filters = dataset_filters().get(db_name)
-                sql, params = metadata_query(db_name, existing_filters)
-                df = vdb.query(sql, **params)
-                modal_open_for.set(db_name)
-                modal_df.set(df)
-                display_name = dataset_dict[db_name].get("display_name", db_name)
-
-                # build union of categorical levels for each common field
-                # across all active datasets, so all valid values are selectable
-                all_active = (
-                    _active_binding_datasets() + _active_perturbation_datasets()
-                )
-                common_field_levels: dict[str, list[str]] = {}
-                for cf_field in common_fields:
-                    if cf_field not in df.columns:
-                        continue
-                    col_dtype = df[cf_field].dtype
-                    type_override = FIELD_TYPE_OVERRIDES.get(
-                        (db_name, cf_field)
-                    ) or FIELD_TYPE_OVERRIDES.get(("", cf_field))
-                    override_kind = type_override[0] if type_override else None
-                    if override_kind != "categorical" and col_dtype.name not in (
-                        "object",
-                        "category",
-                    ):
-                        continue
-                    levels: set[str] = {str(v) for v in df[cf_field].dropna().unique()}
-                    for other_db in all_active:
-                        if other_db == db_name:
-                            continue
-                        try:
-                            other_sql, other_params = metadata_query(other_db)
-                            other_df = vdb.query(other_sql, **other_params)
-                            if cf_field in other_df.columns:
-                                levels |= {
-                                    str(v) for v in other_df[cf_field].dropna().unique()
-                                }
-                        except Exception:
-                            pass
-                    common_field_levels[cf_field] = list(levels)
-
-                # build {locus_tag: "SYMBOL (LOCUS_TAG)"} map for regulator selectize
-                reg_display_labels: dict[str, str] = {}
-                try:
-                    reg_sql, reg_params = regulator_display_labels_query(db_name)
-                    reg_df = vdb.query(reg_sql, **reg_params)
-                    for _, row in reg_df.iterrows():
-                        tag = str(row["regulator_locus_tag"])
-                        sym = row.get("regulator_symbol")
-                        label = f"{sym} ({tag})" if sym and str(sym) != "nan" else tag
-                        reg_display_labels[tag] = label
-                except Exception:
-                    logger.exception(
-                        f"Failed to fetch regulator display labels for {db_name}"
-                    )
-
-                ui.modal_remove()
-                ui.modal_show(
-                    dataset_filter_modal_ui(
-                        db_name,
-                        df,
-                        existing_filters,
-                        common_fields,
-                        display_name=display_name,
-                        common_field_levels=common_field_levels,
-                        hidden_fields=HIDDEN_FILTER_FIELDS.get("*", set())
-                        | HIDDEN_FILTER_FIELDS.get(db_name, set()),
-                        regulator_display_labels=reg_display_labels or None,
-                        col_meta=all_col_meta.get(db_name) or None,
-                    )
-                )
-
-        _make_filter_effect(_db_name)
+        dataset_row_server(
+            db_name,
+            db_name=db_name,
+            vdb=vdb,
+            dataset_dict=dataset_dict,
+            all_col_meta=all_col_meta,
+            common_fields=common_fields,
+            toggle_state=_toggle_state,
+            dataset_filters=dataset_filters,
+            modal_open_for=modal_open_for,
+            modal_df=modal_df,
+            active_datasets_fn=_all_active,
+            modal_ns=session.ns,
+            logger=logger,
+        )
 
     # One-directional cascade: upstream categoricals (carbon source, temperature, etc.)
     # narrow the available condition checkbox choices. Condition selections do not feed
@@ -327,13 +224,33 @@ def select_datasets_sidebar_server(
         for _upstream_col in _u_cols:
             _u_id = f"filter_{_slugify(_upstream_col)}"
 
-            def _reg(
+            def _register_upstream_cascade(
                 db_name: str,
                 u_id: str,
                 u_col: str,
                 cond_cols: list[str],
                 db_meta: dict[str, ColumnMeta],
             ) -> None:
+                """
+                Register a cascade effect for one upstream column.
+
+                All arguments are captured by value via the function signature so
+                that each closure refers to the correct dataset and column names,
+                not the loop variables at the time the effect fires.
+
+                :param db_name: Dataset identifier — guards the effect so it only
+                    runs when this dataset's modal is open.
+                :param u_id: Shiny input ID of the upstream selectize widget.
+                :param u_col: Column name in the metadata DataFrame that the
+                    upstream selectize controls.
+                :param cond_cols: Condition column names to update when the
+                    upstream selection changes.
+                :param db_meta: Per-column metadata for ``db_name``, used by
+                    :func:`_build_experimental_condition_field_choices` to format
+                    level labels.
+
+                """
+
                 @reactive.effect
                 @reactive.event(input[u_id])
                 def _cascade() -> None:
@@ -354,18 +271,21 @@ def select_datasets_sidebar_server(
                         return
                     try:
                         sel = list(input[u_id]())
-                    except Exception:
+                    except SilentException:
                         sel = []
                     mask = (
                         df[u_col].isin(sel) if sel else pd.Series(True, index=df.index)
                     )
-                    for cond_col, choices in _build_condition_choices(
+                    for (
+                        cond_col,
+                        choices,
+                    ) in _build_experimental_condition_field_choices(
                         df, mask, cond_cols, db_meta
                     ).items():
                         cond_id = f"filter_{_slugify(cond_col)}"
                         try:
                             cur = list(input[cond_id]())
-                        except Exception:
+                        except SilentException:
                             cur = list(choices)
                         ui.update_checkbox_group(
                             cond_id,
@@ -373,7 +293,9 @@ def select_datasets_sidebar_server(
                             selected=[v for v in cur if v in choices],
                         )
 
-            _reg(_db_name, _u_id, _upstream_col, _cond_cols, _db_meta)
+            _register_upstream_cascade(
+                _db_name, _u_id, _upstream_col, _cond_cols, _db_meta
+            )
 
     @reactive.effect
     @reactive.event(input.modal_reset_filters)
@@ -467,7 +389,7 @@ def select_datasets_sidebar_server(
             col = df[field]
             try:
                 value = input[f"filter_{_slugify(field)}"]()
-            except Exception:
+            except SilentException:
                 continue
 
             type_override = FIELD_TYPE_OVERRIDES.get(
@@ -509,18 +431,18 @@ def select_datasets_sidebar_server(
             if field in common_fields and field in field_filters:
                 try:
                     apply_to_all = bool(input[f"apply_to_all_{_slugify(field)}"]())
-                except Exception:
+                except SilentException:
                     apply_to_all = False
                 field_filters[field]["apply_to_all"] = apply_to_all
 
         # handle regulator_locus_tag explicitly (hidden from generic field loop)
         try:
             reg_selected = list(input["filter_regulator_locus_tag"]())
-        except Exception:
+        except SilentException:
             reg_selected = []
         try:
             reg_apply_to_all = bool(input["apply_to_all_regulator_locus_tag"]())
-        except Exception:
+        except SilentException:
             reg_apply_to_all = True
         if reg_selected:
             saved_reg = (
@@ -633,13 +555,10 @@ def select_datasets_sidebar_server(
         )
 
         # activate the dataset if it isn't already on — the @reactive.calc
-        # will automatically include it in the active list.
-        # _toggle_state is set first; ui.update_switch syncs the DOM.
-        # _on_toggle will fire from the DOM update but the isolate() guard
-        # prevents a redundant set() call.
-        if not _toggle_state[db_name]():
-            _toggle_state[db_name].set(True)
-            ui.update_switch(_toggle_id(db_name), value=True)
+        # will automatically include it in the active list, and the row
+        # module's _sync_toggle_to_dom effect will sync the DOM switch.
+        if not _toggle_state().get(db_name, False):
+            _toggle_state.set({**_toggle_state(), db_name: True})
 
         ui.modal_remove()
         modal_open_for.set(None)
@@ -770,36 +689,21 @@ def select_datasets_sidebar_server(
         if not is_collapsed:
             try:
                 search_term = (input.search() or "").strip().lower()
-            except Exception:
+            except SilentException:
                 pass
 
         def _dataset_row(db_name: str, label: str, description: str) -> ui.Tag:
-            # isolate: read current value without creating a reactive dependency
+            # isolate: read toggle state without creating a reactive dependency —
+            # toggles are synced by the row module's _sync_toggle_to_dom effect.
             with reactive.isolate():
-                current_val = _toggle_state[db_name]()
-            if is_collapsed:
-                return ui.div(
-                    {"class": "dataset-row"},
-                    ui.input_switch(_toggle_id(db_name), label=None, value=current_val),
-                )
-            label_span = ui.span({"class": "dataset-row-label sidebar-text"}, label)
-            if description:
-                label_span = components.tooltip(
-                    label_span, description, placement="right"
-                )
-            return ui.div(
-                {"class": "dataset-row"},
-                ui.input_switch(
-                    _toggle_id(db_name),
-                    label=label_span,
-                    value=current_val,
-                ),
-                ui.input_action_button(
-                    _filter_btn_id(db_name),
-                    "Filter",
-                    class_="btn-filter-dataset"
-                    + (" btn-filter-active" if db_name in active_filter_names else ""),
-                ),
+                current_val = _toggle_state().get(db_name, False)
+            return dataset_row_ui(
+                db_name,
+                label=label,
+                description=description,
+                current_val=current_val,
+                is_collapsed=is_collapsed,
+                has_active_filter=db_name in active_filter_names,
             )
 
         section_tags: list[ui.Tag] = []

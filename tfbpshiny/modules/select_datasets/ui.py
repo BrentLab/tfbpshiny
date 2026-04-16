@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import pandas as pd
@@ -31,6 +32,7 @@ def _filter_control(
     is_common: bool = False,
     union_levels: list[str] | None = None,
     field_description: str | None = None,
+    ns: Callable[[str], str] = lambda x: x,
 ) -> ui.Tag | None:
     """
     Build a single filter-option card for ``field``.
@@ -61,7 +63,7 @@ def _filter_control(
     def _apply_to_all_toggle() -> ui.Tag:
         saved_val = saved_spec.get("apply_to_all", False) if saved_spec else False
         return ui.input_switch(
-            f"apply_to_all_{_slugify(field)}",
+            ns(f"apply_to_all_{_slugify(field)}"),
             "Apply to all datasets",
             value=saved_val,
         )
@@ -89,7 +91,7 @@ def _filter_control(
                     _apply_to_all_toggle() if is_common else ui.span(),
                 ),
                 ui.input_selectize(
-                    f"filter_{_slugify(field)}",
+                    ns(f"filter_{_slugify(field)}"),
                     label=None,
                     choices=choices,
                     selected=selected,
@@ -116,7 +118,7 @@ def _filter_control(
                     _apply_to_all_toggle() if is_common else ui.span(),
                 ),
                 ui.input_switch(
-                    f"filter_{_slugify(field)}", label=switch_label, value=saved_val
+                    ns(f"filter_{_slugify(field)}"), label=switch_label, value=saved_val
                 ),
             ),
         )
@@ -144,7 +146,7 @@ def _filter_control(
                     _apply_to_all_toggle() if is_common else ui.span(),
                 ),
                 ui.input_slider(
-                    f"filter_{_slugify(field)}",
+                    ns(f"filter_{_slugify(field)}"),
                     label=None,
                     min=data_min,
                     max=data_max,
@@ -161,6 +163,7 @@ def _condition_checkbox(
     col: pd.Series,
     saved_spec: dict[str, Any] | None,
     level_definitions: dict[str, str],
+    ns: Callable[[str], str] = lambda x: x,
 ) -> ui.Tag:
     """
     Render a checkbox group for a condition column with labelled choices.
@@ -170,6 +173,7 @@ def _condition_checkbox(
     :param saved_spec: Previously saved filter spec for pre-selection.
     :param level_definitions: Mapping of ``{level_value: description}`` from
         ``ColumnMeta.level_definitions``.
+    :param ns: Namespace function applied to all input IDs.
 
     """
     counts = col.dropna().astype(str).value_counts()
@@ -191,7 +195,7 @@ def _condition_checkbox(
                 ui.span({"class": "fw-bold small"}, field),
             ),
             ui.input_checkbox_group(
-                f"filter_{_slugify(field)}",
+                ns(f"filter_{_slugify(field)}"),
                 label=None,
                 choices=choices,
                 selected=selected,
@@ -220,6 +224,7 @@ def dataset_filter_modal_ui(
     hidden_fields: set[str] | None = None,
     regulator_display_labels: dict[str, str] | None = None,
     col_meta: dict[str, ColumnMeta] | None = None,
+    ns: Callable[[str], str] = lambda x: x,
 ) -> ui.Tag:
     """
     Build the filter modal for a given dataset from live metadata.
@@ -251,6 +256,9 @@ def dataset_filter_modal_ui(
     :param col_meta: Per-column metadata from ``VirtualDB.get_column_metadata``.
         Used to identify condition columns (for checkbox rendering) and to supply
         descriptions for boolean toggle labels.
+    :param ns: Namespace function applied to all input IDs in the modal. Pass
+        ``session.ns`` from the calling module server so inputs are registered
+        under the correct module scope.
 
     """
     saved = saved_filters or {}
@@ -281,6 +289,7 @@ def dataset_filter_modal_ui(
                 df[field],
                 saved.get(field),
                 meta.level_definitions,
+                ns=ns,
             )
         else:
             card = _filter_control(
@@ -291,6 +300,7 @@ def dataset_filter_modal_ui(
                 is_common=is_common,
                 union_levels=cfl.get(field) if is_common else None,
                 field_description=meta.description if meta else None,
+                ns=ns,
             )
         if card is None:
             continue
@@ -341,7 +351,7 @@ def dataset_filter_modal_ui(
                             "cell in the matrix.",
                         ),
                         ui.input_selectize(
-                            "filter_regulator_locus_tag",
+                            ns("filter_regulator_locus_tag"),
                             label=None,
                             choices=restricted_choices,
                             selected=[],
@@ -366,19 +376,19 @@ def dataset_filter_modal_ui(
                             ui.div(
                                 {"class": "d-flex align-items-center gap-2"},
                                 ui.input_action_button(
-                                    "modal_clear_regulator_filter",
+                                    ns("modal_clear_regulator_filter"),
                                     "Clear",
                                     class_="btn btn-sm btn-outline-secondary",
                                 ),
                                 ui.input_switch(
-                                    "apply_to_all_regulator_locus_tag",
+                                    ns("apply_to_all_regulator_locus_tag"),
                                     "Apply to all datasets",
                                     value=apply_to_all_reg,
                                 ),
                             ),
                         ),
                         ui.input_selectize(
-                            "filter_regulator_locus_tag",
+                            ns("filter_regulator_locus_tag"),
                             label=None,
                             choices=regulator_display_labels,
                             selected=selected_reg,
@@ -450,12 +460,12 @@ def dataset_filter_modal_ui(
         easy_close=True,
         footer=ui.div(
             ui.input_action_button(
-                "modal_reset_filters",
+                ns("modal_reset_filters"),
                 "Reset",
                 class_="btn btn-sm btn-outline-secondary",
             ),
             ui.input_action_button(
-                "modal_apply_filters",
+                ns("modal_apply_filters"),
                 "Apply Filters",
                 class_="btn btn-sm btn-primary",
             ),
