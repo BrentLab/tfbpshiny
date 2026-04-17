@@ -20,6 +20,7 @@ from tfbpshiny.modules.comparison.queries import (
     PERTURBATION_LABEL_MAP,
     topn_responsive_ratio,
 )
+from tfbpshiny.utils.vdb_init import get_regulator_display_name
 
 # color palettes
 BINDING_COLORS: dict[str, str] = {
@@ -53,37 +54,6 @@ _BINDING_ORDER = [
     "2025 Chec-seq",
     "2026 Calling Cards",
 ]
-
-
-def _build_regulator_label_map(vdb: VirtualDB, db_names: list[str]) -> dict[str, str]:
-    """
-    Build a ``{locus_tag: "SYMBOL (LOCUS_TAG)"}`` map across all given datasets.
-
-    Queries each dataset's ``_meta`` view for ``regulator_locus_tag`` and
-    ``regulator_symbol``. Falls back to the locus tag when symbol is absent.
-
-    :param vdb: VirtualDB instance.
-    :param db_names: Dataset names whose meta views to query.
-    :returns: Dict mapping locus tag to display label.
-
-    """
-    label_map: dict[str, str] = {}
-    for db_name in db_names:
-        try:
-            df = vdb.query(
-                f"SELECT DISTINCT regulator_locus_tag, regulator_symbol "
-                f"FROM {db_name}_meta"
-            )
-            for _, row in df.iterrows():
-                tag = str(row["regulator_locus_tag"])
-                sym = row.get("regulator_symbol")
-                if sym and str(sym) not in ("nan", "None", ""):
-                    label_map[tag] = f"{sym} ({tag})"
-                else:
-                    label_map.setdefault(tag, tag)
-        except Exception:
-            pass
-    return label_map
 
 
 @module.server
@@ -137,8 +107,11 @@ def comparison_workspace_server(
         if not binding_labels or not pert_labels:
             return pd.DataFrame()
 
-        # Build regulator display label map across all active binding datasets.
-        reg_labels = _build_regulator_label_map(vdb, list(binding_labels.keys()))
+        # Build regulator display label map from the pre-built lookup table.
+        _reg_df = get_regulator_display_name(vdb)
+        reg_labels: dict[str, str] = dict(
+            zip(_reg_df["regulator_locus_tag"], _reg_df["display_name"])
+        )
 
         results: list[pd.DataFrame] = []
         for b_db, b_label in binding_labels.items():
@@ -236,8 +209,6 @@ def comparison_workspace_server(
                 {"class": "empty-state"}, ui.p("No data for selected combination.")
             )
 
-        # Build subplot titles: facet label + responsive summary line.
-        # Each title is an annotation so we must use <br> for a second line.
         subplot_titles = facets
 
         fig = make_subplots(

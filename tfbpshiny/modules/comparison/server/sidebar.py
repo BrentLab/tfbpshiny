@@ -9,6 +9,7 @@ from typing import Any
 from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
 
+from tfbpshiny.components import sidebar_label
 from tfbpshiny.modules.comparison.queries import (
     DEFAULT_EFFECT_THRESHOLD,
     DEFAULT_PVALUE_THRESHOLD,
@@ -119,10 +120,7 @@ def comparison_sidebar_server(
                 max=500,
                 step=5,
             ),
-            ui.p(
-                {"class": "sidebar-text", "style": "margin-top: 0.75rem;"},
-                "Responsive threshold",
-            ),
+            sidebar_label("Responsive threshold"),
             ui.input_slider(
                 "effect_threshold",
                 "Min |effect|",
@@ -139,10 +137,7 @@ def comparison_sidebar_server(
                 value=pvalue_threshold(),
                 step=0.001,
             ),
-            ui.p(
-                {"class": "sidebar-text", "style": "margin-top: 0.75rem;"},
-                "Facet by",
-            ),
+            sidebar_label("Facet by"),
             ui.input_radio_buttons(
                 "facet_by",
                 label=None,

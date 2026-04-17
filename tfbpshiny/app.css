@@ -225,7 +225,7 @@ body {
     min-width: 92px;
 }
 
-.selection-sidebar .sidebar-text {
+.sidebar-text {
     color: var(--color-text);
 }
 

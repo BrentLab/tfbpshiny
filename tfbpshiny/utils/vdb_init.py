@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pandas as pd
 from labretriever import VirtualDB
 
 # Metadata fields to suppress from the filter UI, keyed by db_name.
@@ -153,6 +154,80 @@ def ensure_hackett_analysis_set(vdb: VirtualDB) -> None:
     _filter_hackett_views(vdb)
 
 
+_REGULATOR_DISPLAY_NAME_TABLE = "regulator_display_names"
+
+_BUILD_REGULATOR_DISPLAY_NAMES_SQL = """
+CREATE OR REPLACE TABLE {table} AS
+SELECT
+    regulator_locus_tag,
+    FIRST(regulator_symbol) AS regulator_symbol,
+    CASE
+        WHEN FIRST(regulator_symbol) IS NOT NULL
+             AND FIRST(regulator_symbol) != ''
+             AND FIRST(regulator_symbol) != FIRST(regulator_locus_tag)
+        THEN FIRST(regulator_symbol) || ' (' || regulator_locus_tag || ')'
+        ELSE regulator_locus_tag
+    END AS display_name
+FROM ({union_sql}) __all
+GROUP BY regulator_locus_tag
+ORDER BY regulator_locus_tag
+"""
+
+
+def _build_regulator_display_names(vdb: VirtualDB) -> None:
+    """
+    Build the ``regulator_display_names`` DuckDB table from all dataset meta views.
+
+    Queries each ``{db_name}_meta`` view for distinct ``(regulator_locus_tag,
+    regulator_symbol)`` rows, unions them, and stores the result as a persistent
+    in-memory table.  The ``display_name`` column is ``"SYMBOL (LOCUS_TAG)"`` when a
+    non-empty symbol different from the tag is present; otherwise it equals the tag.
+
+    :param vdb: The application VirtualDB instance.
+
+    """
+    db_names = [
+        db
+        for db in vdb.get_datasets()
+        if "regulator_locus_tag" in vdb.get_fields(f"{db}_meta")
+    ]
+    if not db_names:
+        return
+    union_sql = " UNION ALL ".join(
+        f"SELECT DISTINCT regulator_locus_tag, regulator_symbol FROM {db}_meta"
+        for db in db_names
+    )
+    sql = _BUILD_REGULATOR_DISPLAY_NAMES_SQL.format(
+        table=_REGULATOR_DISPLAY_NAME_TABLE,
+        union_sql=union_sql,
+    )
+    vdb._conn.execute(sql)
+
+
+def get_regulator_display_name(
+    vdb: VirtualDB,
+    locus_tags: list[str] | None = None,
+) -> pd.DataFrame:
+    """
+    Return a DataFrame of regulator display names from the pre-built lookup table.
+
+    :param vdb: The application VirtualDB instance.
+    :param locus_tags: Optional list of locus tags to restrict results. When
+        ``None`` all regulators in the table are returned.
+    :returns: DataFrame with columns ``regulator_locus_tag``, ``regulator_symbol``,
+        and ``display_name``.
+    :rtype: pandas.DataFrame
+
+    """
+    if locus_tags is None:
+        return vdb._conn.execute(f"SELECT * FROM {_REGULATOR_DISPLAY_NAME_TABLE}").df()
+    return vdb._conn.execute(
+        f"SELECT * FROM {_REGULATOR_DISPLAY_NAME_TABLE} "
+        f"WHERE regulator_locus_tag = ANY(?)",
+        [locus_tags],
+    ).df()
+
+
 @dataclass
 class AppDatasets:
     """
@@ -189,6 +264,7 @@ def initialize_data(
     """
     vdb = VirtualDB(virtualdb_config, token=hf_token)
     ensure_hackett_analysis_set(vdb)
+    _build_regulator_display_names(vdb)
 
     condition_cols: dict[str, list[str]] = {}
     upstream_cols: dict[str, list[str]] = {}
@@ -227,5 +303,6 @@ __all__ = [
     "DEFAULT_DATASET_FILTERS",
     "AppDatasets",
     "ensure_hackett_analysis_set",
+    "get_regulator_display_name",
     "initialize_data",
 ]

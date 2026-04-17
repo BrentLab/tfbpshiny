@@ -9,6 +9,8 @@ from typing import Any
 from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
 
+from tfbpshiny.components import sidebar_label
+
 
 @module.server
 def binding_sidebar_server(
@@ -73,7 +75,7 @@ def binding_sidebar_server(
             )
 
         return ui.div(
-            ui.p({"class": "sidebar-text"}, "Column"),
+            sidebar_label("Column"),
             ui.input_radio_buttons(
                 "col_preference",
                 label=None,
@@ -81,10 +83,7 @@ def binding_sidebar_server(
                 selected=col_preference(),
                 inline=True,
             ),
-            ui.p(
-                {"class": "sidebar-text", "style": "margin-top: 0.75rem;"},
-                "Correlation",
-            ),
+            sidebar_label("Correlation"),
             ui.input_radio_buttons(
                 "corr_type",
                 label=None,
