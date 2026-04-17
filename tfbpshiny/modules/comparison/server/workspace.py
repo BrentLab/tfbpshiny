@@ -31,10 +31,10 @@ BINDING_COLORS: dict[str, str] = {
 }
 
 PERTURBATION_COLORS: dict[str, str] = {
-    "2006 Overexpression": "#4DBBD5",
+    "2006 Overexpression": "#F39B7F",
     "2006 TFKO": "#00A087",
     "2007 TFKO": "#8491B4",
-    "2014 TFKO": "#F39B7F",
+    "2014 TFKO": "#4DBBD5",
     "2020 Overexpression": "#91D1C2",
     "2025 Degron": "#B09C85",
 }
@@ -126,6 +126,13 @@ def comparison_workspace_server(
                     continue
                 logger.debug(f"Top-{n}: {b_db} x {p_db}")
                 try:
+                    # When hackett_time_filter is active the analysis-set JOIN
+                    # already restricts samples; passing the numeric time filter
+                    # from dataset_filters would reference a column not present
+                    # in the perturbation view and cause the query to fail.
+                    p_filters = (
+                        None if p_cfg.get("hackett_time_filter") else filters.get(p_db)
+                    )
                     result = topn_responsive_ratio(
                         vdb=vdb,
                         binding_view=b_db,
@@ -134,7 +141,7 @@ def comparison_workspace_server(
                         effect_threshold=eff,
                         pvalue_threshold=pval,
                         binding_filters=filters.get(b_db),
-                        perturbation_filters=filters.get(p_db),
+                        perturbation_filters=p_filters,
                         param_prefix=f"{b_db}_{p_db}",
                         **b_cfg,
                         **p_cfg,
