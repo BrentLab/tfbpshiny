@@ -6,7 +6,6 @@ from collections.abc import Callable
 from logging import Logger
 from typing import Any
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from labretriever import VirtualDB
@@ -17,10 +16,8 @@ from shiny import module, reactive, render, ui
 from tfbpshiny.modules.comparison.queries import (
     BINDING_CONFIGS,
     BINDING_LABEL_MAP,
-    DTO_LOG_PSEUDO,
     PERTURBATION_CONFIGS,
     PERTURBATION_LABEL_MAP,
-    fetch_dto_data,
     topn_responsive_ratio,
 )
 
@@ -58,6 +55,37 @@ _BINDING_ORDER = [
 ]
 
 
+def _build_regulator_label_map(vdb: VirtualDB, db_names: list[str]) -> dict[str, str]:
+    """
+    Build a ``{locus_tag: "SYMBOL (LOCUS_TAG)"}`` map across all given datasets.
+
+    Queries each dataset's ``_meta`` view for ``regulator_locus_tag`` and
+    ``regulator_symbol``. Falls back to the locus tag when symbol is absent.
+
+    :param vdb: VirtualDB instance.
+    :param db_names: Dataset names whose meta views to query.
+    :returns: Dict mapping locus tag to display label.
+
+    """
+    label_map: dict[str, str] = {}
+    for db_name in db_names:
+        try:
+            df = vdb.query(
+                f"SELECT DISTINCT regulator_locus_tag, regulator_symbol "
+                f"FROM {db_name}_meta"
+            )
+            for _, row in df.iterrows():
+                tag = str(row["regulator_locus_tag"])
+                sym = row.get("regulator_symbol")
+                if sym and str(sym) not in ("nan", "None", ""):
+                    label_map[tag] = f"{sym} ({tag})"
+                else:
+                    label_map.setdefault(tag, tag)
+        except Exception:
+            pass
+    return label_map
+
+
 @module.server
 def comparison_workspace_server(
     input: Any,
@@ -73,7 +101,7 @@ def comparison_workspace_server(
     vdb: VirtualDB,
     logger: Logger,
 ) -> None:
-    """Render two workspace rows: DTO ECDF (top) and Top-N boxplot (bottom)."""
+    """Render the Top-N by Binding workspace plot."""
 
     @reactive.calc
     def _active_binding_labels() -> dict[str, str]:
@@ -85,40 +113,6 @@ def comparison_workspace_server(
             db: PERTURBATION_LABEL_MAP.get(db, db)
             for db in active_perturbation_datasets()
         }
-
-    @reactive.calc
-    def _dto_data() -> pd.DataFrame:
-        """
-        Fetch and label DTO empirical p-value data filtered to active datasets.
-
-        :trigger _active_binding_labels: re-runs when binding selection changes.
-        :trigger _active_perturbation_labels: re-runs when perturbation changes.
-
-        """
-        binding_labels = _active_binding_labels()
-        pert_labels = _active_perturbation_labels()
-
-        if not binding_labels or not pert_labels:
-            return pd.DataFrame()
-        try:
-            df = fetch_dto_data(vdb)
-        except Exception:
-            logger.exception("DTO fetch failed")
-            return pd.DataFrame()
-
-        # TODO: get rid of the type ignores
-        df["binding_source"] = df["binding_id_source"].map(BINDING_LABEL_MAP)  # type: ignore # noqa: E501
-        df["perturbation_source"] = df["perturbation_id_source"].map(  # type: ignore # noqa: E501
-            PERTURBATION_LABEL_MAP
-        )
-        df["mlog10_pval"] = -np.log10(df["dto_empirical_pvalue"] + DTO_LOG_PSEUDO)  # type: ignore # noqa: E501
-
-        active_b = set(binding_labels.values())
-        active_p = set(pert_labels.values())
-        return df[
-            df["binding_source"].isin(active_b)  # type: ignore
-            & df["perturbation_source"].isin(active_p)  # type: ignore
-        ]
 
     @reactive.calc
     def _topn_data() -> pd.DataFrame:
@@ -143,6 +137,9 @@ def comparison_workspace_server(
         if not binding_labels or not pert_labels:
             return pd.DataFrame()
 
+        # Build regulator display label map across all active binding datasets.
+        reg_labels = _build_regulator_label_map(vdb, list(binding_labels.keys()))
+
         results: list[pd.DataFrame] = []
         for b_db, b_label in binding_labels.items():
             b_cfg = BINDING_CONFIGS.get(b_db)
@@ -156,7 +153,7 @@ def comparison_workspace_server(
                     continue
                 logger.debug(f"Top-{n}: {b_db} x {p_db}")
                 try:
-                    df = topn_responsive_ratio(
+                    result = topn_responsive_ratio(
                         vdb=vdb,
                         binding_view=b_db,
                         perturbation_view=p_db,
@@ -169,10 +166,15 @@ def comparison_workspace_server(
                         **b_cfg,
                         **p_cfg,
                     )
-                    # TODO: Get rid of the type ignores
-                    df["binding_source"] = b_label  # type: ignore
-                    df["perturbation_source"] = p_label  # type: ignore
-                    results.append(df)
+                    assert isinstance(result, pd.DataFrame)
+                    result["binding_source"] = b_label
+                    result["perturbation_source"] = p_label
+                    result["regulator_label"] = (
+                        result["regulator_locus_tag"]
+                        .map(reg_labels)
+                        .fillna(result["regulator_locus_tag"])
+                    )
+                    results.append(result)
                 except Exception as exc:
                     logger.error(
                         f"Top-N failed for {b_db} x {p_db}: {exc}", exc_info=True
@@ -185,83 +187,18 @@ def comparison_workspace_server(
         return out
 
     @render.ui
-    def dto_plot() -> ui.Tag:
-        """
-        ECDF of -log10(DTO empirical p-value) faceted by perturbation source.
-
-        :trigger _dto_data: re-renders when DTO data changes.
-
-        """
-        df = _dto_data()
-
-        if df.empty:
-            return ui.div(
-                {"class": "empty-state"},
-                ui.p("No DTO data available for the selected datasets."),
-            )
-
-        pert_sources = [
-            p for p in _PERT_ORDER if p in df["perturbation_source"].unique()
-        ]
-        if not pert_sources:
-            return ui.div(
-                {"class": "empty-state"}, ui.p("No perturbation sources to display.")
-            )
-
-        n = len(pert_sources)
-        fig = make_subplots(
-            rows=1, cols=n, subplot_titles=pert_sources, shared_yaxes=True
-        )
-
-        for col_idx, pert in enumerate(pert_sources, start=1):
-            sub = df[df["perturbation_source"] == pert]
-            for b_source in _BINDING_ORDER:
-                color = BINDING_COLORS.get(b_source, "#888888")
-                vals = sub.loc[
-                    sub["binding_source"] == b_source, "mlog10_pval"
-                ].dropna()
-                if vals.empty:
-                    continue
-                sorted_vals = np.sort(vals.values)
-                ecdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals)
-                fig.add_trace(
-                    go.Scatter(
-                        x=sorted_vals,
-                        y=ecdf,
-                        mode="lines",
-                        line=dict(color=color, width=1.5),
-                        name=b_source,
-                        legendgroup=b_source,
-                        showlegend=(col_idx == 1),
-                    ),
-                    row=1,
-                    col=col_idx,
-                )
-            fig.update_xaxes(title_text="-log10(p + 0.001)", row=1, col=col_idx)
-
-        fig.update_yaxes(title_text="ECDF", row=1, col=1)
-        fig.update_layout(
-            legend_title="Binding source",
-            margin=dict(l=50, r=20, t=50, b=50),
-        )
-        return ui.HTML(to_html(fig, include_plotlyjs="cdn", full_html=False))
-
-    @render.ui
     def topn_plot() -> ui.Tag:
         """
-        Boxplot of percent-responsive for top-N binding targets.
+        Boxplot of percent-responsive for top-N binding targets, with individual points
+        overlaid. Points show regulator display name on hover. The boxplot itself has no
+        tooltip.
 
-        The facet orientation is controlled by ``facet_by``:
-        - ``"binding"``: binding source = facet columns, perturbation = color
-        - ``"perturbation"``: perturbation source = facet columns, binding = color
-
-        :trigger _topn_data: re-renders when top-N data changes.
-        :trigger facet_by: re-renders when facet orientation changes.
-        :trigger top_n: title updates.
+        :trigger _topn_data: re-renders when top-N data changes. :trigger facet_by: re-
+        renders when facet orientation changes. :trigger top_n: re-renders when the
+        top-N cutoff changes.
 
         """
         df = _topn_data()
-        n = top_n()
         orientation = facet_by()
 
         if df.empty:
@@ -299,15 +236,31 @@ def comparison_workspace_server(
                 {"class": "empty-state"}, ui.p("No data for selected combination.")
             )
 
+        # Build subplot titles: facet label + responsive summary line.
+        # Each title is an annotation so we must use <br> for a second line.
+        subplot_titles = facets
+
         fig = make_subplots(
-            rows=1, cols=len(facets), subplot_titles=facets, shared_yaxes=True
+            rows=1,
+            cols=len(facets),
+            subplot_titles=subplot_titles,
+            shared_yaxes=True,
         )
 
         for col_idx, facet_val in enumerate(facets, start=1):
             sub = df[df[facet_col] == facet_val]
             for x_val in xs:
                 color = palette.get(x_val, "#888888")
-                vals = sub.loc[sub[x_col] == x_val, "percent_responsive"].dropna()
+                grp = sub.loc[sub[x_col] == x_val].copy()
+                vals = grp["percent_responsive"].dropna()
+                reg_labels_col = grp.loc[
+                    grp["percent_responsive"].notna(), "regulator_label"
+                ]
+
+                # Single Box trace: boxpoints="all" renders the individual
+                # points with jitter. hoveron="points" disables the tooltip on
+                # the box and whiskers and keeps it only on the dots.
+                # text is used as the hover label for each point.
                 fig.add_trace(
                     go.Box(
                         y=vals,
@@ -316,23 +269,26 @@ def comparison_workspace_server(
                         boxpoints="all",
                         jitter=0.4,
                         pointpos=0,
-                        marker=dict(size=3, opacity=0.45),
+                        marker=dict(size=4, opacity=0.5),
                         line=dict(width=1.2),
                         legendgroup=x_val,
                         showlegend=(col_idx == 1),
+                        hoveron="points",
+                        text=reg_labels_col.values,
+                        hovertemplate="%{text}<br>%{y:.1f}%<extra></extra>",
                     ),
                     row=1,
                     col=col_idx,
                 )
+
             fig.update_xaxes(showticklabels=False, row=1, col=col_idx)
 
         fig.update_yaxes(
             title_text="% responsive in top N", range=[0, 100], row=1, col=1
         )
         fig.update_layout(
-            title=f"Top {n} by binding — % responsive",
             legend_title=legend_title,
-            margin=dict(l=50, r=20, t=60, b=30),
+            margin=dict(l=50, r=20, t=80, b=30),
         )
         return ui.HTML(to_html(fig, include_plotlyjs="cdn", full_html=False))
 

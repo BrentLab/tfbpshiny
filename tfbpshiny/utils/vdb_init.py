@@ -28,6 +28,38 @@ HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
     "hughes_knockout": {"oe_passed_qc", "sgd_description"},
 }
 
+# Datasets whose toggles are on by default. A superset of DEFAULT_DATASET_FILTERS
+# — datasets with no preset conditions are listed here but not in the filter dict.
+DEFAULT_ACTIVE_DATASETS: frozenset[str] = frozenset(
+    {
+        "harbison",
+        "rossi",
+        "chec_m2025",
+        "hackett",
+        "callingcards",
+        "kemmeren",
+        "degron",
+    }
+)
+
+# Default filter state applied on first load. The structure is identical to the
+# dict stored in the ``dataset_filters`` reactive value so it can be used as
+# the initial value with no additional handling.
+DEFAULT_DATASET_FILTERS: dict[str, dict] = {
+    "harbison": {
+        "condition": {"type": "categorical", "value": ["YPD"]},
+    },
+    "rossi": {
+        "treatment": {"type": "categorical", "value": ["Normal"]},
+    },
+    "chec_m2025": {
+        "Experimental condition": {"type": "categorical", "value": ["standard"]},
+    },
+    "hackett": {
+        "time": {"type": "numeric", "value": [45.0, 45.0]},
+    },
+}
+
 # NOTE: the following regulators have multiple samples with the same mechanism and
 # restriction. For convenience for now, they are excluded since it is not possible
 # to choose between them based on features in the dataset. They are essentially
@@ -191,6 +223,8 @@ def initialize_data(
 
 __all__ = [
     "HIDDEN_FILTER_FIELDS",
+    "DEFAULT_ACTIVE_DATASETS",
+    "DEFAULT_DATASET_FILTERS",
     "AppDatasets",
     "ensure_hackett_analysis_set",
     "initialize_data",
