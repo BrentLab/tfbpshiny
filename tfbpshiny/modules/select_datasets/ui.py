@@ -163,6 +163,7 @@ def _condition_checkbox(
     col: pd.Series,
     saved_spec: dict[str, Any] | None,
     level_definitions: dict[str, str],
+    is_common: bool = False,
     ns: Callable[[str], str] = lambda x: x,
 ) -> ui.Tag:
     """
@@ -173,6 +174,9 @@ def _condition_checkbox(
     :param saved_spec: Previously saved filter spec for pre-selection.
     :param level_definitions: Mapping of ``{level_value: description}`` from
         ``ColumnMeta.level_definitions``.
+    :param is_common: When ``True``, appends an "Apply to all datasets" toggle
+        in the card header. The toggle is pre-set from ``saved_spec["apply_to_all"]``
+        if present, defaulting to ``True``.
     :param ns: Namespace function applied to all input IDs.
 
     """
@@ -183,6 +187,16 @@ def _condition_checkbox(
         for v in all_levels
     }
     selected = saved_spec["value"] if saved_spec else []
+    apply_to_all: ui.Tag
+    if is_common:
+        saved_val = saved_spec.get("apply_to_all", True) if saved_spec else True
+        apply_to_all = ui.input_switch(
+            ns(f"apply_to_all_{_slugify(field)}"),
+            "Apply to all datasets",
+            value=saved_val,
+        )
+    else:
+        apply_to_all = ui.span()
     return ui.div(
         {"class": "card"},
         ui.div(
@@ -193,6 +207,7 @@ def _condition_checkbox(
                     "justify-content-between gap-2 mb-2"
                 },
                 ui.span({"class": "fw-bold small"}, field),
+                apply_to_all,
             ),
             ui.input_checkbox_group(
                 ns(f"filter_{_slugify(field)}"),
@@ -279,6 +294,7 @@ def dataset_filter_modal_ui(
         is_common = field in cf
         meta = _meta.get(field)
         # Experimental condition columns with per-level definitions → checkbox group.
+        card: ui.Tag | None
         if (
             meta is not None
             and meta.role == "experimental_condition"
@@ -289,6 +305,7 @@ def dataset_filter_modal_ui(
                 df[field],
                 saved.get(field),
                 meta.level_definitions,
+                is_common=is_common,
                 ns=ns,
             )
         else:

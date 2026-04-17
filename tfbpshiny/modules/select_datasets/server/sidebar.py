@@ -269,6 +269,24 @@ def select_datasets_sidebar_server(
                     df = modal_df()
                     if df is None or u_col not in df.columns:
                         return
+                    # Cascade only applies to categorical upstream columns.
+                    # Numeric and boolean columns produce slider/switch values
+                    # that cannot be used with isin() for range-aware filtering.
+                    type_override = FIELD_TYPE_OVERRIDES.get(
+                        (db_name, u_col)
+                    ) or FIELD_TYPE_OVERRIDES.get(("", u_col))
+                    override_kind = type_override[0] if type_override else None
+                    col_dtype = df[u_col].dtype
+                    is_categorical = (
+                        override_kind == "categorical"
+                        or col_dtype.name
+                        in (
+                            "object",
+                            "category",
+                        )
+                    )
+                    if not is_categorical:
+                        return
                     try:
                         sel = list(input[u_id]())
                     except SilentException:
