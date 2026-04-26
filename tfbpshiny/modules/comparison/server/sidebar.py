@@ -9,9 +9,10 @@ from typing import Any
 from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
 
-from tfbpshiny.components import sidebar_label
+from tfbpshiny.components import empty_state
 from tfbpshiny.modules.comparison.queries import (
     DEFAULT_EFFECT_THRESHOLD,
+    DEFAULT_FACET_BY,
     DEFAULT_PVALUE_THRESHOLD,
     DEFAULT_TOP_N,
 )
@@ -95,59 +96,27 @@ def comparison_sidebar_server(
         try:
             return str(input.facet_by())
         except Exception:
-            return "binding"
+            return DEFAULT_FACET_BY
 
     @render.ui
-    def sidebar_controls() -> ui.Tag:
-        binding = active_binding_datasets()
-        perturbation = active_perturbation_datasets()
+    def empty_state_message() -> ui.Tag | None:
+        """
+        Empty-state banner shown when either dataset axis is empty.
 
-        if not binding or not perturbation:
-            return ui.div(
-                {"class": "empty-state compact"},
+        :trigger active_binding_datasets: re-runs on dataset selection change.
+        :trigger active_perturbation_datasets: re-runs on dataset selection change.
+        :returns: The banner div, or ``None`` when both axes have selections.
+
+        """
+        if not active_binding_datasets() or not active_perturbation_datasets():
+            return empty_state(
                 ui.p(
                     "Select at least one binding and one perturbation dataset "
                     "from the Select Datasets page."
                 ),
+                compact=True,
             )
-
-        return ui.div(
-            ui.input_numeric(
-                "top_n",
-                "Top N",
-                value=top_n(),
-                min=1,
-                max=500,
-                step=5,
-            ),
-            sidebar_label("Responsive threshold"),
-            ui.input_slider(
-                "effect_threshold",
-                "Min |effect|",
-                min=0.0,
-                max=5.0,
-                value=effect_threshold(),
-                step=0.1,
-            ),
-            ui.input_slider(
-                "pvalue_threshold",
-                "Max p-value",
-                min=0.001,
-                max=1.0,
-                value=pvalue_threshold(),
-                step=0.001,
-            ),
-            sidebar_label("Facet by"),
-            ui.input_radio_buttons(
-                "facet_by",
-                label=None,
-                choices={
-                    "binding": "Binding source",
-                    "perturbation": "Perturbation source",
-                },
-                selected=facet_by(),
-            ),
-        )
+        return None
 
     return top_n, effect_threshold, pvalue_threshold, facet_by
 

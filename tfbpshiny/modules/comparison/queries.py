@@ -29,6 +29,9 @@ DEFAULT_EFFECT_THRESHOLD = 0.0
 #: Default p-value threshold (pvalue must be below this to be "responsive")
 DEFAULT_PVALUE_THRESHOLD = 0.05
 
+#: Default facet-by orientation for the top-N plot
+DEFAULT_FACET_BY = "binding"
+
 # ---------------------------------------------------------------------------
 # DTO query
 # ---------------------------------------------------------------------------
