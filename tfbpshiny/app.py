@@ -61,12 +61,23 @@ configure_logger(
     log_file=log_file,
 )
 
+profile_handler_type = cast(
+    Literal["console", "file"],
+    os.getenv("TFBPSHINY_PROFILE_HANDLER", "console"),
+)
+profile_log_file = os.getenv("TFBPSHINY_PROFILE_LOG_FILE", "tfbpshiny_profile.log")
 profile_logger = configure_profile_logger(
-    handler_type=cast(
-        Literal["console", "file"],
-        os.getenv("TFBPSHINY_PROFILE_HANDLER", "console"),
-    ),
+    handler_type=profile_handler_type,
+    log_file=profile_log_file,
     enabled=os.getenv("TFBPSHINY_PROFILE_ENABLED", "1") == "1",
+)
+# Surface where each logger is writing so the env-var configuration is verifiable
+# from the first lines of stdout instead of having to grep for log files.
+logger.info(
+    f"Logger destinations — shiny: handler={handler_type} "
+    f"file={log_file if handler_type == 'file' else 'n/a'} | "
+    f"profiler: handler={profile_handler_type} "
+    f"file={profile_log_file if profile_handler_type == 'file' else 'n/a'}"
 )
 
 # instantiate the virtualDB and compute app-level dataset metadata
