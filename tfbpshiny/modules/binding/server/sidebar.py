@@ -30,7 +30,13 @@ def binding_sidebar_server(
     Callable[[], str],  # col_preference: "effect" | "pvalue"
 ]:
     """
-    Render binding analysis sidebar controls; return reactive selections.
+    Wire up reactive accessors for the statically-declared binding sidebar controls and
+    render the empty-state banner.
+
+    The actual input widgets (``corr_type``, ``col_preference``) are declared
+    in ``binding_sidebar_ui`` so their DOM identity persists across
+    dataset-toggle re-renders. This server only exposes reactive accessors for
+    those inputs and conditionally renders the dataset-required banner.
 
     :return: Tuple of (corr_type, col_preference).
 

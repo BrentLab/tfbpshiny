@@ -34,7 +34,14 @@ def comparison_sidebar_server(
     Callable[[], str],  # facet_by: "binding" | "perturbation"
 ]:
     """
-    Render comparison sidebar controls and return reactive selections.
+    Wire up reactive accessors for the statically-declared comparison sidebar controls
+    and render the empty-state banner.
+
+    The actual input widgets (``top_n``, ``effect_threshold``,
+    ``pvalue_threshold``, ``facet_by``) are declared in ``comparison_sidebar_ui``
+    so their DOM identity persists across dataset-toggle re-renders. This server
+    only exposes reactive accessors for those inputs and conditionally renders
+    the dataset-required banner.
 
     :returns: Tuple of (top_n, effect_threshold, pvalue_threshold, facet_by).
 
