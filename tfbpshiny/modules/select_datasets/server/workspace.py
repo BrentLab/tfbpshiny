@@ -67,6 +67,33 @@ def select_datasets_workspace_server(
         """
         return active_binding_datasets() + active_perturbation_datasets()
 
+    @debounce(1.0)
+    @reactive.calc
+    def _settled_filters() -> dict[str, Any]:
+        """
+        Debounced view of ``dataset_filters`` for ``_matrix_data`` consumption.
+
+        Toggling a dataset OFF fires two reactive writes in quick succession from
+        ``dataset_row._on_toggle``: a ``toggle_state.set`` (caught by
+        ``_settled_datasets``'s debounce) and a ``dataset_filters.set`` to clear
+        the dataset's filters. Without this second debounce, the filter write
+        invalidates ``_matrix_data`` immediately while ``_settled_datasets`` is
+        still showing the pre-toggle list — causing the matrix to recompute with
+        an inconsistent (old list, new filters) view, then again 1s later when
+        the list settles. That manifests as the matrix flashing back and forth.
+
+        Both reads are now coalesced through the same 1s window. Other
+        ``dataset_filters()`` consumers (modal handlers, filter buttons) are
+        unaffected and keep instant response.
+
+        :trigger: ``dataset_filters`` — re-runs when any filter changes,
+            but downstream is only notified after the same quiet period as
+            ``_settled_datasets``.
+        :returns: Current filter dict snapshot.
+
+        """
+        return dataset_filters()
+
     @reactive.calc
     def _matrix_data() -> dict[str, Any]:
         """
@@ -74,14 +101,16 @@ def select_datasets_workspace_server(
         counts.
 
         :trigger: ``_settled_datasets`` — re-runs after rapid toggle changes settle.
-            ``dataset_filters`` — re-runs when any filter changes.
+            ``_settled_filters`` — re-runs after filter changes settle (same
+            debounce window, so toggle-off filter-clear and dataset-list updates
+            are coalesced into one recompute).
         :returns: Dict with keys ``"diagonal"`` — ``{db_name: {"regulators": int,
             "samples": int}}``; ``"cross_dataset"`` — ``{(db_i, db_j):
             {"common_regulators": int, "samples_a": int, "samples_b": int}}``.
 
         """
         active = _settled_datasets()
-        filters = dataset_filters()
+        filters = _settled_filters()
 
         regulator_sets: dict[str, set[str]] = {}
         diagonal: dict[str, dict[str, int]] = {}
