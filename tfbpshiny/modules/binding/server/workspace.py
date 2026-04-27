@@ -328,27 +328,35 @@ def binding_workspace_server(
             )
         return ui.HTML(html)
 
-    @reactive.effect
-    def _update_regulator_choices() -> None:
+    @render.ui
+    def _regulator_choices_trigger() -> ui.Tag:
         """
-        Push regulator choices to the static ``selected_regulator`` selectize.
+        Hidden render that pushes regulator choices to the static selectize.
 
         ``selected_regulator`` is declared statically in ``binding/ui.py``;
-        this effect mutates its choices/selected value via ``ui.update_selectize``
-        whenever the correlation data changes. The prior ``@render.ui`` pattern
-        recreated the widget on every ``_all_corr_data`` invalidation, which
-        fired spurious change events on ``input.selected_regulator`` and
-        cascaded into 6-15× re-runs of the downstream scatter / regulator_plot
-        queries. Updating in place preserves DOM identity.
+        this render mutates its choices/selected value via
+        ``ui.update_selectize`` whenever the correlation data changes. The
+        prior ``@render.ui regulator_selector`` pattern recreated the widget
+        on every ``_all_corr_data`` invalidation, which fired spurious change
+        events on ``input.selected_regulator`` and cascaded into 6-15× re-runs
+        of the downstream scatter / regulator_plot queries. Updating in place
+        preserves DOM identity.
+
+        Implemented as a render rather than a ``@reactive.effect`` so the
+        ``_all_corr_data`` read is **lazy** — the placeholder only mounts when
+        this workspace is active, so dataset toggles on the Selection page do
+        not incur correlation queries here.
 
         :trigger _all_corr_data: choices refresh when correlation data changes
             (new datasets, filters applied, or column/method changed).
+        :returns: An invisible span; output is purely a side-effect carrier.
 
         """
         corr_data = _all_corr_data()
+        marker = ui.tags.span(style="display:none")
         if not corr_data:
             ui.update_selectize("selected_regulator", choices={}, selected=None)
-            return
+            return marker
 
         # sym_map is built at server init from the pre-computed lookup table
         all_regs: set[str] = set()
@@ -358,7 +366,7 @@ def binding_workspace_server(
 
         if not all_regs:
             ui.update_selectize("selected_regulator", choices={}, selected=None)
-            return
+            return marker
         choices = {r: sym_map.get(r, r) for r in all_regs}
         choices = dict(sorted(choices.items(), key=lambda kv: kv[1].lower()))
 
@@ -370,6 +378,7 @@ def binding_workspace_server(
         default = current if current in choices else next(iter(choices))
 
         ui.update_selectize("selected_regulator", choices=choices, selected=default)
+        return marker
 
     @render.ui
     def regulator_plots() -> ui.Tag:
