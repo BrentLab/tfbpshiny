@@ -9,7 +9,11 @@ from typing import Any
 from labretriever import VirtualDB
 from shiny import module, reactive, render, ui
 
-from tfbpshiny.components import sidebar_label
+from tfbpshiny.components import empty_state
+from tfbpshiny.modules.binding.queries import (
+    DEFAULT_COL_PREFERENCE,
+    DEFAULT_CORR_TYPE,
+)
 
 
 @module.server
@@ -46,7 +50,7 @@ def binding_sidebar_server(
         try:
             return str(input.corr_type())
         except Exception:
-            return "pearson"
+            return DEFAULT_CORR_TYPE
 
     @reactive.calc
     def col_preference() -> str:
@@ -62,36 +66,23 @@ def binding_sidebar_server(
         try:
             return str(input.col_preference())
         except Exception:
-            return "effect"
+            return DEFAULT_COL_PREFERENCE
 
     @render.ui
-    def sidebar_controls() -> ui.Tag:
-        active = active_binding_datasets()
+    def empty_state_message() -> ui.Tag | None:
+        """
+        Empty-state banner shown when no binding datasets are selected.
 
-        if not active:
-            return ui.div(
-                {"class": "empty-state compact"},
+        :trigger active_binding_datasets: re-runs on dataset selection change.
+        :returns: The banner div, or ``None`` when at least one dataset is active.
+
+        """
+        if not active_binding_datasets():
+            return empty_state(
                 ui.p("Select binding datasets from the Select Datasets page."),
+                compact=True,
             )
-
-        return ui.div(
-            sidebar_label("Column"),
-            ui.input_radio_buttons(
-                "col_preference",
-                label=None,
-                choices={"effect": "Effect", "pvalue": "P-value"},
-                selected=col_preference(),
-                inline=True,
-            ),
-            sidebar_label("Correlation"),
-            ui.input_radio_buttons(
-                "corr_type",
-                label=None,
-                choices={"pearson": "Pearson", "spearman": "Spearman"},
-                selected=corr_type(),
-                inline=True,
-            ),
-        )
+        return None
 
     return corr_type, col_preference
 

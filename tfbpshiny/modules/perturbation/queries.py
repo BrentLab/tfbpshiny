@@ -9,6 +9,12 @@ from labretriever import VirtualDB
 
 from tfbpshiny.modules.binding.queries import _corr_pair_sql_impl
 
+#: Default correlation method for the perturbation analysis sidebar
+DEFAULT_CORR_TYPE = "pearson"
+
+#: Default measurement column preference for the perturbation analysis sidebar
+DEFAULT_COL_PREFERENCE = "effect"
+
 # Map of db_name -> (effect_col, pvalue_col).
 # pvalue_col is empty string for datasets that have no pvalue column.
 # TODO: this information should be moved to virtualdb config.
