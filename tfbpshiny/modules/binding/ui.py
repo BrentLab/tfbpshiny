@@ -49,13 +49,21 @@ def binding_sidebar_ui() -> ui.Tag:
 
 @module.ui
 def binding_workspace_ui() -> ui.Tag:
+    # selected_regulator is declared statically so its DOM identity persists
+    # across data refreshes. Choices are pushed via ui.update_selectize from
+    # binding/server/workspace.py — see that file for why this matters.
     return workspace_shell(
         "binding-workspace",
         header=workspace_heading("Binding Correlation"),
         body=ui.div(
             ui.output_ui("distributions_plot"),
             ui.hr(),
-            ui.output_ui("regulator_selector"),
+            ui.input_selectize(
+                "selected_regulator",
+                "Regulator",
+                choices=[],
+                selected=None,
+            ),
             ui.output_ui("regulator_plots"),
         ),
     )

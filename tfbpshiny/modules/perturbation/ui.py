@@ -49,13 +49,21 @@ def perturbation_sidebar_ui() -> ui.Tag:
 
 @module.ui
 def perturbation_workspace_ui() -> ui.Tag:
+    # selected_regulator is declared statically so its DOM identity persists
+    # across data refreshes. Choices are pushed via ui.update_selectize from
+    # perturbation/server/workspace.py — see that file for why this matters.
     return workspace_shell(
         "perturbation-workspace",
         header=workspace_heading("Perturbation Analysis"),
         body=ui.div(
             ui.output_ui("distributions_plot"),
             ui.hr(),
-            ui.output_ui("regulator_selector"),
+            ui.input_selectize(
+                "selected_regulator",
+                "Regulator",
+                choices=[],
+                selected=None,
+            ),
             ui.output_ui("regulator_plots"),
         ),
     )

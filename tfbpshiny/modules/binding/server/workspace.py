@@ -328,24 +328,27 @@ def binding_workspace_server(
             )
         return ui.HTML(html)
 
-    @render.ui
-    def regulator_selector() -> ui.Tag:
+    @reactive.effect
+    def _update_regulator_choices() -> None:
         """
-        Dropdown of regulators present in at least one pair's correlation data.
+        Push regulator choices to the static ``selected_regulator`` selectize.
 
-        Choices are keyed by locus tag and labelled by gene symbol where available. The
-        previously selected regulator is preserved across re-renders if it is still
-        present in the new choice set.
+        ``selected_regulator`` is declared statically in ``binding/ui.py``;
+        this effect mutates its choices/selected value via ``ui.update_selectize``
+        whenever the correlation data changes. The prior ``@render.ui`` pattern
+        recreated the widget on every ``_all_corr_data`` invalidation, which
+        fired spurious change events on ``input.selected_regulator`` and
+        cascaded into 6-15× re-runs of the downstream scatter / regulator_plot
+        queries. Updating in place preserves DOM identity.
 
-        :trigger _all_corr_data: re-renders when correlation data changes (new
-        datasets selected, filters applied, or column/method changed). :trigger
-        active_binding_datasets: re-renders to refresh the symbol map     when the
-        active dataset set changes.
+        :trigger _all_corr_data: choices refresh when correlation data changes
+            (new datasets, filters applied, or column/method changed).
 
         """
         corr_data = _all_corr_data()
         if not corr_data:
-            return ui.span()
+            ui.update_selectize("selected_regulator", choices={}, selected=None)
+            return
 
         # sym_map is built at server init from the pre-computed lookup table
         all_regs: set[str] = set()
@@ -354,22 +357,19 @@ def binding_workspace_server(
                 all_regs |= set(df["regulator_locus_tag"].dropna().unique())
 
         if not all_regs:
-            return ui.span()
+            ui.update_selectize("selected_regulator", choices={}, selected=None)
+            return
         choices = {r: sym_map.get(r, r) for r in all_regs}
         choices = dict(sorted(choices.items(), key=lambda kv: kv[1].lower()))
 
-        try:
-            current = str(input.selected_regulator())
-        except Exception:
-            current = ""
+        with reactive.isolate():
+            try:
+                current = str(input.selected_regulator())
+            except Exception:
+                current = ""
         default = current if current in choices else next(iter(choices))
 
-        return ui.input_selectize(
-            "selected_regulator",
-            "Regulator",
-            choices=choices,
-            selected=default,
-        )
+        ui.update_selectize("selected_regulator", choices=choices, selected=default)
 
     @render.ui
     def regulator_plots() -> ui.Tag:
