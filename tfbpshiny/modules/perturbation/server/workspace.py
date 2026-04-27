@@ -329,6 +329,11 @@ def perturbation_workspace_server(
             )
         return ui.HTML(html)
 
+    # Disable Shiny's default suspend-when-hidden behavior so the side-effect
+    # render keeps firing reliably even if a future layout wraps the workspace
+    # in a navset_tab / conditional_panel / display:none toggle.
+    # DO NOT convert this back to @reactive.effect — see CLAUDE.md.
+    @output(suspend_when_hidden=False)
     @render.ui
     def _regulator_choices_trigger() -> ui.Tag:
         """
