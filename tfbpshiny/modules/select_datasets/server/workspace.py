@@ -49,11 +49,15 @@ def select_datasets_workspace_server(
         for db_name in vdb.get_datasets()
     }
 
-    @debounce(0.3)
+    @debounce(1.0)
     @reactive.calc
     def _settled_datasets() -> list[str]:
         """
         Combined list of all active datasets, debounced to coalesce rapid toggle clicks.
+
+        Window is 1.0s so normal-speed multi-toggle sessions (typical click cadence
+        ~400-700ms) coalesce into a single ``_matrix_data`` recompute instead of
+        firing one full N-dataset query matrix per click.
 
         :trigger: ``active_binding_datasets``, ``active_perturbation_datasets`` —
             re-runs whenever either list changes, but downstream is only notified
