@@ -64,9 +64,6 @@ def perturbation_workspace_ui() -> ui.Tag:
                 choices=[],
                 selected=None,
             ),
-            # Hidden placeholder; mounted only when this workspace is active so
-            # the choices-update effect stays lazy. See server/workspace.py.
-            ui.output_ui("_regulator_choices_trigger"),
             ui.output_ui("regulator_plots"),
         ),
     )

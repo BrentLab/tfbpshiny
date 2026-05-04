@@ -328,77 +328,68 @@ def binding_workspace_server(
             )
         return ui.HTML(html)
 
-    # Disable Shiny's default suspend-when-hidden behavior so the side-effect
-    # render keeps firing reliably even if a future layout wraps the workspace
-    # in a navset_tab / conditional_panel / display:none toggle.
-    # DO NOT convert this back to @reactive.effect — see CLAUDE.md.
-    @output(suspend_when_hidden=False)
-    @render.ui
-    def _regulator_choices_trigger() -> ui.Tag:
+    @reactive.calc
+    def _regulator_choices() -> tuple[dict[str, str], str] | None:
         """
-        Hidden render that pushes regulator choices to the static selectize.
+        Compute the sorted regulator choices dict and default selection key.
 
-        ``selected_regulator`` is declared statically in ``binding/ui.py``;
-        this render mutates its choices/selected value via
-        ``ui.update_selectize`` whenever the correlation data changes. The
-        prior ``@render.ui regulator_selector`` pattern recreated the widget
-        on every ``_all_corr_data`` invalidation, which fired spurious change
-        events on ``input.selected_regulator`` and cascaded into 6-15× re-runs
-        of the downstream scatter / regulator_plot queries. Updating in place
-        preserves DOM identity.
+        Uses lazy evaluation — only runs when called by a downstream render
+        that is mounted. Dataset toggles on other pages never trigger this
+        calc because nothing mounted on those pages reads it.
 
-        Implemented as a render rather than a ``@reactive.effect`` so the
-        ``_all_corr_data`` read is **lazy** — the placeholder only mounts when
-        this workspace is active, so dataset toggles on the Selection page do
-        not incur correlation queries here.
+        ``selected_regulator`` is declared statically in ``binding/ui.py`` so
+        its DOM identity persists across data refreshes; callers push the
+        result via ``ui.update_selectize`` to avoid recreating the widget and
+        emitting spurious change events.
 
-        :trigger _all_corr_data: choices refresh when correlation data changes
+        :trigger _all_corr_data: re-runs when correlation data changes
             (new datasets, filters applied, or column/method changed).
-        :returns: An invisible span; output is purely a side-effect carrier.
+        :returns: ``(choices, default_key)`` when regulators are available,
+            ``None`` when the correlation data is empty.
 
         """
         corr_data = _all_corr_data()
-        marker = ui.tags.span(style="display:none")
         if not corr_data:
-            ui.update_selectize("selected_regulator", choices={}, selected=None)
-            return marker
-
-        # sym_map is built at server init from the pre-computed lookup table
+            return None
         all_regs: set[str] = set()
         for df in corr_data.values():
             if not df.empty:
                 all_regs |= set(df["regulator_locus_tag"].dropna().unique())
-
         if not all_regs:
-            ui.update_selectize("selected_regulator", choices={}, selected=None)
-            return marker
+            return None
         choices = {r: sym_map.get(r, r) for r in all_regs}
         choices = dict(sorted(choices.items(), key=lambda kv: kv[1].lower()))
-
-        with reactive.isolate():
-            try:
-                current = str(input.selected_regulator())
-            except Exception:
-                current = ""
+        try:
+            current = str(input.selected_regulator())
+        except Exception:
+            current = ""
         default = current if current in choices else next(iter(choices))
-
-        ui.update_selectize("selected_regulator", choices=choices, selected=default)
-        return marker
+        return choices, default
 
     @render.ui
     def regulator_plots() -> ui.Tag:
         """
         Per-pair scatter plots for the selected regulator.
 
-        Delegates to ``_build_regulator_plots``; catches and renders any
-        unhandled exceptions as an annotated empty figure.
+        Also pushes regulator choices to the static ``selected_regulator``
+        selectize via ``ui.update_selectize``. Doing this here (rather than in
+        a separate side-effect carrier) keeps the update lazy: this render only
+        evaluates when the workspace is mounted, so dataset toggles on other
+        pages never trigger correlation queries.
 
+        :trigger _regulator_choices: re-renders when the available regulator
+            set changes (new datasets, filters, column preference, or method).
         :trigger input.selected_regulator: re-renders when the user picks a
             different regulator from the dropdown.
-        :trigger _all_corr_data: re-renders when correlation data changes
-            (new datasets, filters, column preference, or method).
 
         """
+        result = _regulator_choices()
+        if result is None:
+            ui.update_selectize("selected_regulator", choices={}, selected=None)
+        else:
+            ui.update_selectize(
+                "selected_regulator", choices=result[0], selected=result[1]
+            )
         try:
             return _build_regulator_plots()
         except Exception as exc:
