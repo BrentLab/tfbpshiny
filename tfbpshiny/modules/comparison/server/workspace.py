@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from logging import Logger
 from typing import Any
@@ -21,6 +22,7 @@ from tfbpshiny.modules.comparison.queries import (
     topn_responsive_ratio,
 )
 from tfbpshiny.utils.profiler import profile_span
+from tfbpshiny.utils.query_cache import cached_query
 from tfbpshiny.utils.vdb_init import get_regulator_display_name
 
 # color palettes
@@ -76,6 +78,8 @@ def comparison_workspace_server(
 ) -> None:
     """Render the Top-N by Binding workspace plot."""
 
+    _render_counts: dict[str, int] = {"topn_plot": 0}
+
     @reactive.calc
     def _active_binding_labels() -> dict[str, str]:
         return {db: BINDING_LABEL_MAP.get(db, db) for db in active_binding_datasets()}
@@ -87,17 +91,32 @@ def comparison_workspace_server(
             for db in active_perturbation_datasets()
         }
 
-    @reactive.calc
-    def _topn_data() -> pd.DataFrame:
+    # Persistent top-N data cache.  Stored as reactive.Value so it survives tab
+    # switches — _topn_data was a @reactive.calc that was torn down when the
+    # comparison DOM was destroyed, forcing all 12 cross-product SQL queries to
+    # re-run on every tab return even when nothing had changed.
+    _topn_cache: reactive.Value[tuple[tuple, pd.DataFrame]] = reactive.Value(
+        ((), pd.DataFrame())
+    )
+
+    @reactive.effect
+    def _fill_topn_cache() -> None:
         """
-        Compute top-N responsive ratio for all active (binding, perturbation) pairs.
+        Populate ``_topn_cache`` with top-N responsive ratio data for all active
+        (binding, perturbation) pairs.
+
+        Reads all inputs reactively so any change invalidates the effect.  Before
+        running queries the inputs are hashed into a cache key; if the key matches
+        what is stored the effect exits immediately.  On tab return the key always
+        matches (nothing changed), so zero SQL queries run and ``topn_plot`` reads
+        the cached DataFrame without waiting.
 
         :trigger _active_binding_labels: re-runs when binding selection changes.
         :trigger _active_perturbation_labels: re-runs when perturbation changes.
-        :trigger dataset_filters: re-runs when filters are applied or reset. :trigger
-        top_n: re-runs when the top-N cutoff changes. :trigger effect_threshold: re-runs
-        when the effect threshold changes. :trigger pvalue_threshold: re-runs when the
-        p-value threshold changes.
+        :trigger dataset_filters: re-runs when filters change.
+        :trigger top_n: re-runs when the top-N cutoff changes.
+        :trigger effect_threshold: re-runs when the effect threshold changes.
+        :trigger pvalue_threshold: re-runs when the p-value threshold changes.
 
         """
         binding_labels = _active_binding_labels()
@@ -107,10 +126,24 @@ def comparison_workspace_server(
         eff = effect_threshold()
         pval = pvalue_threshold()
 
-        if not binding_labels or not pert_labels:
-            return pd.DataFrame()
+        key: tuple = (
+            tuple(sorted(binding_labels.items())),
+            tuple(sorted(pert_labels.items())),
+            tuple(sorted((k, str(v)) for k, v in filters.items())),
+            n,
+            eff,
+            pval,
+        )
+        with reactive.isolate():
+            cached_key, _ = _topn_cache.get()
+        if key == cached_key:
+            logger.debug("comparison _fill_topn_cache: cache hit, skipping queries")
+            return
 
-        # Build regulator display label map from the pre-built lookup table.
+        if not binding_labels or not pert_labels:
+            _topn_cache.set((key, pd.DataFrame()))
+            return
+
         _reg_df = get_regulator_display_name(vdb)
         reg_labels: dict[str, str] = dict(
             zip(_reg_df["regulator_locus_tag"], _reg_df["display_name"])
@@ -129,34 +162,32 @@ def comparison_workspace_server(
                     continue
                 logger.debug(f"Top-{n}: {b_db} x {p_db}")
                 try:
-                    # When hackett_time_filter is active the analysis-set JOIN
-                    # already restricts samples; passing the numeric time filter
-                    # from dataset_filters would reference a column not present
-                    # in the perturbation view and cause the query to fail.
                     p_filters = (
                         None if p_cfg.get("hackett_time_filter") else filters.get(p_db)
+                    )
+                    sql, qparams = topn_responsive_ratio(
+                        vdb=vdb,
+                        binding_view=b_db,
+                        perturbation_view=p_db,
+                        top_n=n,
+                        effect_threshold=eff,
+                        pvalue_threshold=pval,
+                        binding_filters=filters.get(b_db),
+                        perturbation_filters=p_filters,
+                        param_prefix=f"{b_db}_{p_db}",
+                        sql_only=True,
+                        **b_cfg,
+                        **p_cfg,
                     )
                     with profile_span(
                         profile_logger,
                         "vdb.query",
                         module="comparison",
                         dataset=f"{b_db}x{p_db}",
-                        context="_topn_data",
+                        context="topn_cache",
                         session_id=session_id,
                     ):
-                        result = topn_responsive_ratio(
-                            vdb=vdb,
-                            binding_view=b_db,
-                            perturbation_view=p_db,
-                            top_n=n,
-                            effect_threshold=eff,
-                            pvalue_threshold=pval,
-                            binding_filters=filters.get(b_db),
-                            perturbation_filters=p_filters,
-                            param_prefix=f"{b_db}_{p_db}",
-                            **b_cfg,
-                            **p_cfg,
-                        )
+                        result = cached_query(vdb, sql, qparams)
                     assert isinstance(result, pd.DataFrame)
                     result["binding_source"] = b_label
                     result["perturbation_source"] = p_label
@@ -172,17 +203,33 @@ def comparison_workspace_server(
                     )
 
         if not results:
-            return pd.DataFrame()
+            _topn_cache.set((key, pd.DataFrame()))
+            return
+
         with profile_span(
             profile_logger,
             "df.concat",
             module="comparison",
-            context="_topn_data",
+            context="topn_cache",
             session_id=session_id,
         ):
             out = pd.concat(results, ignore_index=True)
         out["percent_responsive"] = out["responsive_ratio"] * 100
-        return out
+        _topn_cache.set((key, out))
+
+    def _topn_data() -> pd.DataFrame:
+        """
+        Return the current top-N data from the persistent cache.
+
+        Reads ``_topn_cache`` reactively so callers invalidate when new data
+        arrives.  The actual queries run in ``_fill_topn_cache``.
+
+        :returns: DataFrame with columns binding_source, perturbation_source,
+            regulator_locus_tag, regulator_label, responsive_ratio,
+            percent_responsive.
+
+        """
+        return _topn_cache()[1]
 
     @render.ui
     def topn_plot() -> ui.Tag:
@@ -191,15 +238,21 @@ def comparison_workspace_server(
         overlaid. Points show regulator display name on hover. The boxplot itself has no
         tooltip.
 
-        :trigger _topn_data: re-renders when top-N data changes. :trigger facet_by: re-
-        renders when facet orientation changes. :trigger top_n: re-renders when the
-        top-N cutoff changes.
+        :trigger _topn_cache: re-renders when top-N data changes. :trigger facet_by: re-
+        renders when facet orientation changes.
 
         """
+        _render_counts["topn_plot"] += 1
+        t0 = time.perf_counter()
+        logger.debug(f"RENDER comparison/topn_plot #{_render_counts['topn_plot']}")
         df = _topn_data()
         orientation = facet_by()
 
         if df.empty:
+            logger.debug(
+                f"RENDER_DONE comparison/topn_plot #{_render_counts['topn_plot']} "
+                f"elapsed={time.perf_counter()-t0:.3f}s (empty)"
+            )
             return ui.div(
                 {"class": "empty-state"},
                 ui.p("No top-N data available for the selected datasets."),
@@ -230,16 +283,18 @@ def comparison_workspace_server(
         xs = [x for x in x_order if x in df[x_col].unique()]
 
         if not facets or not xs:
+            logger.debug(
+                f"RENDER_DONE comparison/topn_plot #{_render_counts['topn_plot']} "
+                f"elapsed={time.perf_counter()-t0:.3f}s (no facets)"
+            )
             return ui.div(
                 {"class": "empty-state"}, ui.p("No data for selected combination.")
             )
 
-        subplot_titles = facets
-
         fig = make_subplots(
             rows=1,
             cols=len(facets),
-            subplot_titles=subplot_titles,
+            subplot_titles=facets,
             shared_yaxes=True,
         )
 
@@ -293,7 +348,11 @@ def comparison_workspace_server(
             context="topn_plot",
             session_id=session_id,
         ):
-            html = to_html(fig, include_plotlyjs="cdn", full_html=False)
+            html = to_html(fig, include_plotlyjs=False, full_html=False)
+        logger.debug(
+            f"RENDER_DONE comparison/topn_plot #{_render_counts['topn_plot']} "
+            f"elapsed={time.perf_counter()-t0:.3f}s"
+        )
         return ui.HTML(html)
 
 

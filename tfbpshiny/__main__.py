@@ -1,12 +1,46 @@
 import argparse
 import os
+import time
 
 from shiny import run_app
 
-from configure_logger import LogLevel
+from configure_logger import LogLevel, configure_logger, configure_profile_logger
 
 
 def run_shiny(args: argparse.Namespace) -> None:
+    log_level = LogLevel.from_string(args.log_level)
+    log_file = args.log_file or f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log"
+
+    # Configure loggers in this process and persist settings to env so that
+    # Shiny's --reload subprocess picks them up when it re-imports app.py.
+    configure_logger(
+        "shiny",
+        level=log_level.value,
+        handler_type=args.log_handler,
+        log_file=log_file,
+    )
+    configure_profile_logger(
+        handler_type=args.profile_handler,
+        log_file=args.profile_log_file,
+        enabled=not args.no_profile,
+    )
+
+    os.environ["_TFBPSHINY_LOG_LEVEL"] = str(log_level.value)
+    os.environ["_TFBPSHINY_LOG_HANDLER"] = args.log_handler
+    os.environ["_TFBPSHINY_LOG_FILE"] = log_file
+    os.environ["_TFBPSHINY_PROFILE_HANDLER"] = args.profile_handler
+    os.environ["_TFBPSHINY_PROFILE_LOG_FILE"] = args.profile_log_file
+    os.environ["_TFBPSHINY_PROFILE_ENABLED"] = "0" if args.no_profile else "1"
+
+    import logging
+
+    logging.getLogger("shiny").info(
+        f"Logger destinations — shiny: handler={args.log_handler} "
+        f"file={log_file if args.log_handler == 'file' else 'n/a'} | "
+        f"profiler: handler={args.profile_handler} "
+        f"file={args.profile_log_file if args.profile_handler == 'file' else 'n/a'}"
+    )
+
     kwargs: dict[str, object] = {"port": args.port, "host": args.host}
     if args.debug:
         kwargs.update({"reload": True, "reload_dirs": ["tfbpshiny/shiny_app"]})
@@ -23,53 +57,59 @@ def make_parser() -> argparse.ArgumentParser:
         epilog="Use 'tfbpshiny <utility> --help' for more info on each utility.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    # Shared logging args
-    parser.add_argument(
-        "--log-level",
-        type=str,
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help="Set logging level",
-    )
-    parser.add_argument(
-        "--log-handler",
-        type=str,
-        default="console",
-        choices=["console", "file"],
-        help="Set log handler type",
-    )
-    parser.add_argument(
-        "--profile-handler",
-        type=str,
-        default="console",
-        choices=["console", "file"],
-        help="Handler for the profiler logger",
-    )
-    parser.add_argument(
-        "--no-profile",
-        action="store_true",
-        help="Disable the profiler logger entirely",
-    )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # Subcommand: shiny
     shiny_parser = subparsers.add_parser("shiny", help="Run the shiny app")
-    shiny_parser.add_argument(
-        "--debug", action="store_true", help="Enable debug mode with auto-reload"
-    )
     shiny_parser.add_argument(
         "--port", type=int, default=8000, help="Port to serve the Shiny app on"
     )
     shiny_parser.add_argument(
         "--host", type=str, default="127.0.0.1", help="Host to bind the Shiny app"
     )
+    shiny_parser.add_argument(
+        "--debug", action="store_true", help="Enable debug mode with auto-reload"
+    )
+    shiny_parser.add_argument(
+        "--log-level",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Logging level for the shiny logger",
+    )
+    shiny_parser.add_argument(
+        "--log-handler",
+        type=str,
+        default="console",
+        choices=["console", "file"],
+        help="Destination for the shiny logger",
+    )
+    shiny_parser.add_argument(
+        "--log-file",
+        type=str,
+        default="",
+        help="Log file path when --log-handler=file "
+        "(default: tfbpshiny_<timestamp>.log)",
+    )
+    shiny_parser.add_argument(
+        "--profile-handler",
+        type=str,
+        default="console",
+        choices=["console", "file"],
+        help="Destination for the profiler logger",
+    )
+    shiny_parser.add_argument(
+        "--profile-log-file",
+        type=str,
+        default="tfbpshiny_profile.log",
+        help="Log file path when --profile-handler=file",
+    )
+    shiny_parser.add_argument(
+        "--no-profile",
+        action="store_true",
+        help="Disable the profiler logger entirely",
+    )
     shiny_parser.set_defaults(func=run_shiny)
-
-    # Example additional command:
-    # another_parser = subparsers.add_parser("another", help="Another command")
-    # another_parser.add_argument("--param", required=True)
-    # another_parser.set_defaults(func=run_another_command)
 
     return parser
 
@@ -77,21 +117,6 @@ def make_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = make_parser()
     args = parser.parse_args()
-
-    try:
-        log_level = LogLevel.from_string(args.log_level)
-        print(log_level)
-    except ValueError as e:
-        print(f"Invalid log level: {e}")
-        parser.print_help()
-        return
-
-    # the log level is expected to be an int, but only str can be set as an env var
-    # convert to int when configuring the logger
-    os.environ["TFBPSHINY_LOG_LEVEL"] = str(log_level.value)
-    os.environ["TFBPSHINY_LOG_HANDLER"] = args.log_handler
-    os.environ["TFBPSHINY_PROFILE_HANDLER"] = args.profile_handler
-    os.environ["TFBPSHINY_PROFILE_ENABLED"] = "0" if args.no_profile else "1"
     args.func(args)
 
 

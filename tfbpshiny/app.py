@@ -47,37 +47,35 @@ from tfbpshiny.utils.vdb_init import initialize_data
 if not os.getenv("DOCKER_ENV"):
     load_dotenv(dotenv_path=Path(".env"))
 
-logger = logging.getLogger("shiny")
-
-log_file = f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log"
-log_level = int(os.getenv("TFBPSHINY_LOG_LEVEL", "10"))
-handler_type = cast(
-    Literal["console", "file"], os.getenv("TFBPSHINY_LOG_HANDLER", "console")
+# Logger settings are written to _TFBPSHINY_* env vars by __main__.py so that
+# Shiny's --reload subprocess picks them up when it re-imports this module.
+# These vars are never intended to be set by users directly.
+_log_level = int(os.environ.get("_TFBPSHINY_LOG_LEVEL", str(logging.INFO)))
+_log_handler = cast(
+    Literal["console", "file"], os.environ.get("_TFBPSHINY_LOG_HANDLER", "console")
 )
-configure_logger(
+_log_file = (
+    os.environ.get("_TFBPSHINY_LOG_FILE")
+    or f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log"
+)
+_profile_handler = cast(
+    Literal["console", "file"], os.environ.get("_TFBPSHINY_PROFILE_HANDLER", "console")
+)
+_profile_log_file = os.environ.get(
+    "_TFBPSHINY_PROFILE_LOG_FILE", "tfbpshiny_profile.log"
+)
+_profile_enabled = os.environ.get("_TFBPSHINY_PROFILE_ENABLED", "1") == "1"
+
+logger = configure_logger(
     "shiny",
-    level=log_level,
-    handler_type=handler_type,
-    log_file=log_file,
+    level=_log_level,
+    handler_type=_log_handler,
+    log_file=_log_file,
 )
-
-profile_handler_type = cast(
-    Literal["console", "file"],
-    os.getenv("TFBPSHINY_PROFILE_HANDLER", "console"),
-)
-profile_log_file = os.getenv("TFBPSHINY_PROFILE_LOG_FILE", "tfbpshiny_profile.log")
 profile_logger = configure_profile_logger(
-    handler_type=profile_handler_type,
-    log_file=profile_log_file,
-    enabled=os.getenv("TFBPSHINY_PROFILE_ENABLED", "1") == "1",
-)
-# Surface where each logger is writing so the env-var configuration is verifiable
-# from the first lines of stdout instead of having to grep for log files.
-logger.info(
-    f"Logger destinations — shiny: handler={handler_type} "
-    f"file={log_file if handler_type == 'file' else 'n/a'} | "
-    f"profiler: handler={profile_handler_type} "
-    f"file={profile_log_file if profile_handler_type == 'file' else 'n/a'}"
+    handler_type=_profile_handler,
+    log_file=_profile_log_file,
+    enabled=_profile_enabled,
 )
 
 # instantiate the virtualDB and compute app-level dataset metadata
@@ -93,6 +91,14 @@ vdb, app_datasets = initialize_data(
 
 app_ui = ui.page_fillable(
     ui.include_css((Path(__file__).parent / "app.css").resolve()),
+    ui.head_content(
+        ui.tags.script("window.PlotlyConfig = {MathJaxConfig: 'local'};"),
+        ui.tags.script(
+            src="https://cdn.plot.ly/plotly-3.4.0.min.js",
+            integrity="sha256-KEmPoupLpFyGMyGAiOsiNDbKDKAvxXAn/W+oQa0ZAfk=",
+            crossorigin="anonymous",
+        ),
+    ),
     ui.div(
         {"class": "app-container"},
         ui.div(
@@ -125,6 +131,12 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     sid: str = session.id
     log_session_event(profile_logger, "START", sid)
     session.on_ended(lambda: log_session_event(profile_logger, "END", sid))
+
+    # Shared regulator selection — written by binding and perturbation workspace
+    # servers so that navigating between tabs preserves the selected regulator.
+    shared_regulator: reactive.Value[str] = reactive.Value("")
+
+    _render_counts: dict[str, int] = {"sidebar_region": 0, "workspace_region": 0}
 
     # this stores the name of the currently active module, ie
     # "home", "selection", "binding", "perturbation", or "comparison"
@@ -169,6 +181,8 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         logger=logger,
         profile_logger=profile_logger,
         session_id=sid,
+        shared_regulator=shared_regulator,
+        active_module=active_module,
     )
 
     corr_type_p, col_preference_p = perturbation_sidebar_server(
@@ -189,6 +203,8 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         logger=logger,
         profile_logger=profile_logger,
         session_id=sid,
+        shared_regulator=shared_regulator,
+        active_module=active_module,
     )
 
     top_n, effect_threshold, pvalue_threshold, facet_by = comparison_sidebar_server(
@@ -278,38 +294,59 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     @render.ui
     def sidebar_region() -> ui.Tag:
         selected_module = active_module()
-        logger.debug(f"Rendering sidebar for active module: {selected_module}")
+        _render_counts["sidebar_region"] += 1
+        t0 = time.perf_counter()
+        logger.debug(
+            f"RENDER app/sidebar_region #{_render_counts['sidebar_region']} "
+            f"module={selected_module!r}"
+        )
         if selected_module == "home":
-            # no sidebar for home module
-            return ui.span()
-        if selected_module == "selection":
-            return selection_sidebar_ui("select_datasets_sidebar")
-        if selected_module == "binding":
-            return binding_sidebar_ui("binding_sidebar")
-        if selected_module == "perturbation":
-            return perturbation_sidebar_ui("perturbation_sidebar")
-        if selected_module == "comparison":
-            return comparison_sidebar_ui("comparison_sidebar")
-        logger.error(f"No sidebar for active module: {selected_module}")
-        return ui.span(ui.p("ERROR: No sidebar for: " + selected_module))
+            result: ui.Tag = ui.span()
+        elif selected_module == "selection":
+            result = selection_sidebar_ui("select_datasets_sidebar")
+        elif selected_module == "binding":
+            result = binding_sidebar_ui("binding_sidebar")
+        elif selected_module == "perturbation":
+            result = perturbation_sidebar_ui("perturbation_sidebar")
+        elif selected_module == "comparison":
+            result = comparison_sidebar_ui("comparison_sidebar")
+        else:
+            logger.error(f"No sidebar for active module: {selected_module}")
+            result = ui.span(ui.p("ERROR: No sidebar for: " + selected_module))
+        logger.debug(
+            f"RENDER_DONE app/sidebar_region #{_render_counts['sidebar_region']} "
+            f"module={selected_module!r} elapsed={time.perf_counter()-t0:.3f}s"
+        )
+        return result
 
     # this renders the workspace region according to the active module
     @render.ui
     def workspace_region() -> ui.Tag:
         selected_module = active_module()
-        logger.debug(f"Rendering workspace for active module: {selected_module}")
+        _render_counts["workspace_region"] += 1
+        t0 = time.perf_counter()
+        logger.debug(
+            f"RENDER app/workspace_region #{_render_counts['workspace_region']} "
+            f"module={selected_module!r}"
+        )
         if selected_module == "home":
-            return home_ui()
-        if selected_module == "selection":
-            return selection_matrix_ui("select_datasets_workspace")
-        if selected_module == "binding":
-            return binding_workspace_ui("binding_workspace")
-        if selected_module == "perturbation":
-            return perturbation_workspace_ui("perturbation_workspace")
-        if selected_module == "comparison":
-            return comparison_workspace_ui("comparison_workspace")
-        logger.error(f"No workspace for active module: {selected_module}")
-        return ui.span(ui.p("ERROR: No workspace for: " + selected_module))
+            result = home_ui()
+        elif selected_module == "selection":
+            result = selection_matrix_ui("select_datasets_workspace")
+        elif selected_module == "binding":
+            result = binding_workspace_ui("binding_workspace")
+        elif selected_module == "perturbation":
+            result = perturbation_workspace_ui("perturbation_workspace")
+        elif selected_module == "comparison":
+            result = comparison_workspace_ui("comparison_workspace")
+        else:
+            logger.error(f"No workspace for active module: {selected_module}")
+            result = ui.span(ui.p("ERROR: No workspace for: " + selected_module))
+        logger.debug(
+            f"RENDER_DONE app/workspace_region #{_render_counts['workspace_region']} "
+            f"module={selected_module!r} elapsed={time.perf_counter()-t0:.3f}s"
+        )
+        return result
 
 
 app = App(

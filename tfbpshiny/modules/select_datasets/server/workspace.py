@@ -33,7 +33,7 @@ from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS
 #: cadence of ~400-700ms; both ``_settled_datasets`` and ``_settled_filters``
 #: must use the same value so toggle-off (which writes both reactive sources)
 #: produces a single coalesced recompute instead of two flickered ones.
-_SETTLED_WINDOW_SEC = 1.0
+_SETTLED_WINDOW_SEC = 2.5
 
 
 @module.server
@@ -55,6 +55,8 @@ def select_datasets_workspace_server(
         db_name: vdb.get_tags(db_name).get("display_name", db_name)
         for db_name in vdb.get_datasets()
     }
+
+    _render_counts: dict[str, int] = {"matrix_content": 0}
 
     @debounce(_SETTLED_WINDOW_SEC)
     @reactive.calc
@@ -401,6 +403,10 @@ def select_datasets_workspace_server(
 
     @render.ui
     def matrix_content() -> ui.Tag:
+        _render_counts["matrix_content"] += 1
+        logger.debug(
+            f"RENDER select_datasets/matrix_content #{_render_counts['matrix_content']}"
+        )
         active = _settled_datasets()
 
         if not active:

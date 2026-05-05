@@ -168,6 +168,7 @@ body {
     flex: 1;
     padding: 24px;
     overflow-y: auto;
+    position: relative;
 }
 
 /* --- Sidebar sections --------------------------------------------------- */
@@ -479,4 +480,49 @@ body {
 .tooltip-inner {
     max-width: 300px;
     text-align: left;
+}
+
+/* --- Loading overlay ----------------------------------------------------- */
+/*
+ * Shown whenever any output inside .workspace-body is recalculating.
+ * Shiny adds the `recalculating` class to each output div while it is
+ * pending; we use that to drive a full-workspace overlay so the user
+ * sees a spinner rather than a greyed-out partial state.
+ *
+ * The overlay sits on top of .workspace-body via its ::before pseudo-element
+ * so no extra DOM node is needed. The spinner itself is a pure-CSS ring.
+ */
+.workspace-body:has(.recalculating)::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.75);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.workspace-body:has(.recalculating)::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 48px;
+    height: 48px;
+    margin: -24px 0 0 -24px;
+    border: 5px solid var(--color-border);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    z-index: 11;
+    animation: _tfbp-spin 0.75s linear infinite;
+}
+
+@keyframes _tfbp-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Keep recalculating outputs visible (don't double-grey them under the overlay) */
+.workspace-body:has(.recalculating) .recalculating {
+    opacity: 1 !important;
 }

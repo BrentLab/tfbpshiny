@@ -16,6 +16,12 @@ from tfbpshiny.modules.comparison.queries import (
     DEFAULT_PVALUE_THRESHOLD,
     DEFAULT_TOP_N,
 )
+from tfbpshiny.utils.ratelimit import debounce
+
+#: Quiet window (seconds) for coalescing rapid slider adjustments before
+#: invalidating the top-N cache.  Sliders settle faster than dataset-toggle
+#: bursts so a shorter window than the dataset debounce (2.5 s) is used.
+DEBOUNCE_PERIOD = 1.0
 
 
 @module.server
@@ -47,12 +53,15 @@ def comparison_sidebar_server(
 
     """
 
+    @debounce(DEBOUNCE_PERIOD)
     @reactive.calc
     def top_n() -> int:
         """
-        Number of top binding targets to keep per sample.
+        Number of top binding targets to keep per sample, debounced.
 
-        :trigger input.top_n: fires when the user changes the numeric input.
+        :trigger input.top_n: fires when the user changes the numeric input,
+            but downstream is only notified after a ``DEBOUNCE_PERIOD`` quiet
+            window to avoid triggering 12 SQL queries on every slider tick.
         :returns: Integer >= 1; defaults to ``DEFAULT_TOP_N``.
 
         """
@@ -62,12 +71,15 @@ def comparison_sidebar_server(
         except Exception:
             return DEFAULT_TOP_N
 
+    @debounce(DEBOUNCE_PERIOD)
     @reactive.calc
     def effect_threshold() -> float:
         """
-        Minimum absolute effect size for a perturbation target to be responsive.
+        Minimum absolute effect size for a perturbation target to be responsive,
+        debounced.
 
-        :trigger input.effect_threshold: fires when the slider changes.
+        :trigger input.effect_threshold: fires when the slider changes, but
+            downstream is only notified after ``DEBOUNCE_PERIOD``.
         :returns: Float >= 0; defaults to ``DEFAULT_EFFECT_THRESHOLD``.
 
         """
@@ -76,12 +88,14 @@ def comparison_sidebar_server(
         except Exception:
             return DEFAULT_EFFECT_THRESHOLD
 
+    @debounce(DEBOUNCE_PERIOD)
     @reactive.calc
     def pvalue_threshold() -> float:
         """
-        Maximum p-value for a perturbation target to be responsive.
+        Maximum p-value for a perturbation target to be responsive, debounced.
 
-        :trigger input.pvalue_threshold: fires when the slider changes.
+        :trigger input.pvalue_threshold: fires when the slider changes, but
+            downstream is only notified after ``DEBOUNCE_PERIOD``.
         :returns: Float in (0, 1]; defaults to ``DEFAULT_PVALUE_THRESHOLD``.
 
         """
@@ -90,12 +104,14 @@ def comparison_sidebar_server(
         except Exception:
             return DEFAULT_PVALUE_THRESHOLD
 
+    @debounce(DEBOUNCE_PERIOD)
     @reactive.calc
     def facet_by() -> str:
         """
-        Controls which dimension forms the facets vs the color grouping.
+        Controls which dimension forms the facets vs the color grouping, debounced.
 
-        :trigger input.facet_by: fires when the user changes the radio button.
+        :trigger input.facet_by: fires when the user changes the radio button,
+            but downstream is only notified after ``DEBOUNCE_PERIOD``.
         :returns:``"binding"`` (binding = facets, perturbation = color) or
             ``"perturbation"`` (perturbation = facets, binding = color).
 

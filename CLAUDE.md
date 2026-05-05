@@ -18,6 +18,12 @@ Two companion repositories are available as workspace folders and online. Use th
 when working with Shiny components or labretriever data access — read their source rather
 than guessing at APIs.
 
+TO REPEAT: DO NOT GUESS AT SHINY, DUCKDB OR LABRETRIEVER APIS — ALWAYS CHECK THE SOURCE OR OFFICIAL DOCS. If you catch yourself looking in the source code
+in site-packages, then you need to justify why you are doing that instead of
+looking at the references. If you check the references and still cannot find
+the information, you may look in site-pages at the source code. Once again,
+stop hacking around and read the always thoroughly reference the documentation.
+
 | Package | Local path | Online source |
 |---------|-----------|---------------|
 | py-shiny (Shiny for Python source) | `@py-shiny-site (reference)` | https://github.com/posit-dev/py-shiny |
