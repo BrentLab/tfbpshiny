@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 from labretriever import VirtualDB
 from plotly.io import to_html
 from plotly.subplots import make_subplots
-from shiny import module, reactive, render, ui
+from shiny import module, reactive, render, req, ui
 
 from tfbpshiny.modules.comparison.queries import (
     BINDING_CONFIGS,
@@ -72,6 +72,7 @@ def comparison_workspace_server(
     facet_by: Callable[[], str],
     vdb: VirtualDB,
     logger: Logger,
+    active_module: reactive.Value[str] | None = None,
 ) -> None:
     """Render the Top-N by Binding workspace plot."""
 
@@ -106,6 +107,8 @@ def comparison_workspace_server(
         p-value threshold changes.
 
         """
+        if active_module is not None:
+            req(active_module() == "comparison")
         with perf(session.id, "comparison.workspace", "_topn_data"):
             binding_labels = _active_binding_labels()
             pert_labels = _active_perturbation_labels()

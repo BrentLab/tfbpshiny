@@ -46,27 +46,28 @@ from tfbpshiny.modules.select_datasets.ui import (
     selection_matrix_ui,
     selection_sidebar_ui,
 )
-from tfbpshiny.utils.vdb_init import AppDatasets, initialize_data
+from tfbpshiny.utils.vdb_init import AppDatasets, check_local_cache, initialize_data
 
 if not os.getenv("DOCKER_ENV"):
     load_dotenv(dotenv_path=Path(".env"))
 
 logger = logging.getLogger("shiny")
 
-log_file = f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log"
-log_level = int(os.getenv("TFBPSHINY_LOG_LEVEL", "10"))
-handler_type = cast(
+# Log config is set by __main__.py via env vars before run_app() (and before any reload
+# worker re-imports this module). Env vars are the only mechanism that crosses the
+# uvicorn subprocess boundary. HF_TOKEN stays env-var-only for security.
+_log_file = f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log"
+_log_level = int(os.getenv("TFBPSHINY_LOG_LEVEL", str(logging.INFO)))
+_log_handler = cast(
     Literal["console", "file"], os.getenv("TFBPSHINY_LOG_HANDLER", "console")
 )
 configure_logger(
-    "shiny",
-    level=log_level,
-    handler_type=handler_type,
-    log_file=log_file,
+    "shiny", level=_log_level, handler_type=_log_handler, log_file=_log_file
 )
 
-virtualdb_config = os.getenv(
-    "VIRTUALDB_CONFIG", str(Path(__file__).parent / "brentlab_yeast_collection.yaml")
+virtualdb_config: str = os.getenv(
+    "VIRTUALDB_CONFIG",
+    str(Path(__file__).parent / "brentlab_yeast_collection.yaml"),
 )
 hf_token: str | None = os.getenv("HF_TOKEN")
 
@@ -113,6 +114,15 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     _loop = asyncio.get_event_loop()
 
     def _run_init() -> None:
+        missing = check_local_cache(virtualdb_config)
+        if missing:
+            logger.error(
+                "Local HuggingFace cache is incomplete. Run "
+                "'tfbpshiny initialize' to download all datasets before "
+                "starting the app. Missing repos: %s",
+                missing,
+            )
+            return
         logger.info("Starting VirtualDB initialization in background thread.")
         try:
             result = initialize_data(virtualdb_config, hf_token)
@@ -155,6 +165,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
             dataset_filters=dataset_filters,
             vdb=vdb,
             logger=logger,
+            active_module=active_module,
         )
 
         corr_type, col_preference = binding_sidebar_server(
@@ -173,6 +184,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
             vdb=vdb,
             app_datasets=app_datasets,
             logger=logger,
+            active_module=active_module,
         )
 
         corr_type_p, col_preference_p = perturbation_sidebar_server(
@@ -191,6 +203,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
             vdb=vdb,
             app_datasets=app_datasets,
             logger=logger,
+            active_module=active_module,
         )
 
         top_n, effect_threshold, pvalue_threshold, facet_by = comparison_sidebar_server(
@@ -211,6 +224,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
             facet_by=facet_by,
             vdb=vdb,
             logger=logger,
+            active_module=active_module,
         )
 
     @reactive.effect

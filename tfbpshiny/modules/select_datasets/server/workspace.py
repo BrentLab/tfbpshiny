@@ -6,7 +6,8 @@ from logging import Logger
 from typing import Any
 
 from labretriever import VirtualDB
-from shiny import module, reactive, render, ui
+from shiny import module, reactive, render, req, ui
+from shiny.types import SilentException
 
 from tfbpshiny.components import (
     matrix_cell,
@@ -40,6 +41,7 @@ def select_datasets_workspace_server(
     dataset_filters: reactive.Value[dict[str, Any]],
     vdb: VirtualDB,
     logger: Logger,
+    active_module: reactive.Value[str] | None = None,
 ) -> None:
     """Render the sample-count matrix for all active datasets."""
 
@@ -78,6 +80,8 @@ def select_datasets_workspace_server(
             {"common_regulators": int, "samples_a": int, "samples_b": int}}``.
 
         """
+        if active_module is not None:
+            req(active_module() == "selection")
         with perf(session.id, "select_datasets.workspace", "_matrix_data"):
             active = _settled_datasets()
             filters = dataset_filters()
@@ -307,6 +311,8 @@ def select_datasets_workspace_server(
             for any newly added datasets.
 
         """
+        if active_module is not None:
+            req(active_module() == "selection")
         with perf(session.id, "select_datasets.workspace", "_register_cell_effects"):
             active = _settled_datasets()
             for db_name in active:
@@ -330,6 +336,8 @@ def select_datasets_workspace_server(
             ``_active_regulator_pair`` once the regulator filter has been removed.
 
         """
+        if active_module is not None:
+            req(active_module() == "selection")
         with perf(
             session.id, "select_datasets.workspace", "_clear_pair_when_filter_removed"
         ):
@@ -356,6 +364,8 @@ def select_datasets_workspace_server(
 
         try:
             data = _matrix_data()
+        except SilentException:
+            raise
         except Exception:
             logger.exception("Failed to compute matrix data")
             return ui.card(

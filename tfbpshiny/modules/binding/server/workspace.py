@@ -10,7 +10,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from labretriever import VirtualDB
 from plotly.io import to_html
-from shiny import module, reactive, render, ui
+from shiny import module, reactive, render, req, ui
 
 from tfbpshiny.modules.binding.queries import (
     corr_all_pairs_sql,
@@ -35,6 +35,7 @@ def binding_workspace_server(
     vdb: VirtualDB,
     app_datasets: AppDatasets,
     logger: Logger,
+    active_module: reactive.Value[str] | None = None,
 ) -> None:
     """
     Render the binding correlation rows: pairwise distributions
@@ -129,6 +130,8 @@ def binding_workspace_server(
             failure and error are logged at the ERROR level.
 
         """
+        if active_module is not None:
+            req(active_module() == "binding")
         with perf(session.id, "binding.workspace", "_all_corr_data"):
             pairs = _pairs()
             # TODO: get rid of the type ignore
