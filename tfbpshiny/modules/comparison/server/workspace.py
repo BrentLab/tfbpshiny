@@ -80,6 +80,17 @@ def comparison_workspace_server(
 
     @reactive.calc
     def _active_binding_labels() -> dict[str, str]:
+        """
+        Raises ``SilentException`` when the comparison tab is not active, which
+        propagates through ``_topn_data`` without creating a direct dependency on
+        ``active_module`` inside the expensive calc.
+
+        :trigger active_binding_datasets: re-runs when binding selection changes.
+        :trigger active_module: silently blocks when another tab is active.
+
+        """
+        if active_module is not None:
+            req(active_module() == "comparison")
         with perf(session.id, "comparison.workspace", "_active_binding_labels"):
             return {
                 db: BINDING_LABEL_MAP.get(db, db) for db in active_binding_datasets()
@@ -87,6 +98,8 @@ def comparison_workspace_server(
 
     @reactive.calc
     def _active_perturbation_labels() -> dict[str, str]:
+        """:trigger active_perturbation_datasets: re-runs when perturbation selection
+        changes."""
         with perf(session.id, "comparison.workspace", "_active_perturbation_labels"):
             return {
                 db: PERTURBATION_LABEL_MAP.get(db, db)
@@ -99,16 +112,16 @@ def comparison_workspace_server(
         """
         Compute top-N responsive ratio for all active (binding, perturbation) pairs.
 
-        :trigger _active_binding_labels: re-runs when binding selection changes.
+        :trigger _active_binding_labels: re-runs when binding selection changes;
+            silently blocked when the comparison tab is not active via
+            ``_active_binding_labels``.
         :trigger _active_perturbation_labels: re-runs when perturbation changes.
-        :trigger dataset_filters: re-runs when filters are applied or reset. :trigger
-        top_n: re-runs when the top-N cutoff changes. :trigger effect_threshold: re-runs
-        when the effect threshold changes. :trigger pvalue_threshold: re-runs when the
-        p-value threshold changes.
+        :trigger dataset_filters: re-runs when filters are applied or reset.
+        :trigger top_n: re-runs when the top-N cutoff changes.
+        :trigger effect_threshold: re-runs when the effect threshold changes.
+        :trigger pvalue_threshold: re-runs when the p-value threshold changes.
 
         """
-        if active_module is not None:
-            req(active_module() == "comparison")
         with perf(session.id, "comparison.workspace", "_topn_data"):
             binding_labels = _active_binding_labels()
             pert_labels = _active_perturbation_labels()

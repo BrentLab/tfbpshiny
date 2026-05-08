@@ -91,11 +91,18 @@ def perturbation_workspace_server(
         """
         All unique pairs of active perturbation datasets.
 
+        Raises ``SilentException`` when the perturbation tab is not active, which
+        propagates through ``_all_corr_data`` without creating a direct dependency
+        on ``active_module`` inside the expensive calc.
+
         :trigger active_perturbation_datasets: re-runs whenever the user toggles
             a perturbation dataset on or off in the Select Datasets sidebar.
+        :trigger active_module: silently blocks when another tab is active.
         :returns: List of ``(db_a, db_b)`` tuples, length = n_active choose 2.
 
         """
+        if active_module is not None:
+            req(active_module() == "perturbation")
         with perf(session.id, "perturbation.workspace", "_pairs"):
             active = active_perturbation_datasets()
             return list(itertools.combinations(sorted(active), 2))
@@ -130,8 +137,6 @@ def perturbation_workspace_server(
             failure and error are logged at the ERROR level.
 
         """
-        if active_module is not None:
-            req(active_module() == "perturbation")
         with perf(session.id, "perturbation.workspace", "_all_corr_data"):
             pairs = _pairs()
             # TODO: get rid of the type ignore

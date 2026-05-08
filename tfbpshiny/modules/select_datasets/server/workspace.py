@@ -58,12 +58,19 @@ def select_datasets_workspace_server(
         """
         Combined list of all active datasets, debounced to coalesce rapid toggle clicks.
 
+        Raises ``SilentException`` when the selection tab is not active, which
+        propagates through ``_matrix_data`` without creating a direct dependency on
+        ``active_module`` inside the expensive calc.
+
         :trigger: ``active_binding_datasets``, ``active_perturbation_datasets`` —
             re-runs whenever either list changes, but downstream is only notified
             after a specified quiet period.
+        :trigger: ``active_module`` — silently blocks when another tab is active.
         :returns: Concatenated list of active db_name strings, binding first.
 
         """
+        if active_module is not None:
+            req(active_module() == "selection")
         with perf(session.id, "select_datasets.workspace", "_settled_datasets"):
             return active_binding_datasets() + active_perturbation_datasets()
 
@@ -73,15 +80,15 @@ def select_datasets_workspace_server(
         Compute per-dataset regulator/sample counts and pairwise common-regulator
         counts.
 
-        :trigger: ``_settled_datasets`` — re-runs after rapid toggle changes settle.
+        :trigger: ``_settled_datasets`` — re-runs after rapid toggle changes settle;
+            silently blocked when the selection tab is not active via
+            ``_settled_datasets``.
             ``dataset_filters`` — re-runs when any filter changes.
         :returns: Dict with keys ``"diagonal"`` — ``{db_name: {"regulators": int,
             "samples": int}}``; ``"cross_dataset"`` — ``{(db_i, db_j):
             {"common_regulators": int, "samples_a": int, "samples_b": int}}``.
 
         """
-        if active_module is not None:
-            req(active_module() == "selection")
         with perf(session.id, "select_datasets.workspace", "_matrix_data"):
             active = _settled_datasets()
             filters = dataset_filters()

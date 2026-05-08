@@ -91,11 +91,18 @@ def binding_workspace_server(
         """
         All unique pairs of active binding datasets.
 
+        Raises ``SilentException`` when the binding tab is not active, which
+        propagates through ``_all_corr_data`` without creating a direct dependency
+        on ``active_module`` inside the expensive calc.
+
         :trigger active_binding_datasets: re-runs whenever the user toggles a
             binding dataset on or off in the Select Datasets sidebar.
+        :trigger active_module: silently blocks when another tab is active.
         :returns: List of ``(db_a, db_b)`` tuples, length = n_active choose 2.
 
         """
+        if active_module is not None:
+            req(active_module() == "binding")
         with perf(session.id, "binding.workspace", "_pairs"):
             active = active_binding_datasets()
             pairs = list(itertools.combinations(sorted(active), 2))
@@ -118,7 +125,8 @@ def binding_workspace_server(
         there will be multiple correlation values for that regulator in the output
         dataframe.
 
-        :trigger _pairs: re-runs when the set of active pairs changes.
+        :trigger _pairs: re-runs when the set of active pairs changes; silently
+            blocked when the binding tab is not active via ``_pairs``.
         :trigger col_preference: re-runs when the user switches between Effect
             and P-value columns.
         :trigger corr_type: re-runs when the user switches between Pearson and
@@ -132,8 +140,6 @@ def binding_workspace_server(
             failure and error are logged at the ERROR level.
 
         """
-        if active_module is not None:
-            req(active_module() == "binding")
         with perf(session.id, "binding.workspace", "_all_corr_data"):
             pairs = _pairs()
             # TODO: get rid of the type ignore
