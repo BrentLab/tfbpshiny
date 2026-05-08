@@ -27,7 +27,6 @@ from tfbpshiny.modules.select_datasets.ui import (
     off_diagonal_cell_modal_ui,
 )
 from tfbpshiny.utils.perf import perf, reset_render_counts
-from tfbpshiny.utils.ratelimit import debounce
 from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS
 
 
@@ -52,11 +51,10 @@ def select_datasets_workspace_server(
         for db_name in vdb.get_datasets()
     }
 
-    @debounce(0.3)
     @reactive.calc
     def _settled_datasets() -> list[str]:
         """
-        Combined list of all active datasets, debounced to coalesce rapid toggle clicks.
+        Combined list of all active datasets.
 
         Raises ``SilentException`` when the selection tab is not active, which
         propagates through ``_matrix_data`` without creating a direct dependency on

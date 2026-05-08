@@ -16,12 +16,14 @@ from shiny import module, reactive, render, req, ui
 from tfbpshiny.modules.comparison.queries import (
     BINDING_CONFIGS,
     BINDING_LABEL_MAP,
+    DEFAULT_EFFECT_THRESHOLD,
+    DEFAULT_PVALUE_THRESHOLD,
+    DEFAULT_TOP_N,
     PERTURBATION_CONFIGS,
     PERTURBATION_LABEL_MAP,
     topn_all_pairs_sql,
 )
 from tfbpshiny.utils.perf import perf, reset_render_counts
-from tfbpshiny.utils.ratelimit import debounce
 from tfbpshiny.utils.vdb_init import get_regulator_display_name
 
 # color palettes
@@ -78,6 +80,27 @@ def comparison_workspace_server(
 
     session.on_flush(lambda: reset_render_counts(session.id))
 
+    # Stable reactive value for query params; only invalidates downstream when values
+    # actually change, breaking the input-echo double-run on tab switch.
+    _query_params: reactive.Value[tuple[int, float, float]] = reactive.value(
+        (DEFAULT_TOP_N, DEFAULT_EFFECT_THRESHOLD, DEFAULT_PVALUE_THRESHOLD)
+    )
+
+    @reactive.effect
+    def _sync_query_params() -> None:
+        """
+        Write sidebar param values to ``_query_params`` only when they change.
+
+        :trigger top_n: re-fires when the top-N input changes. :trigger
+        effect_threshold: re-fires when the effect threshold changes. :trigger
+        pvalue_threshold: re-fires when the p-value threshold changes.
+
+        """
+        new = (top_n(), effect_threshold(), pvalue_threshold())
+        with reactive.isolate():
+            if new != _query_params():
+                _query_params.set(new)
+
     @reactive.calc
     def _active_binding_labels() -> dict[str, str]:
         """
@@ -106,7 +129,6 @@ def comparison_workspace_server(
                 for db in active_perturbation_datasets()
             }
 
-    @debounce(0.3)
     @reactive.calc
     def _topn_data() -> pd.DataFrame:
         """
@@ -117,18 +139,15 @@ def comparison_workspace_server(
             ``_active_binding_labels``.
         :trigger _active_perturbation_labels: re-runs when perturbation changes.
         :trigger dataset_filters: re-runs when filters are applied or reset.
-        :trigger top_n: re-runs when the top-N cutoff changes.
-        :trigger effect_threshold: re-runs when the effect threshold changes.
-        :trigger pvalue_threshold: re-runs when the p-value threshold changes.
+        :trigger _query_params: re-runs when top-N, effect, or p-value thresholds
+            actually change (stable value, does not re-fire on input echo).
 
         """
         with perf(session.id, "comparison.workspace", "_topn_data"):
             binding_labels = _active_binding_labels()
             pert_labels = _active_perturbation_labels()
             filters = dataset_filters()
-            n = top_n()
-            eff = effect_threshold()
-            pval = pvalue_threshold()
+            n, eff, pval = _query_params()
 
             if not binding_labels or not pert_labels:
                 return pd.DataFrame()

@@ -18,7 +18,6 @@ from tfbpshiny.modules.binding.queries import (
     regulator_scatter_sql,
 )
 from tfbpshiny.utils.perf import perf, reset_render_counts
-from tfbpshiny.utils.ratelimit import debounce
 from tfbpshiny.utils.sample_conditions import fetch_sample_condition_map
 from tfbpshiny.utils.vdb_init import AppDatasets, get_regulator_display_name
 
@@ -43,6 +42,26 @@ def binding_workspace_server(
     """
 
     session.on_flush(lambda: reset_render_counts(session.id))
+
+    # Stable reactive value for corr/col params; only invalidates downstream when
+    # values actually change, breaking the input-echo double-run on tab switch.
+    _corr_params: reactive.Value[tuple[str, str]] = reactive.value(
+        ("pearson", "effect")
+    )
+
+    @reactive.effect
+    def _sync_corr_params() -> None:
+        """
+        Write sidebar param values to ``_corr_params`` only when they change.
+
+        :trigger corr_type: re-fires when the correlation type input changes. :trigger
+        col_preference: re-fires when the column preference input changes.
+
+        """
+        new = (corr_type(), col_preference())
+        with reactive.isolate():
+            if new != _corr_params():
+                _corr_params.set(new)
 
     display_names: dict[str, str] = {
         db_name: vdb.get_tags(db_name).get("display_name", db_name)
@@ -71,8 +90,6 @@ def binding_workspace_server(
             the joined condition label.
 
         """
-        if active_module is not None:
-            req(active_module() == "binding")
         with perf(session.id, "binding.workspace", "_condition_maps"):
             out: dict[str, dict[str, str]] = {}
             for db in active_binding_datasets():
@@ -109,7 +126,6 @@ def binding_workspace_server(
             logger.debug(f"binding _pairs: active={active}, pairs={pairs}")
             return pairs
 
-    @debounce(0.3)
     @reactive.calc
     def _all_corr_data() -> dict[tuple[str, str], pd.DataFrame]:
         """
@@ -142,9 +158,9 @@ def binding_workspace_server(
         """
         with perf(session.id, "binding.workspace", "_all_corr_data"):
             pairs = _pairs()
+            method, preference_str = _corr_params()
             # TODO: get rid of the type ignore
-            preference: Literal["effect", "pvalue"] = col_preference()  # type: ignore[assignment] # noqa: E501
-            method = corr_type()
+            preference: Literal["effect", "pvalue"] = preference_str  # type: ignore[assignment] # noqa: E501
             filters = dataset_filters()
 
             if not pairs:

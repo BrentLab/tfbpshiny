@@ -145,34 +145,56 @@ def select_datasets_sidebar_server(
 
     # reactives
     collapsed: reactive.Value[bool] = reactive.value(False)
+
+    _initial_toggle: dict[str, bool] = {
+        db_name: db_name in DEFAULT_ACTIVE_DATASETS
+        for db_name, _, _ in binding_datasets + perturbation_datasets
+    }
+
+    # Committed state — drives the expensive calcs (matrix, correlation queries).
+    # Only updated when the user clicks "Apply".
     # {<db_name>: {<field_name>: {"type": "categorical" or "numeric" or "bool",
     #                              "value": list[str] | [lo, hi] | bool}}}
     dataset_filters: reactive.Value[dict[str, Any]] = reactive.value(
         DEFAULT_DATASET_FILTERS
     )
+    _toggle_state: reactive.Value[dict[str, bool]] = reactive.value(_initial_toggle)
+
+    # Pending (staging) state — receives all toggle and filter writes immediately.
+    # Does NOT feed the expensive calcs; only commits to the above on Apply.
+    _pending_filters: reactive.Value[dict[str, Any]] = reactive.value(
+        DEFAULT_DATASET_FILTERS
+    )
+    _pending_toggle_state: reactive.Value[dict[str, bool]] = reactive.value(
+        _initial_toggle
+    )
+
     # tracks which db_name's filter modal is currently open
     modal_open_for: reactive.Value[str | None] = reactive.value(None)
     # stores the DataFrame fetched when a filter modal is opened
     modal_df: reactive.Value[pd.DataFrame | None] = reactive.value(None)
 
-    # Per-dataset toggle state — persists so toggles restore correctly on re-render.
-    # Stored as a single reactive dict so all toggles are updated atomically.
-    _toggle_state: reactive.Value[dict[str, bool]] = reactive.value(
-        {
-            db_name: db_name in DEFAULT_ACTIVE_DATASETS
-            for db_name, _, _ in binding_datasets + perturbation_datasets
-        }
-    )
+    @reactive.calc
+    def _has_pending_changes() -> bool:
+        """
+        True when the pending state differs from the committed state.
 
-    # Active dataset lists derived from toggle state. Using @reactive.calc
-    # instead of manually maintained reactive.Value eliminates redundant writes
-    # and lets Shiny coalesce rapid toggle changes within a single flush cycle.
+        :trigger: ``_pending_toggle_state``, ``_pending_filters``,
+            ``_toggle_state``, ``dataset_filters``.
+
+        """
+        return (
+            _pending_toggle_state() != _toggle_state()
+            or _pending_filters() != dataset_filters()
+        )
+
+    # Active dataset lists derived from committed toggle state.
     @reactive.calc
     def _active_binding_datasets() -> list[str]:
         """
-        Binding datasets currently toggled on.
+        Binding datasets currently toggled on (committed state).
 
-        :trigger: ``_toggle_state`` — re-runs whenever any toggle changes.
+        :trigger: ``_toggle_state`` — re-runs when committed state changes.
 
         """
         with perf(session.id, "select_datasets.sidebar", "_active_binding_datasets"):
@@ -182,9 +204,9 @@ def select_datasets_sidebar_server(
     @reactive.calc
     def _active_perturbation_datasets() -> list[str]:
         """
-        Perturbation datasets currently toggled on.
+        Perturbation datasets currently toggled on (committed state).
 
-        :trigger: ``_toggle_state`` — re-runs whenever any toggle changes.
+        :trigger: ``_toggle_state`` — re-runs when committed state changes.
 
         """
         with perf(
@@ -261,8 +283,8 @@ def select_datasets_sidebar_server(
             dataset_dict=dataset_dict,
             all_col_meta=all_col_meta,
             common_fields=common_fields,
-            toggle_state=_toggle_state,
-            dataset_filters=dataset_filters,
+            toggle_state=_pending_toggle_state,
+            dataset_filters=_pending_filters,
             modal_open_for=modal_open_for,
             modal_df=modal_df,
             common_field_levels_fn=_common_field_levels,
@@ -390,7 +412,7 @@ def select_datasets_sidebar_server(
         with perf(session.id, "select_datasets.sidebar", "_reset_filter_modal"):
             db_name = modal_open_for()
             if db_name is not None:
-                current = dict(dataset_filters())
+                current = dict(_pending_filters())
                 all_db_names = [
                     d for d, _, _ in binding_datasets + perturbation_datasets
                 ]
@@ -408,7 +430,7 @@ def select_datasets_sidebar_server(
                             current.pop(ds)
                 # clear dataset-specific filters for the open dataset
                 current.pop(db_name, None)
-                dataset_filters.set(current)
+                _pending_filters.set(current)
                 logger.debug(
                     "dataset_filters reset for %s: %d datasets with active filters",
                     db_name,
@@ -434,7 +456,7 @@ def select_datasets_sidebar_server(
             if db_name is None:
                 return
             all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
-            current = dict(dataset_filters())
+            current = dict(_pending_filters())
             for ds in all_db_names:
                 ds_filters = dict(current.get(ds, {}))
                 ds_filters.pop("regulator_locus_tag", None)
@@ -442,7 +464,7 @@ def select_datasets_sidebar_server(
                     current[ds] = ds_filters
                 else:
                     current.pop(ds, None)
-            dataset_filters.set(current)
+            _pending_filters.set(current)
             # clear the selectize in place — no modal teardown/re-show needed
             ui.update_selectize("filter_regulator_locus_tag", selected=[])
 
@@ -535,7 +557,7 @@ def select_datasets_sidebar_server(
                 reg_apply_to_all = True
             if reg_selected:
                 saved_reg = (
-                    dataset_filters().get(db_name, {}).get("regulator_locus_tag", {})
+                    _pending_filters().get(db_name, {}).get("regulator_locus_tag", {})
                 )
                 from_pair = saved_reg.get("from_pair") if saved_reg else None
                 reg_spec: dict[str, Any] = {
@@ -557,7 +579,7 @@ def select_datasets_sidebar_server(
                 f: v for f, v in field_filters.items() if f not in common_fields
             }
 
-            current = dict(dataset_filters())
+            current = dict(_pending_filters())
             all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
 
             # apply regulator filter (or clear it if empty)
@@ -639,22 +661,34 @@ def select_datasets_sidebar_server(
             else:
                 current.pop(db_name, None)
 
-            dataset_filters.set(current)
+            _pending_filters.set(current)
             logger.debug(
-                "dataset_filters applied for %s: %d fields set",
+                "dataset_filters (pending) applied for %s: %d fields set",
                 db_name,
                 len(ds_filters),
             )
 
-            # activate the dataset if it isn't already on — the @reactive.calc
-            # will automatically include it in the active list, and the row
-            # module's _sync_toggle_to_dom effect will sync the DOM switch.
-            if not _toggle_state().get(db_name, False):
-                _toggle_state.set({**_toggle_state(), db_name: True})
+            # activate the dataset in pending state if it isn't already on
+            if not _pending_toggle_state().get(db_name, False):
+                _pending_toggle_state.set({**_pending_toggle_state(), db_name: True})
 
             ui.modal_remove()
             modal_open_for.set(None)
             modal_df.set(None)
+
+    @reactive.effect
+    @reactive.event(input.apply_pending)
+    def _apply_pending() -> None:
+        """
+        Commit pending toggle and filter state to the live reactive values, triggering
+        the matrix and correlation queries exactly once.
+
+        :trigger input.apply_pending: fires when the user clicks the     "Apply" button
+        in the sidebar.
+
+        """
+        _toggle_state.set(_pending_toggle_state())
+        dataset_filters.set(_pending_filters())
 
     @render.download(
         filename=lambda: "tfbpshiny_export.tar.gz",
@@ -775,7 +809,8 @@ def select_datasets_sidebar_server(
         if active_module is not None:
             active_module()
         is_collapsed = collapsed()
-        active_filter_names: set[str] = set(dataset_filters())
+        active_filter_names: set[str] = set(_pending_filters())
+        has_pending = _has_pending_changes()
 
         search_term = ""
         if not is_collapsed:
@@ -785,10 +820,11 @@ def select_datasets_sidebar_server(
                 pass
 
         def _dataset_row(db_name: str, label: str, description: str) -> ui.Tag:
-            # isolate: read toggle state without creating a reactive dependency —
-            # toggles are synced by the row module's _sync_toggle_to_dom effect.
+            # isolate: read pending toggle state without creating a reactive
+            # dependency — toggles are synced by the row module's
+            # _sync_toggle_to_dom effect (which reads _pending_toggle_state).
             with reactive.isolate():
-                current_val = _toggle_state().get(db_name, False)
+                current_val = _pending_toggle_state().get(db_name, False)
             return dataset_row_ui(
                 db_name,
                 label=label,
@@ -867,6 +903,12 @@ def select_datasets_sidebar_server(
             ui.div(
                 {"class": "sidebar-body"},
                 ui.div({"class": "dataset-list"}, *section_tags),
+                ui.input_action_button(
+                    "apply_pending",
+                    "Apply",
+                    class_="btn-apply-pending"
+                    + ("" if has_pending else " btn-apply-pending--hidden"),
+                ),
             ),
             ui.output_ui("sidebar_footer"),
         )
