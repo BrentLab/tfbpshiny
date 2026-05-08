@@ -316,12 +316,6 @@ def initialize_data(
     )
 
     t = time.monotonic()
-    vdb.materialize()
-    logger.debug(
-        "initialize_data: materialize completed in %.3fs", time.monotonic() - t
-    )
-
-    t = time.monotonic()
     _build_regulator_display_names(vdb)
     logger.debug(
         "initialize_data: _build_regulator_display_names completed in %.3fs",
