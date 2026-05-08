@@ -126,6 +126,135 @@ Application and Traefik logs are sent to AWS CloudWatch Logs under the log group
 
 ---
 
+## shinyapps.io deployment
+
+This section describes how to deploy the app to
+[shinyapps.io](https://www.shinyapps.io) as an alternative to the EC2/Docker
+stack above. The two deployments are independent and can run in parallel.
+
+### Prerequisites
+
+- A shinyapps.io account on the **Standard plan** (minimum 4 GB RAM; xxxlarge
+  instance type recommended for 8 GB to match production)
+- `rsconnect-python` installed: `pip install rsconnect-python`
+- A HuggingFace token if any datasets are private
+- labretriever published to PyPI or available as a wheel (see note below)
+
+> **labretriever note.** shinyapps.io installs dependencies from PyPI only.
+> Until labretriever is published to PyPI, build a wheel locally and include it
+> in the bundle:
+>
+> ```bash
+> cd ~/code/labretriever
+> pip wheel . --no-deps -w /tmp/wheels
+> cp /tmp/wheels/labretriever-*.whl /path/to/tfbpshiny/wheels/
+> ```
+>
+> Then add `wheels/labretriever-*.whl` to your `requirements.txt` as a relative
+> path. Once labretriever is on PyPI this step is not needed.
+
+### 1. Download the HuggingFace data locally
+
+The parquet files must be bundled with the deployment so the app never hits the
+network on startup. Run the `initialize` command once, pointing at a directory
+inside the project:
+
+```bash
+HF_TOKEN=<your_token> python -m tfbpshiny --cache-dir ./hf_cache initialize
+```
+
+This downloads all dataset parquet files into `hf_cache/` (~1.2 GB) and
+verifies every view is readable. The directory is created relative to the
+project root and will be included in the rsconnect upload bundle automatically.
+
+Re-run this command any time the upstream datasets are updated.
+
+### 2. Add hf_cache to .gitignore
+
+The cache directory should not be committed to git:
+
+```bash
+echo "hf_cache/" >> .gitignore
+```
+
+### 3. Configure the app startup command
+
+shinyapps.io invokes the app via the `app.py` entry point, but tfbpshiny uses
+a CLI (`__main__.py`) to set environment variables before the Shiny process
+starts. Create an `app.py` shim in the project root that applies the cache
+directory before importing the Shiny app object:
+
+```python
+# app.py  (shinyapps.io entry point shim)
+import os
+from pathlib import Path
+
+os.environ["HF_CACHE_DIR"] = str(Path(__file__).parent / "hf_cache")
+
+from tfbpshiny.app import app  # noqa: E402  (must come after env var is set)
+```
+
+### 4. Set environment variables in the dashboard
+
+In the shinyapps.io application dashboard under **Settings > Environment**,
+add:
+
+| Variable | Value |
+|---|---|
+| `HF_TOKEN` | your HuggingFace token (if datasets are private) |
+
+Do not add `HF_CACHE_DIR` here — the shim above sets it from a path relative
+to the bundle, which is more reliable than a hardcoded absolute path.
+
+### 5. Set the instance type
+
+In the shinyapps.io application dashboard under **Settings > General**, set:
+
+- **Instance type**: `xxxlarge` (8192 MB) — recommended to match production
+- **Max instances**: 3-5 depending on your plan
+
+### 6. Deploy
+
+```bash
+rsconnect add \
+    --account <your-shinyapps-account> \
+    --name shinyapps \
+    --token <token> \
+    --secret <secret>
+
+rsconnect deploy shiny . \
+    --account <your-shinyapps-account> \
+    --name tfbpshiny \
+    --title "TF Binding and Perturbation"
+```
+
+rsconnect will bundle everything in the project directory, including `hf_cache/`.
+The first deploy uploads ~1.2 GB; subsequent code-only deploys require
+re-uploading the cache unless you use the `--exclude` flag with caution (do not
+exclude `hf_cache/`).
+
+### Updating the data
+
+When upstream datasets change, re-run step 1 and redeploy:
+
+```bash
+HF_TOKEN=<your_token> python -m tfbpshiny --cache-dir ./hf_cache initialize
+rsconnect deploy shiny . --account <your-shinyapps-account> --name tfbpshiny
+```
+
+### Differences from EC2 deployment
+
+| | EC2 / Docker | shinyapps.io |
+|---|---|---|
+| Data persistence | Named Docker volume (permanent) |
+Bundled at deploy time; resets on redeploy |
+| Scaling | Single instance | Up to 5 instances (Standard plan) |
+| Ops burden | Docker, Traefik, Terraform | None |
+| Cold start | Fast (volume already mounted) | Fast (bundle already present) |
+| Data update | `docker compose pull && up --build` | Re-run initialize + redeploy |
+
+---
+
 ## Contributing
 
 ### Setup

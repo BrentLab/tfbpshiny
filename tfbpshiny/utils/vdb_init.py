@@ -5,11 +5,10 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from pathlib import Path
 
 import pandas as pd
-from huggingface_hub import constants as hf_constants
 from labretriever import VirtualDB
+from labretriever.constants import get_cache_dir
 from labretriever.models import MetadataConfig
 
 logger = logging.getLogger("shiny")
@@ -261,9 +260,10 @@ def check_local_cache(virtualdb_config: str) -> list[str]:
     Return a list of repo IDs from the config whose HuggingFace snapshot cache is
     absent.
 
-    Checks for ``{HF_HUB_CACHE}/datasets--{owner}--{repo}/snapshots/`` with at least
-    one entry. An empty list means all repos are cached and ``local_files_only=True``
-    is safe to use.
+    Checks for ``{cache_dir}/datasets--{owner}--{repo}/snapshots/`` with at least one
+    entry. Respects ``HF_CACHE_DIR`` (set via ``--cache-dir`` CLI flag) so that a
+    bundled cache directory is correctly detected. An empty list means all repos are
+    cached and ``local_files_only=True`` is safe to use.
 
     :param virtualdb_config: Path to the VirtualDB YAML config file.
     :returns: List of uncached HuggingFace repo IDs (empty when all are cached).
@@ -271,7 +271,7 @@ def check_local_cache(virtualdb_config: str) -> list[str]:
 
     """
     config = MetadataConfig.from_yaml(virtualdb_config)
-    hub_cache = Path(hf_constants.HF_HUB_CACHE)
+    hub_cache = get_cache_dir()
     missing: list[str] = []
     for repo_id in config.repositories:
         # HF cache path: datasets--{owner}--{repo_name}

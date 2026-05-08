@@ -1,3 +1,6 @@
+# ignore the hf_cache. this is for shinyapps
+hf_cache/
+
 #mac files
 **/.DS_Store
 
