@@ -42,7 +42,7 @@ def run_initialize(args: argparse.Namespace) -> None:
     hf_token: str | None = os.getenv("HF_TOKEN")
     logger.info("Downloading all datasets into local HuggingFace cache.")
     try:
-        initialize_data(args.virtualdb_config, hf_token)
+        initialize_data(args.virtualdb_config, hf_token, local_files_only=False)
         logger.info("Cache initialization complete.")
     except Exception:
         logger.exception("Cache initialization failed.")
