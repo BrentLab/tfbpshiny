@@ -71,6 +71,8 @@ def perturbation_workspace_server(
             the joined condition label.
 
         """
+        if active_module is not None:
+            req(active_module() == "perturbation")
         with perf(session.id, "perturbation.workspace", "_condition_maps"):
             out: dict[str, dict[str, str]] = {}
             for db in active_perturbation_datasets():

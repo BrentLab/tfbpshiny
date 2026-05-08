@@ -201,8 +201,15 @@ def _corr_pair_sql_impl(
     if method == "spearman":
         sql = f"""
             WITH
-              a AS ({sql_a}),
-              b AS ({sql_b}),
+              a_raw AS ({sql_a}),
+              b_raw AS ({sql_b}),
+              shared_regs AS (
+                SELECT DISTINCT regulator_locus_tag FROM a_raw
+                INTERSECT
+                SELECT DISTINCT regulator_locus_tag FROM b_raw
+              ),
+              a AS (SELECT * FROM a_raw WHERE regulator_locus_tag IN (SELECT regulator_locus_tag FROM shared_regs)),
+              b AS (SELECT * FROM b_raw WHERE regulator_locus_tag IN (SELECT regulator_locus_tag FROM shared_regs)),
               joined AS (
                 SELECT
                   a.regulator_locus_tag,
@@ -250,8 +257,15 @@ def _corr_pair_sql_impl(
     else:
         sql = f"""
             WITH
-              a AS ({sql_a}),
-              b AS ({sql_b})
+              a_raw AS ({sql_a}),
+              b_raw AS ({sql_b}),
+              shared_regs AS (
+                SELECT DISTINCT regulator_locus_tag FROM a_raw
+                INTERSECT
+                SELECT DISTINCT regulator_locus_tag FROM b_raw
+              ),
+              a AS (SELECT * FROM a_raw WHERE regulator_locus_tag IN (SELECT regulator_locus_tag FROM shared_regs)),
+              b AS (SELECT * FROM b_raw WHERE regulator_locus_tag IN (SELECT regulator_locus_tag FROM shared_regs))
             SELECT
               '{db_a}'                     AS db_a,
               a.sample_id                  AS db_a_id,

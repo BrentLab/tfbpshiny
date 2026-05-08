@@ -71,6 +71,8 @@ def binding_workspace_server(
             the joined condition label.
 
         """
+        if active_module is not None:
+            req(active_module() == "binding")
         with perf(session.id, "binding.workspace", "_condition_maps"):
             out: dict[str, dict[str, str]] = {}
             for db in active_binding_datasets():
