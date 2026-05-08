@@ -11,6 +11,8 @@ from typing import Any, Literal, cast
 from dotenv import load_dotenv
 from labretriever import VirtualDB
 from shiny import App, reactive, render, ui
+from shiny.reactive._core import flush as reactive_flush
+from shiny.reactive._core import lock as reactive_lock
 
 from configure_logger import configure_logger
 from tfbpshiny.components import github_badge, nav_button
@@ -118,8 +120,13 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         except Exception:
             logger.exception("VirtualDB initialization failed.")
             return
-        # Schedule the reactive update back on the event loop thread.
-        _loop.call_soon_threadsafe(_init_result.set, result)
+
+        async def _deliver() -> None:
+            async with reactive_lock():
+                _init_result.set(result)
+                await reactive_flush()
+
+        _loop.call_soon_threadsafe(asyncio.create_task, _deliver())
 
     threading.Thread(target=_run_init, daemon=True).start()
 
