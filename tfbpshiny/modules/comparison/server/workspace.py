@@ -18,8 +18,10 @@ from tfbpshiny.modules.comparison.queries import (
     BINDING_LABEL_MAP,
     PERTURBATION_CONFIGS,
     PERTURBATION_LABEL_MAP,
-    topn_responsive_ratio,
+    topn_all_pairs_sql,
 )
+from tfbpshiny.utils.perf import perf, reset_render_counts
+from tfbpshiny.utils.ratelimit import debounce
 from tfbpshiny.utils.vdb_init import get_regulator_display_name
 
 # color palettes
@@ -73,17 +75,24 @@ def comparison_workspace_server(
 ) -> None:
     """Render the Top-N by Binding workspace plot."""
 
+    session.on_flush(lambda: reset_render_counts(session.id))
+
     @reactive.calc
     def _active_binding_labels() -> dict[str, str]:
-        return {db: BINDING_LABEL_MAP.get(db, db) for db in active_binding_datasets()}
+        with perf(session.id, "comparison.workspace", "_active_binding_labels"):
+            return {
+                db: BINDING_LABEL_MAP.get(db, db) for db in active_binding_datasets()
+            }
 
     @reactive.calc
     def _active_perturbation_labels() -> dict[str, str]:
-        return {
-            db: PERTURBATION_LABEL_MAP.get(db, db)
-            for db in active_perturbation_datasets()
-        }
+        with perf(session.id, "comparison.workspace", "_active_perturbation_labels"):
+            return {
+                db: PERTURBATION_LABEL_MAP.get(db, db)
+                for db in active_perturbation_datasets()
+            }
 
+    @debounce(0.3)
     @reactive.calc
     def _topn_data() -> pd.DataFrame:
         """
@@ -97,74 +106,78 @@ def comparison_workspace_server(
         p-value threshold changes.
 
         """
-        binding_labels = _active_binding_labels()
-        pert_labels = _active_perturbation_labels()
-        filters = dataset_filters()
-        n = top_n()
-        eff = effect_threshold()
-        pval = pvalue_threshold()
+        with perf(session.id, "comparison.workspace", "_topn_data"):
+            binding_labels = _active_binding_labels()
+            pert_labels = _active_perturbation_labels()
+            filters = dataset_filters()
+            n = top_n()
+            eff = effect_threshold()
+            pval = pvalue_threshold()
 
-        if not binding_labels or not pert_labels:
-            return pd.DataFrame()
+            if not binding_labels or not pert_labels:
+                return pd.DataFrame()
 
-        # Build regulator display label map from the pre-built lookup table.
-        _reg_df = get_regulator_display_name(vdb)
-        reg_labels: dict[str, str] = dict(
-            zip(_reg_df["regulator_locus_tag"], _reg_df["display_name"])
-        )
+            _reg_df = get_regulator_display_name(vdb)
+            reg_labels: dict[str, str] = dict(
+                zip(_reg_df["regulator_locus_tag"], _reg_df["display_name"])
+            )
 
-        results: list[pd.DataFrame] = []
-        for b_db, b_label in binding_labels.items():
-            b_cfg = BINDING_CONFIGS.get(b_db)
-            if b_cfg is None:
-                logger.warning(f"No binding config for {b_db}, skipping")
-                continue
-            for p_db, p_label in pert_labels.items():
-                p_cfg = PERTURBATION_CONFIGS.get(p_db)
-                if p_cfg is None:
-                    logger.warning(f"No perturbation config for {p_db}, skipping")
+            pairs = [
+                (b_db, p_db)
+                for b_db in binding_labels
+                if BINDING_CONFIGS.get(b_db) is not None
+                for p_db in pert_labels
+                if PERTURBATION_CONFIGS.get(p_db) is not None
+            ]
+
+            skipped_binding = [
+                b for b in binding_labels if BINDING_CONFIGS.get(b) is None
+            ]
+            skipped_pert = [
+                p for p in pert_labels if PERTURBATION_CONFIGS.get(p) is None
+            ]
+            for b in skipped_binding:
+                logger.warning(f"No binding config for {b}, skipping")
+            for p in skipped_pert:
+                logger.warning(f"No perturbation config for {p}, skipping")
+
+            if not pairs:
+                return pd.DataFrame()
+
+            try:
+                combined = topn_all_pairs_sql(vdb, pairs, filters, n, eff, pval)
+            except Exception as exc:
+                logger.error(f"topn_all_pairs_sql failed: {exc}", exc_info=True)
+                return pd.DataFrame()
+
+            if combined.empty or "pair_key" not in combined.columns:
+                return pd.DataFrame()
+
+            results: list[pd.DataFrame] = []
+            for b_db, p_db in pairs:
+                pair_key = f"{b_db}__{p_db}"
+                subset = (
+                    combined[combined["pair_key"] == pair_key]
+                    .drop(columns=["pair_key"])
+                    .reset_index(drop=True)
+                    .copy()
+                )
+                if subset.empty:
                     continue
-                logger.debug(f"Top-{n}: {b_db} x {p_db}")
-                try:
-                    # When hackett_time_filter is active the analysis-set JOIN
-                    # already restricts samples; passing the numeric time filter
-                    # from dataset_filters would reference a column not present
-                    # in the perturbation view and cause the query to fail.
-                    p_filters = (
-                        None if p_cfg.get("hackett_time_filter") else filters.get(p_db)
-                    )
-                    result = topn_responsive_ratio(
-                        vdb=vdb,
-                        binding_view=b_db,
-                        perturbation_view=p_db,
-                        top_n=n,
-                        effect_threshold=eff,
-                        pvalue_threshold=pval,
-                        binding_filters=filters.get(b_db),
-                        perturbation_filters=p_filters,
-                        param_prefix=f"{b_db}_{p_db}",
-                        **b_cfg,
-                        **p_cfg,
-                    )
-                    assert isinstance(result, pd.DataFrame)
-                    result["binding_source"] = b_label
-                    result["perturbation_source"] = p_label
-                    result["regulator_label"] = (
-                        result["regulator_locus_tag"]
-                        .map(reg_labels)
-                        .fillna(result["regulator_locus_tag"])
-                    )
-                    results.append(result)
-                except Exception as exc:
-                    logger.error(
-                        f"Top-N failed for {b_db} x {p_db}: {exc}", exc_info=True
-                    )
+                subset["binding_source"] = binding_labels[b_db]
+                subset["perturbation_source"] = pert_labels[p_db]
+                subset["regulator_label"] = (
+                    subset["regulator_locus_tag"]
+                    .map(reg_labels)
+                    .fillna(subset["regulator_locus_tag"])
+                )
+                results.append(subset)
 
-        if not results:
-            return pd.DataFrame()
-        out = pd.concat(results, ignore_index=True)
-        out["percent_responsive"] = out["responsive_ratio"] * 100
-        return out
+            if not results:
+                return pd.DataFrame()
+            out = pd.concat(results, ignore_index=True)
+            out["percent_responsive"] = out["responsive_ratio"] * 100
+            return out
 
     @render.ui
     def topn_plot() -> ui.Tag:

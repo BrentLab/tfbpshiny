@@ -205,6 +205,106 @@ def regulator_display_labels_query(db_name: str) -> tuple[str, dict]:
     )
 
 
+def matrix_diagonal_query(
+    active: list[str],
+    filters: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """
+    Return ``(sql, params)`` for counting distinct regulators and samples for every
+    active dataset in a single UNION ALL query.
+
+    Result columns: ``db_name`` (str), ``n_regulators`` (int), ``n_samples`` (int).
+
+    :param active: Ordered list of active dataset names.
+    :param filters: Active filter dict keyed by dataset name.
+    :return: ``(sql_string, params_dict)``.
+
+    """
+    params: dict[str, Any] = {}
+    parts: list[str] = []
+    for db_name in active:
+        db_filters = filters.get(db_name)
+        prefix = f"diag_{db_name}_"
+        where = _build_where(db_filters, params, prefix=prefix)
+        parts.append(
+            f"SELECT '{db_name}' AS db_name,"
+            f" COUNT(DISTINCT regulator_locus_tag) AS n_regulators,"
+            f" COUNT(DISTINCT sample_id) AS n_samples"
+            f" FROM {db_name}_meta{where}"
+        )
+    sql = "\nUNION ALL\n".join(parts)
+    return sql, params
+
+
+def matrix_cross_dataset_query(
+    pairs: list[tuple[str, str]],
+    filters: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """
+    Return ``(sql, params)`` for counting common regulators and restricted sample counts
+    for every (db_a, db_b) pair in a single UNION ALL query.
+
+    Result columns: ``pair_id`` (str, ``"{db_a}__{db_b}"``), ``n_common`` (int),
+    ``samples_a`` (int), ``samples_b`` (int).
+
+    The common-regulator set is computed in SQL via INTERSECT so no Python-side
+    set operations are required. Each pair contributes one row.
+
+    :param pairs: List of ``(db_a, db_b)`` tuples.
+    :param filters: Active filter dict keyed by dataset name.
+    :return: ``(sql_string, params_dict)``.
+
+    """
+    params: dict[str, Any] = {}
+    parts: list[str] = []
+    for db_a, db_b in pairs:
+        pair_id = f"{db_a}__{db_b}"
+        fa = filters.get(db_a)
+        fb = filters.get(db_b)
+        prefix_a = f"cross_{pair_id}_{db_a}_"
+        prefix_b = f"cross_{pair_id}_{db_b}_"
+        where_a = _build_where(fa, params, prefix=prefix_a)
+        where_b = _build_where(fb, params, prefix=prefix_b)
+        # Common regulators via INTERSECT inside a subquery
+        common_subq = (
+            f"(SELECT regulator_locus_tag FROM {db_a}_meta{where_a}"
+            f" INTERSECT"
+            f" SELECT regulator_locus_tag FROM {db_b}_meta{where_b})"
+        )
+        # Sample counts restricted to common regulators; reuse same WHERE params
+        # by embedding the INTERSECT subquery rather than binding a list.
+        # We need fresh prefix params for the sample-count WHERE clauses since
+        # _build_where already populated the same prefix keys above for the
+        # INTERSECT arms — use distinct prefixes for the IN-filtered counts.
+        prefix_sa = f"cs_{pair_id}_{db_a}_"
+        prefix_sb = f"cs_{pair_id}_{db_b}_"
+        where_sa = _build_where(fa, params, prefix=prefix_sa)
+        where_sb = _build_where(fb, params, prefix=prefix_sb)
+        and_common_a = (
+            f"{' AND ' if where_sa else ' WHERE '}"
+            f"regulator_locus_tag IN {common_subq}"
+        )
+        and_common_b = (
+            f"{' AND ' if where_sb else ' WHERE '}"
+            f"regulator_locus_tag IN {common_subq}"
+        )
+        parts.append(
+            f"SELECT '{pair_id}' AS pair_id,"
+            f" (SELECT COUNT(*) FROM {common_subq} AS _c) AS n_common,"
+            f" (SELECT COUNT(DISTINCT sample_id)"
+            f"  FROM {db_a}_meta{where_sa}{and_common_a}) AS samples_a,"
+            f" (SELECT COUNT(DISTINCT sample_id)"
+            f"  FROM {db_b}_meta{where_sb}{and_common_b}) AS samples_b"
+        )
+    if not parts:
+        return (
+            "SELECT NULL AS pair_id, 0 AS n_common, 0 AS samples_a, 0 AS samples_b WHERE FALSE",
+            {},
+        )
+    sql = "\nUNION ALL\n".join(parts)
+    return sql, params
+
+
 def full_data_query(
     db_name: str, filters: dict[str, Any] | None = None
 ) -> tuple[str, dict[str, Any]]:
@@ -230,6 +330,8 @@ __all__ = [
     "FIELD_TYPE_OVERRIDES",
     "metadata_query",
     "full_data_query",
+    "matrix_diagonal_query",
+    "matrix_cross_dataset_query",
     "sample_count_query",
     "regulator_locus_tags_query",
     "regulator_breakdown_query",

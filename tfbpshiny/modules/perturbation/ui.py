@@ -30,7 +30,7 @@ def perturbation_workspace_ui() -> ui.Tag:
             ui.output_ui("distributions_plot"),
             ui.hr(),
             ui.output_ui("regulator_selector"),
-            ui.output_ui("regulator_plots"),
+            ui.output_ui("scatter_container"),
         ),
     )
 

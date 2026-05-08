@@ -16,14 +16,16 @@ from tfbpshiny.components import (
     matrix_table,
 )
 from tfbpshiny.modules.select_datasets.queries import (
+    matrix_cross_dataset_query,
+    matrix_diagonal_query,
     regulator_breakdown_query,
     regulator_locus_tags_query,
-    sample_count_query,
 )
 from tfbpshiny.modules.select_datasets.ui import (
     diagonal_cell_modal_ui,
     off_diagonal_cell_modal_ui,
 )
+from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.ratelimit import debounce
 from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS
 
@@ -40,6 +42,8 @@ def select_datasets_workspace_server(
     logger: Logger,
 ) -> None:
     """Render the sample-count matrix for all active datasets."""
+
+    session.on_flush(lambda: reset_render_counts(session.id))
 
     display_names: dict[str, str] = {
         db_name: vdb.get_tags(db_name).get("display_name", db_name)
@@ -58,7 +62,8 @@ def select_datasets_workspace_server(
         :returns: Concatenated list of active db_name strings, binding first.
 
         """
-        return active_binding_datasets() + active_perturbation_datasets()
+        with perf(session.id, "select_datasets.workspace", "_settled_datasets"):
+            return active_binding_datasets() + active_perturbation_datasets()
 
     @reactive.calc
     def _matrix_data() -> dict[str, Any]:
@@ -73,48 +78,43 @@ def select_datasets_workspace_server(
             {"common_regulators": int, "samples_a": int, "samples_b": int}}``.
 
         """
-        active = _settled_datasets()
-        filters = dataset_filters()
+        with perf(session.id, "select_datasets.workspace", "_matrix_data"):
+            active = _settled_datasets()
+            filters = dataset_filters()
 
-        regulator_sets: dict[str, set[str]] = {}
-        diagonal: dict[str, dict[str, int]] = {}
+            diagonal: dict[str, dict[str, int]] = {}
+            cross_dataset: dict[tuple[str, str], dict[str, int]] = {}
 
-        for db_name in active:
-            db_filters = filters.get(db_name)
+            if not active:
+                return {"diagonal": diagonal, "cross_dataset": cross_dataset}
 
-            sql, params = regulator_locus_tags_query(db_name, db_filters)
-            reg_df = vdb.query(sql, **params)
-            regulators = set(reg_df["regulator_locus_tag"].dropna().astype(str))
-            regulator_sets[db_name] = regulators
-
-            sql, params = sample_count_query(db_name, db_filters)
-            n_samples = int(vdb.query(sql, **params).iloc[0, 0])
-
-            diagonal[db_name] = {"regulators": len(regulators), "samples": n_samples}
-
-        cross_dataset: dict[tuple[str, str], dict[str, int]] = {}
-
-        for i, db_a in enumerate(active):
-            for db_b in active[i + 1 :]:
-                common = regulator_sets[db_a] & regulator_sets[db_b]
-                common_list = list(common)
-
-                sql_a, params_a = sample_count_query(
-                    db_a, filters.get(db_a), restrict_to_regulators=common_list
-                )
-                sql_b, params_b = sample_count_query(
-                    db_b, filters.get(db_b), restrict_to_regulators=common_list
-                )
-                n_a = int(vdb.query(sql_a, **params_a).iloc[0, 0])
-                n_b = int(vdb.query(sql_b, **params_b).iloc[0, 0])
-
-                cross_dataset[(db_a, db_b)] = {
-                    "common_regulators": len(common),
-                    "samples_a": n_a,
-                    "samples_b": n_b,
+            # One query for all diagonal counts.
+            diag_sql, diag_params = matrix_diagonal_query(active, filters)
+            diag_df = vdb.query(diag_sql, **diag_params)
+            for _, row in diag_df.iterrows():
+                diagonal[str(row["db_name"])] = {
+                    "regulators": int(row["n_regulators"]),
+                    "samples": int(row["n_samples"]),
                 }
 
-        return {"diagonal": diagonal, "cross_dataset": cross_dataset}
+            # One query for all cross-dataset pair counts.
+            pairs = [
+                (active[i], active[j])
+                for i in range(len(active))
+                for j in range(i + 1, len(active))
+            ]
+            if pairs:
+                cross_sql, cross_params = matrix_cross_dataset_query(pairs, filters)
+                cross_df = vdb.query(cross_sql, **cross_params)
+                for _, row in cross_df.iterrows():
+                    db_a, db_b = str(row["pair_id"]).split("__", 1)
+                    cross_dataset[(db_a, db_b)] = {
+                        "common_regulators": int(row["n_common"]),
+                        "samples_a": int(row["samples_a"]),
+                        "samples_b": int(row["samples_b"]),
+                    }
+
+            return {"diagonal": diagonal, "cross_dataset": cross_dataset}
 
     def _make_diagonal_effect(db_name: str) -> None:
         """
@@ -138,38 +138,43 @@ def select_datasets_workspace_server(
                 diagonal matrix cell button for this dataset.
 
             """
-            filters = dataset_filters().get(db_name)
+            with perf(session.id, "select_datasets.workspace", "diagonal._on_click"):
+                filters = dataset_filters().get(db_name)
 
-            all_cols = vdb.get_fields(f"{db_name}_meta")
-            # TODO: this is a good use case for the field `role` experimental
-            # condition -- only use experimental condition fields and remove
-            # any hidden filter fields
-            remove_cols = (
-                {"sample_id"}
-                | {c for c in all_cols if c.lower().startswith("regulator")}
-                | HIDDEN_FILTER_FIELDS.get("*", set())
-                | HIDDEN_FILTER_FIELDS.get(db_name, set())
-            )
-            candidate_cols = [c for c in all_cols if c not in remove_cols]
+                all_cols = vdb.get_fields(f"{db_name}_meta")
+                # TODO: this is a good use case for the field `role` experimental
+                # condition -- only use experimental condition fields and remove
+                # any hidden filter fields
+                remove_cols = (
+                    {"sample_id"}
+                    | {c for c in all_cols if c.lower().startswith("regulator")}
+                    | HIDDEN_FILTER_FIELDS.get("*", set())
+                    | HIDDEN_FILTER_FIELDS.get(db_name, set())
+                )
+                candidate_cols = [c for c in all_cols if c not in remove_cols]
 
-            sql, params = regulator_breakdown_query(db_name, candidate_cols, filters)
-            row = vdb.query(sql, **params).iloc[0]
-            n_multi = int(row["n_multi"])
+                sql, params = regulator_breakdown_query(
+                    db_name, candidate_cols, filters
+                )
+                row = vdb.query(sql, **params).iloc[0]
+                n_multi = int(row["n_multi"])
 
-            if n_multi == 0:
-                multi_regulator_sample_breakdown: dict = {"uniform": True}
-            else:
-                diff_cols = [c for c in candidate_cols if row[c] > 0]
-                multi_regulator_sample_breakdown = {
-                    "uniform": False,
-                    "n_multi": n_multi,
-                    "differentiating_columns": diff_cols,
-                }
+                if n_multi == 0:
+                    multi_regulator_sample_breakdown: dict = {"uniform": True}
+                else:
+                    diff_cols = [c for c in candidate_cols if row[c] > 0]
+                    multi_regulator_sample_breakdown = {
+                        "uniform": False,
+                        "n_multi": n_multi,
+                        "differentiating_columns": diff_cols,
+                    }
 
-            display_name = display_names.get(db_name, db_name)
-            ui.modal_show(
-                diagonal_cell_modal_ui(display_name, multi_regulator_sample_breakdown)
-            )
+                display_name = display_names.get(db_name, db_name)
+                ui.modal_show(
+                    diagonal_cell_modal_ui(
+                        display_name, multi_regulator_sample_breakdown
+                    )
+                )
 
     def _make_off_diagonal_effect(db_a: str, db_b: str) -> None:
         """Register per-pair click and modal-action effects for an off-diagonal cell."""
@@ -187,30 +192,33 @@ def select_datasets_workspace_server(
                 clicks the off-diagonal matrix cell button for this pair.
 
             """
-            if _active_regulator_pair() == (db_a, db_b):
-                # Remove regulator_locus_tag from all datasets and clear highlight.
-                current = dict(dataset_filters())
-                for db_name in list(current):
-                    ds_filters = dict(current[db_name])
-                    ds_filters.pop("regulator_locus_tag", None)
-                    if ds_filters:
-                        current[db_name] = ds_filters
-                    else:
-                        current.pop(db_name)
-                dataset_filters.set(current)
-                _active_regulator_pair.set(None)
-                return
-            data = _matrix_data()
-            info = data["cross_dataset"].get((db_a, db_b), {})
-            n_common = info.get("common_regulators", 0)
-            _open_modal_pair.set((db_a, db_b))
-            ui.modal_show(
-                off_diagonal_cell_modal_ui(
-                    display_names.get(db_a, db_a),
-                    display_names.get(db_b, db_b),
-                    n_common,
+            with perf(
+                session.id, "select_datasets.workspace", "off_diagonal._on_click"
+            ):
+                if _active_regulator_pair() == (db_a, db_b):
+                    # Remove regulator_locus_tag from all datasets and clear highlight.
+                    current = dict(dataset_filters())
+                    for db_name in list(current):
+                        ds_filters = dict(current[db_name])
+                        ds_filters.pop("regulator_locus_tag", None)
+                        if ds_filters:
+                            current[db_name] = ds_filters
+                        else:
+                            current.pop(db_name)
+                    dataset_filters.set(current)
+                    _active_regulator_pair.set(None)
+                    return
+                data = _matrix_data()
+                info = data["cross_dataset"].get((db_a, db_b), {})
+                n_common = info.get("common_regulators", 0)
+                _open_modal_pair.set((db_a, db_b))
+                ui.modal_show(
+                    off_diagonal_cell_modal_ui(
+                        display_names.get(db_a, db_a),
+                        display_names.get(db_b, db_b),
+                        n_common,
+                    )
                 )
-            )
 
         @reactive.effect
         @reactive.event(input[apply_btn_id])
@@ -227,46 +235,51 @@ def select_datasets_workspace_server(
                 modal.
 
             """
-            if _open_modal_pair() != (db_a, db_b):
-                return
-            reg_sets = {}
-            filters = dataset_filters()
-            for db_name in (db_a, db_b):
-                # Exclude any existing regulator_locus_tag filter so the pairwise
-                # intersection is computed from the full regulator set for each dataset
-                # (subject to other filters only).
-                db_filters = {
-                    k: v
-                    for k, v in (filters.get(db_name) or {}).items()
-                    if k != "regulator_locus_tag"
-                } or None
-                sql, params = regulator_locus_tags_query(db_name, db_filters)
-                reg_df = vdb.query(sql, **params)
-                reg_sets[db_name] = set(
-                    reg_df["regulator_locus_tag"].dropna().astype(str)
+            with perf(
+                session.id,
+                "select_datasets.workspace",
+                "off_diagonal._on_apply_common_regulators",
+            ):
+                if _open_modal_pair() != (db_a, db_b):
+                    return
+                reg_sets = {}
+                filters = dataset_filters()
+                for db_name in (db_a, db_b):
+                    # Exclude any existing regulator_locus_tag filter so the pairwise
+                    # intersection is computed from the full regulator
+                    # set for each dataset (subject to other filters only).
+                    db_filters = {
+                        k: v
+                        for k, v in (filters.get(db_name) or {}).items()
+                        if k != "regulator_locus_tag"
+                    } or None
+                    sql, params = regulator_locus_tags_query(db_name, db_filters)
+                    reg_df = vdb.query(sql, **params)
+                    reg_sets[db_name] = set(
+                        reg_df["regulator_locus_tag"].dropna().astype(str)
+                    )
+                common = sorted(reg_sets[db_a] & reg_sets[db_b])
+                if not common:
+                    ui.modal_remove()
+                    return
+                current = dict(dataset_filters())
+                pair_display = (
+                    display_names.get(db_a, db_a),
+                    display_names.get(db_b, db_b),
                 )
-            common = sorted(reg_sets[db_a] & reg_sets[db_b])
-            if not common:
+                for db_name in vdb.get_datasets():
+                    ds_filters = dict(current.get(db_name, {}))
+                    ds_filters.pop("regulator_locus_tag", None)
+                    ds_filters["regulator_locus_tag"] = {
+                        "type": "categorical",
+                        "value": common,
+                        "from_pair": pair_display,
+                    }
+                    current[db_name] = ds_filters
+                dataset_filters.set(current)
+                _active_regulator_pair.set((db_a, db_b))
+                _open_modal_pair.set(None)
                 ui.modal_remove()
-                return
-            current = dict(dataset_filters())
-            pair_display = (
-                display_names.get(db_a, db_a),
-                display_names.get(db_b, db_b),
-            )
-            for db_name in vdb.get_datasets():
-                ds_filters = dict(current.get(db_name, {}))
-                ds_filters.pop("regulator_locus_tag", None)
-                ds_filters["regulator_locus_tag"] = {
-                    "type": "categorical",
-                    "value": common,
-                    "from_pair": pair_display,
-                }
-                current[db_name] = ds_filters
-            dataset_filters.set(current)
-            _active_regulator_pair.set((db_a, db_b))
-            _open_modal_pair.set(None)
-            ui.modal_remove()
 
     # Tracks the (db_a, db_b) pair whose intersection is the current regulator filter.
     # Used to highlight that cell in the matrix. None when no pairwise filter is active.
@@ -294,17 +307,18 @@ def select_datasets_workspace_server(
             for any newly added datasets.
 
         """
-        active = _settled_datasets()
-        for db_name in active:
-            if db_name not in _registered_effects:
-                _make_diagonal_effect(db_name)
-                _registered_effects.add(db_name)
-        for i, db_a in enumerate(active):
-            for db_b in active[i + 1 :]:
-                pair_id = f"{db_a}__{db_b}"
-                if pair_id not in _registered_effects:
-                    _make_off_diagonal_effect(db_a, db_b)
-                    _registered_effects.add(pair_id)
+        with perf(session.id, "select_datasets.workspace", "_register_cell_effects"):
+            active = _settled_datasets()
+            for db_name in active:
+                if db_name not in _registered_effects:
+                    _make_diagonal_effect(db_name)
+                    _registered_effects.add(db_name)
+            for i, db_a in enumerate(active):
+                for db_b in active[i + 1 :]:
+                    pair_id = f"{db_a}__{db_b}"
+                    if pair_id not in _registered_effects:
+                        _make_off_diagonal_effect(db_a, db_b)
+                        _registered_effects.add(pair_id)
 
     @reactive.effect
     def _clear_pair_when_filter_removed() -> None:
@@ -316,12 +330,15 @@ def select_datasets_workspace_server(
             ``_active_regulator_pair`` once the regulator filter has been removed.
 
         """
-        filters = dataset_filters()
-        has_reg_filter = any(
-            "regulator_locus_tag" in (v or {}) for v in filters.values()
-        )
-        if not has_reg_filter:
-            _active_regulator_pair.set(None)
+        with perf(
+            session.id, "select_datasets.workspace", "_clear_pair_when_filter_removed"
+        ):
+            filters = dataset_filters()
+            has_reg_filter = any(
+                "regulator_locus_tag" in (v or {}) for v in filters.values()
+            )
+            if not has_reg_filter:
+                _active_regulator_pair.set(None)
 
     @render.ui
     def matrix_content() -> ui.Tag:
