@@ -391,3 +391,66 @@ PERTURBATION_CONFIGS: dict[str, dict] = {
     "kemmeren": dict(hackett_time_filter=False),
     "degron": dict(hackett_time_filter=False),
 }
+
+
+def topn_all_pairs_sql(
+    vdb: VirtualDB,
+    pairs: list[tuple[str, str]],
+    filters: dict[str, Any],
+    top_n: int,
+    effect_threshold: float,
+    pvalue_threshold: float,
+) -> pd.DataFrame:
+    """
+    Compute top-N responsive ratio for all (binding, perturbation) pairs in one query.
+
+    Builds a UNION ALL of per-pair subqueries and executes as a single
+    ``vdb.query()`` call. Each pair is prefixed with ``bp{i}_`` to prevent
+    parameter name collisions.
+
+    :param vdb: VirtualDB instance.
+    :param pairs: List of ``(binding_db, perturbation_db)`` tuples.
+    :param filters: Active filter dict keyed by dataset name.
+    :param top_n: Number of top binding targets per binding sample.
+    :param effect_threshold: Minimum absolute effect size to count as responsive.
+    :param pvalue_threshold: Maximum p-value to count as responsive.
+    :returns: DataFrame with all columns returned by ``topn_responsive_ratio``
+        plus ``pair_key`` (``"{b_db}__{p_db}"``).
+
+    """
+    if not pairs:
+        return pd.DataFrame()
+
+    parts: list[str] = []
+    all_params: dict[str, Any] = {}
+
+    for i, (b_db, p_db) in enumerate(pairs):
+        b_cfg = BINDING_CONFIGS.get(b_db)
+        p_cfg = PERTURBATION_CONFIGS.get(p_db)
+        if b_cfg is None or p_cfg is None:
+            continue
+        p_filters = None if p_cfg.get("hackett_time_filter") else filters.get(p_db)
+        pair_sql, pair_params = topn_responsive_ratio(
+            vdb=vdb,
+            binding_view=b_db,
+            perturbation_view=p_db,
+            top_n=top_n,
+            effect_threshold=effect_threshold,
+            pvalue_threshold=pvalue_threshold,
+            binding_filters=filters.get(b_db),
+            perturbation_filters=p_filters,
+            param_prefix=f"bp{i}",
+            sql_only=True,
+            **b_cfg,
+            **p_cfg,
+        )
+        assert isinstance(pair_sql, str) and isinstance(pair_params, dict)
+        all_params.update(pair_params)
+        pair_key = f"{b_db}__{p_db}"
+        parts.append(f"SELECT *, '{pair_key}' AS pair_key FROM ({pair_sql.strip()})")
+
+    if not parts:
+        return pd.DataFrame()
+
+    sql = "\nUNION ALL\n".join(parts)
+    return vdb.query(sql, **all_params)

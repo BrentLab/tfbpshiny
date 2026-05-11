@@ -16,6 +16,10 @@ repositories:
           assay: CallingCards
           display_name: "2026 Calling Cards"
         db_name: callingcards
+        description: >-
+          Data generated with calling cards, a method that inserts transposons
+          near TF binding sites, from cells growing on synthetic complete media
+          at room temperature with galactose as the sole carbon source.
         sample_id:
           field: gm_id
 
@@ -57,6 +61,10 @@ repositories:
           data_type: binding
           assay: ChIPexo
           display_name: "2021 ChIP-exo (Rossi)"
+        description: >-
+          ChIP-exo (a variant of ChIP-seq) data, primarily in YPD batch
+          cultures at 25C. Includes DNA-binding transcription factors and
+          many other chromatin factors.
         db_name: rossi
         sample_id:
           field: sample_id
@@ -112,6 +120,10 @@ repositories:
           data_type: perturbation
           assay: ChIPexo
           display_name: "2025 Degron (Mahendrawada)"
+        description: >-
+          RNA-seq expression data generated from nascent RNA (4TU labelling and
+          purification) following depletion of a given TF via the auxin-inducible
+          degron system.
         db_name: degron
         sample_id:
           field: sample_id

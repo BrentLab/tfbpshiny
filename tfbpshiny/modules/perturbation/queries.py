@@ -151,6 +151,68 @@ def corr_pair_sql(
     )
 
 
+def corr_all_pairs_sql(
+    vdb: VirtualDB,
+    pairs: list[tuple[str, str]],
+    col_map: dict[str, str],
+    filters: dict[str, Any],
+    method: str,
+) -> pd.DataFrame:
+    """
+    Compute per-regulator correlations for all dataset pairs in a single query.
+
+    Builds one UNION ALL query covering every pair and executes it as a single
+    ``vdb.query()`` call, eliminating per-pair round-trip overhead.
+
+    :param vdb: VirtualDB instance.
+    :param pairs: List of ``(db_a, db_b)`` tuples.
+    :param col_map: Mapping of ``db_name`` to the measurement column to use.
+    :param filters: Active filter dict keyed by dataset name.
+    :param method: ``"pearson"`` or ``"spearman"``.
+    :return: DataFrame with columns ``db_a``, ``db_a_id``, ``db_b``, ``db_b_id``,
+        ``regulator_locus_tag``, ``correlation``, and ``pair_key`` (``"{db_a}__{db_b}"``).
+
+    """
+    if not pairs:
+        return pd.DataFrame(
+            columns=[
+                "db_a",
+                "db_a_id",
+                "db_b",
+                "db_b_id",
+                "regulator_locus_tag",
+                "correlation",
+                "pair_key",
+            ]
+        )
+
+    parts: list[str] = []
+    all_params: dict[str, Any] = {}
+
+    for i, (db_a, db_b) in enumerate(pairs):
+        prefix = f"p{i}_"
+        pair_sql, pair_params = _corr_pair_sql_impl(
+            vdb,
+            perturbation_data_query,
+            db_a,
+            col_map[db_a],
+            filters.get(db_a),
+            db_b,
+            col_map[db_b],
+            filters.get(db_b),
+            method,
+            prefix=prefix,
+            sql_only=True,
+        )
+        assert isinstance(pair_sql, str) and isinstance(pair_params, dict)
+        all_params.update(pair_params)
+        pair_key = f"{db_a}__{db_b}"
+        parts.append(f"SELECT *, '{pair_key}' AS pair_key FROM ({pair_sql.strip()})")
+
+    sql = "\nUNION ALL\n".join(parts)
+    return vdb.query(sql, **all_params)
+
+
 def regulator_scatter_sql(
     db_a: str,
     col_a: str,
@@ -243,5 +305,6 @@ __all__ = [
     "get_measurement_column",
     "perturbation_data_query",
     "corr_pair_sql",
+    "corr_all_pairs_sql",
     "regulator_scatter_sql",
 ]

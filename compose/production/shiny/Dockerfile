@@ -31,4 +31,4 @@ USER appuser
 # overridden via the compose `command:` key.
 EXPOSE 8000
 
-CMD ["python", "-m", "tfbpshiny", "--log-level", "INFO", "shiny", "--host", "0.0.0.0"]
+CMD ["python", "-m", "tfbpshiny", "--log-level", "DEBUG", "shiny", "--host", "0.0.0.0"]

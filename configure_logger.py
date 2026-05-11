@@ -1,3 +1,4 @@
+import json
 import logging
 from enum import Enum
 from typing import Literal
@@ -29,9 +30,39 @@ class LogLevel(Enum):
             )
 
 
+class _JsonFormatter(logging.Formatter):
+    """
+    Emit each log record as a single-line JSON object for CloudWatch Logs Insights.
+
+    When the message body is itself a JSON object (e.g. perf records), its fields
+    are merged into the top-level envelope rather than nested under ``"message"``,
+    so that Logs Insights can filter on ``elapsed_ms``, ``module``, etc. directly.
+
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        msg = record.getMessage()
+        obj: dict = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+        }
+        try:
+            parsed = json.loads(msg)
+            if isinstance(parsed, dict):
+                obj.update(parsed)
+            else:
+                obj["message"] = msg
+        except (json.JSONDecodeError, TypeError):
+            obj["message"] = msg
+        if record.exc_info:
+            obj["exc"] = self.formatException(record.exc_info)
+        return json.dumps(obj, ensure_ascii=False)
+
+
 def configure_logger(
     name: str,
-    level: int = logging.DEBUG,  # Use int type hint here
+    level: int = logging.DEBUG,
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handler_type: Literal["console", "file"] = "console",
     log_file: str = "tfbpmodeling.log",
@@ -39,12 +70,17 @@ def configure_logger(
     """
     Configures a logger.
 
+    When ``handler_type`` is ``"console"``, emits JSON so that CloudWatch Logs
+    Insights can parse ``ts``, ``level``, ``logger``, and ``message`` as
+    structured fields. When ``handler_type`` is ``"file"``, uses the plain-text
+    ``format`` string instead.
+
     :param name: Name of the logger
     :type name: str
     :param level: Logging level, must be one of logging.DEBUG,
         logging.INFO, logging.WARNING, logging.ERROR
     :type level: int
-    :param format: Logging format
+    :param format: Logging format string, used only for the file handler.
     :type format: str
     :param handler_type: Type of handler, either 'console' or 'file'
     :type handler_type: Literal["console", "file"]
@@ -83,16 +119,16 @@ def configure_logger(
 
     if handler_type == "console":
         handler = logging.StreamHandler()
+        handler.setFormatter(_JsonFormatter())
     elif handler_type == "file":
         if not log_file:
             raise ValueError("log_file must be specified for file handler")
         handler = logging.FileHandler(log_file)
+        handler.setFormatter(logging.Formatter(format))
     else:
         raise ValueError("Invalid handler_type. Must be 'console' or 'file'.")
 
     handler.setLevel(level)
-    formatter = logging.Formatter(format)
-    handler.setFormatter(formatter)
     logger.addHandler(handler)
 
     return logger
