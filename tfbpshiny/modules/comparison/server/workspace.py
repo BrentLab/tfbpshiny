@@ -101,23 +101,27 @@ def comparison_workspace_server(
             if new != _query_params():
                 _query_params.set(new)
 
-    @reactive.calc
-    def _active_binding_labels() -> dict[str, str]:
-        """
-        Raises ``SilentException`` when the comparison tab is not active, which
-        propagates through ``_topn_data`` without creating a direct dependency on
-        ``active_module`` inside the expensive calc.
+    # Stable binding labels — updated only when the active binding dataset set changes.
+    _active_binding_labels_val: reactive.Value[dict[str, str]] = reactive.value({})
 
-        :trigger active_binding_datasets: re-runs when binding selection changes.
+    @reactive.effect
+    def _sync_active_binding_labels() -> None:
+        """
+        Write binding labels to ``_active_binding_labels_val`` only when they change.
+
+        :trigger active_binding_datasets: re-fires when binding selection changes.
         :trigger active_module: silently blocks when another tab is active.
 
         """
         if active_module is not None:
             req(active_module() == "comparison")
         with perf(session.id, "comparison.workspace", "_active_binding_labels"):
-            return {
+            new = {
                 db: BINDING_LABEL_MAP.get(db, db) for db in active_binding_datasets()
             }
+        with reactive.isolate():
+            if new != _active_binding_labels_val():
+                _active_binding_labels_val.set(new)
 
     @reactive.calc
     def _active_perturbation_labels() -> dict[str, str]:
@@ -134,17 +138,17 @@ def comparison_workspace_server(
         """
         Compute top-N responsive ratio for all active (binding, perturbation) pairs.
 
-        :trigger _active_binding_labels: re-runs when binding selection changes;
-            silently blocked when the comparison tab is not active via
-            ``_active_binding_labels``.
-        :trigger _active_perturbation_labels: re-runs when perturbation changes.
-        :trigger dataset_filters: re-runs when filters are applied or reset.
-        :trigger _query_params: re-runs when top-N, effect, or p-value thresholds
-            actually change (stable value, does not re-fire on input echo).
+        :trigger _active_binding_labels_val: re-runs when binding selection changes;
+        only invalidated when the label dict content actually changes, so returning
+        to this tab without changing datasets hits the cache. :trigger
+        _active_perturbation_labels: re-runs when perturbation changes. :trigger
+        dataset_filters: re-runs when filters are applied or reset. :trigger
+        _query_params: re-runs when top-N, effect, or p-value thresholds     actually
+        change (stable value, does not re-fire on input echo).
 
         """
         with perf(session.id, "comparison.workspace", "_topn_data"):
-            binding_labels = _active_binding_labels()
+            binding_labels = _active_binding_labels_val()
             pert_labels = _active_perturbation_labels()
             filters = dataset_filters()
             n, eff, pval = _query_params()
@@ -316,7 +320,7 @@ def comparison_workspace_server(
             legend_title=legend_title,
             margin=dict(l=50, r=20, t=80, b=30),
         )
-        return ui.HTML(to_html(fig, include_plotlyjs="cdn", full_html=False))
+        return ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False))
 
 
 __all__ = ["comparison_workspace_server"]

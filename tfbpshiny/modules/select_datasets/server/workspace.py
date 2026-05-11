@@ -51,26 +51,25 @@ def select_datasets_workspace_server(
         for db_name in vdb.get_datasets()
     }
 
-    @reactive.calc
-    def _settled_datasets() -> list[str]:
+    # Stable dataset list — updated only when the active dataset set actually changes.
+    _settled_val: reactive.Value[list[str]] = reactive.value([])
+
+    @reactive.effect
+    def _sync_settled_datasets() -> None:
         """
-        Combined list of all active datasets.
+        Write the combined active dataset list to ``_settled_val`` only when it changes.
 
-        Raises ``SilentException`` when the selection tab is not active, which
-        propagates through ``_matrix_data`` without creating a direct dependency on
-        ``active_module`` inside the expensive calc.
-
-        :trigger: ``active_binding_datasets``, ``active_perturbation_datasets`` —
-            re-runs whenever either list changes, but downstream is only notified
-            after a specified quiet period.
-        :trigger: ``active_module`` — silently blocks when another tab is active.
-        :returns: Concatenated list of active db_name strings, binding first.
+        :trigger active_binding_datasets: re-fires when binding selection changes.
+        :trigger active_perturbation_datasets: re-fires when perturbation selection
+        changes. :trigger active_module: silently blocks when another tab is active.
 
         """
         if active_module is not None:
             req(active_module() == "selection")
-        with perf(session.id, "select_datasets.workspace", "_settled_datasets"):
-            return active_binding_datasets() + active_perturbation_datasets()
+        new = active_binding_datasets() + active_perturbation_datasets()
+        with reactive.isolate():
+            if new != _settled_val():
+                _settled_val.set(new)
 
     @reactive.calc
     def _matrix_data() -> dict[str, Any]:
@@ -78,9 +77,9 @@ def select_datasets_workspace_server(
         Compute per-dataset regulator/sample counts and pairwise common-regulator
         counts.
 
-        :trigger: ``_settled_datasets`` — re-runs after rapid toggle changes settle;
-            silently blocked when the selection tab is not active via
-            ``_settled_datasets``.
+        :trigger: ``_settled_val`` — re-runs when the active dataset list actually
+            changes; only invalidated when list content changes, so returning to this
+            tab without changing datasets hits the cache.
             ``dataset_filters`` — re-runs when any filter changes.
         :returns: Dict with keys ``"diagonal"`` — ``{db_name: {"regulators": int,
             "samples": int}}``; ``"cross_dataset"`` — ``{(db_i, db_j):
@@ -88,7 +87,7 @@ def select_datasets_workspace_server(
 
         """
         with perf(session.id, "select_datasets.workspace", "_matrix_data"):
-            active = _settled_datasets()
+            active = _settled_val()
             filters = dataset_filters()
 
             diagonal: dict[str, dict[str, int]] = {}
@@ -311,15 +310,15 @@ def select_datasets_workspace_server(
         Register click effects for any newly active dataset cells that have not yet been
         registered, avoiding duplicate effect registration.
 
-        :trigger: ``_settled_datasets`` — re-runs whenever the active dataset list
-            settles so that new diagonal and off-diagonal cell effects are created
+        :trigger: ``_settled_val`` — re-runs whenever the active dataset list changes
+            so that new diagonal and off-diagonal cell effects are created
             for any newly added datasets.
 
         """
         if active_module is not None:
             req(active_module() == "selection")
         with perf(session.id, "select_datasets.workspace", "_register_cell_effects"):
-            active = _settled_datasets()
+            active = _settled_val()
             for db_name in active:
                 if db_name not in _registered_effects:
                     _make_diagonal_effect(db_name)
@@ -355,7 +354,7 @@ def select_datasets_workspace_server(
 
     @render.ui
     def matrix_content() -> ui.Tag:
-        active = _settled_datasets()
+        active = _settled_val()
 
         if not active:
             return ui.card(

@@ -134,24 +134,8 @@ stack above. The two deployments are independent and can run in parallel.
 
 ### Prerequisites
 
-- A shinyapps.io account on the **Standard plan** (minimum 4 GB RAM; xxxlarge
-  instance type recommended for 8 GB to match production)
 - `rsconnect-python` installed: `pip install rsconnect-python`
 - A HuggingFace token if any datasets are private
-- labretriever published to PyPI or available as a wheel (see note below)
-
-> **labretriever note.** shinyapps.io installs dependencies from PyPI only.
-> Until labretriever is published to PyPI, build a wheel locally and include it
-> in the bundle:
->
-> ```bash
-> cd ~/code/labretriever
-> pip wheel . --no-deps -w /tmp/wheels
-> cp /tmp/wheels/labretriever-*.whl /path/to/tfbpshiny/wheels/
-> ```
->
-> Then add `wheels/labretriever-*.whl` to your `requirements.txt` as a relative
-> path. Once labretriever is on PyPI this step is not needed.
 
 ### 1. Download the HuggingFace data locally
 
@@ -163,38 +147,22 @@ inside the project:
 HF_TOKEN=<your_token> python -m tfbpshiny --cache-dir ./hf_cache initialize
 ```
 
+**NOTE**: do call this hf_cache as it is already in the `.gitignore`
+
 This downloads all dataset parquet files into `hf_cache/` (~1.2 GB) and
 verifies every view is readable. The directory is created relative to the
 project root and will be included in the rsconnect upload bundle automatically.
 
 Re-run this command any time the upstream datasets are updated.
 
-### 2. Add hf_cache to .gitignore
+### 2. Entry point
 
-The cache directory should not be committed to git:
+`shinyapps_entry.py` in the project root is the shinyapps.io entry point. It
+sets `HF_CACHE_DIR` to the bundled `hf_cache/` directory before importing the
+Shiny app object, so no CLI flag is needed at runtime. No changes are required
+— the file is already in the repository.
 
-```bash
-echo "hf_cache/" >> .gitignore
-```
-
-### 3. Configure the app startup command
-
-shinyapps.io invokes the app via the `app.py` entry point, but tfbpshiny uses
-a CLI (`__main__.py`) to set environment variables before the Shiny process
-starts. Create an `app.py` shim in the project root that applies the cache
-directory before importing the Shiny app object:
-
-```python
-# app.py  (shinyapps.io entry point shim)
-import os
-from pathlib import Path
-
-os.environ["HF_CACHE_DIR"] = str(Path(__file__).parent / "hf_cache")
-
-from tfbpshiny.app import app  # noqa: E402  (must come after env var is set)
-```
-
-### 4. Set environment variables in the dashboard
+### 3. Set environment variables in the dashboard
 
 In the shinyapps.io application dashboard under **Settings > Environment**,
 add:
@@ -203,35 +171,58 @@ add:
 |---|---|
 | `HF_TOKEN` | your HuggingFace token (if datasets are private) |
 
-Do not add `HF_CACHE_DIR` here — the shim above sets it from a path relative
-to the bundle, which is more reliable than a hardcoded absolute path.
+Do not add `HF_CACHE_DIR` here — `shinyapps_entry.py` sets it from a path
+relative to the bundle, which is more reliable than a hardcoded absolute path.
 
-### 5. Set the instance type
+### 4. Deploy
 
-In the shinyapps.io application dashboard under **Settings > General**, set:
+**note**: Go to your shinyapps.io account, drop down the user menu, and go
+to `Tokens`. If you click "show", and the python tab, it gives you this cmd with
+the `name`,  `account`, `token` and `secret` filled in. Run `rsconnect add`
+once to store credentials under a nickname; subsequent deploys use `--name`.
 
-- **Instance type**: `xxxlarge` (8192 MB) — recommended to match production
-- **Max instances**: 3-5 depending on your plan
+Generate a `requirements.txt` from the Poetry lockfile before deploying (rsconnect
+requires it; it is gitignored because it is a generated artifact):
 
-### 6. Deploy
+```bash
+poetry export --without-hashes --without dev -f requirements.txt -o requirements.txt
+```
 
 ```bash
 rsconnect add \
     --account <your-shinyapps-account> \
-    --name shinyapps \
+    --name <nickname> \
     --token <token> \
     --secret <secret>
 
-rsconnect deploy shiny . \
-    --account <your-shinyapps-account> \
-    --name tfbpshiny \
-    --title "TF Binding and Perturbation"
+CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
+    --name <nickname> \
+    --entrypoint shinyapps_entry:app \
+    --title "TF Binding and Perturbation" \
+    --exclude "terraform" \
+    --exclude "compose" \
+    --exclude "tests" \
+    --exclude "docs" \
+    --exclude "tmp" \
+    --exclude "data" \
+    --exclude ".github" \
+    --exclude ".vscode" \
+    --exclude ".mypy_cache" \
+    --exclude ".pytest_cache" \
+    --exclude ".claude" \
+    --exclude ".venv" \
+    --exclude "mkdocs.yml" \
+    --exclude "mkdocs_requirements.txt" \
+    --exclude "production.yml" \
+    --exclude "*.log"
 ```
 
-rsconnect will bundle everything in the project directory, including `hf_cache/`.
-The first deploy uploads ~1.2 GB; subsequent code-only deploys require
-re-uploading the cache unless you use the `--exclude` flag with caution (do not
-exclude `hf_cache/`).
+rsconnect does not read `.gitignore`; it bundles everything it finds unless told
+otherwise. The `--exclude` flags above strip deployment-irrelevant directories.
+`hf_cache/` is intentionally not excluded — it is the bundled dataset cache and
+must travel with the app. The first deploy uploads ~1.2 GB; set
+`CONNECT_REQUEST_TIMEOUT` (seconds) high enough to cover the upload — 3600 (one
+hour) is safe.
 
 ### Updating the data
 
@@ -239,19 +230,26 @@ When upstream datasets change, re-run step 1 and redeploy:
 
 ```bash
 HF_TOKEN=<your_token> python -m tfbpshiny --cache-dir ./hf_cache initialize
-rsconnect deploy shiny . --account <your-shinyapps-account> --name tfbpshiny
+CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
+    --name <nickname> \
+    --entrypoint shinyapps_entry:app \
+    --exclude "terraform" \
+    --exclude "compose" \
+    --exclude "tests" \
+    --exclude "docs" \
+    --exclude "tmp" \
+    --exclude "data" \
+    --exclude ".github" \
+    --exclude ".vscode" \
+    --exclude ".mypy_cache" \
+    --exclude ".pytest_cache" \
+    --exclude ".claude" \
+    --exclude ".venv" \
+    --exclude "mkdocs.yml" \
+    --exclude "mkdocs_requirements.txt" \
+    --exclude "production.yml" \
+    --exclude "*.log"
 ```
-
-### Differences from EC2 deployment
-
-| | EC2 / Docker | shinyapps.io |
-|---|---|---|
-| Data persistence | Named Docker volume (permanent) |
-Bundled at deploy time; resets on redeploy |
-| Scaling | Single instance | Up to 5 instances (Standard plan) |
-| Ops burden | Docker, Traefik, Terraform | None |
-| Cold start | Fast (volume already mounted) | Fast (bundle already present) |
-| Data update | `docker compose pull && up --build` | Re-run initialize + redeploy |
 
 ---
 
@@ -267,6 +265,31 @@ pre-commit install
 # First-time Playwright setup (required for E2E tests)
 poetry run playwright install chromium
 ```
+
+### Plotly JS bundle
+
+The app loads Plotly from a local bundle (`tfbpshiny/www/plotly-3.5.0.min.js`)
+rather than a CDN to avoid race conditions when multiple outputs initialize
+simultaneously. This file is gitignored due to its size (~4.8 MB). After
+cloning, download it once:
+
+```bash
+curl -fsSL https://cdn.plot.ly/plotly-3.5.0.min.js \
+    -o tfbpshiny/www/plotly-3.5.0.min.js
+```
+
+If the `plotly` Python package is upgraded, check the new JS version it expects:
+
+```bash
+python -c "
+import re, plotly.graph_objects as go
+from plotly.io import to_html
+m = re.search(r'plotly-([\d.]+)\.min\.js', to_html(go.Figure(), include_plotlyjs='cdn'))
+print(m.group(0))
+"
+```
+
+Then download the matching version and update the `src` in `tfbpshiny/app.py`.
 
 ### Environment variables
 

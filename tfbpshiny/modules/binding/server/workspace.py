@@ -73,58 +73,60 @@ def binding_workspace_server(
         zip(_reg_df["regulator_locus_tag"], _reg_df["display_name"])
     )
 
-    @reactive.calc
-    def _condition_maps() -> dict[str, dict[str, str]]:
+    # Stable pair list — updated only when the active dataset set actually changes.
+    # No active_module guard here so distributions_plot and scatter_container can
+    # read the list even on first load before active_module has settled.
+    _active_pairs: reactive.Value[list[tuple[str, str]]] = reactive.value([])
+
+    @reactive.effect
+    def _sync_pairs() -> None:
         """
-        ``{db_name: {sample_id: label}}`` for each active dataset that has
-        experimental_condition columns.
+        Write the pair list to ``_active_pairs`` only when it actually changes.
 
-        Used to annotate tooltips on the selected-regulator overlay in the
-        distribution plot so the user can distinguish multiple samples of the
-        same regulator. Datasets without ``condition_cols`` are omitted from
-        the outer dict, causing the tooltip to skip their side.
+        Gated on the binding tab being active so the sync does not run while
+        another tab is visible, but ``_active_pairs`` itself is readable at any
+        time — downstream renders are never silently suppressed.
 
-        :trigger active_binding_datasets: re-runs when the user toggles a
-            binding dataset on or off.
-        :returns: Outer dict keyed by db_name; inner dict maps sample_id to
-            the joined condition label.
+        :trigger active_binding_datasets: re-fires when the dataset selection changes.
+        :trigger active_module: silently blocks when another tab is active.
 
         """
+        if active_module is not None:
+            req(active_module() == "binding")
+        active = active_binding_datasets()
+        new = list(itertools.combinations(sorted(active), 2))
+        with reactive.isolate():
+            if new != _active_pairs():
+                _active_pairs.set(new)
+
+    # Stable condition maps — updated only when the active dataset set changes.
+    _cond_maps_val: reactive.Value[dict[str, dict[str, str]]] = reactive.value({})
+
+    @reactive.effect
+    def _sync_condition_maps() -> None:
+        """
+        Write condition maps to ``_cond_maps_val`` only when they change.
+
+        :trigger active_binding_datasets: re-fires when the dataset selection changes.
+        :trigger active_module: silently blocks when another tab is active.
+
+        """
+        if active_module is not None:
+            req(active_module() == "binding")
         with perf(session.id, "binding.workspace", "_condition_maps"):
-            out: dict[str, dict[str, str]] = {}
+            new: dict[str, dict[str, str]] = {}
             for db in active_binding_datasets():
                 cols = app_datasets.condition_cols.get(db, [])
                 if not cols:
                     continue
                 try:
-                    out[db] = fetch_sample_condition_map(vdb, db, cols)
+                    new[db] = fetch_sample_condition_map(vdb, db, cols)
                 except Exception:
                     logger.exception("Failed to fetch condition map for %s", db)
-                    out[db] = {}
-            return out
-
-    @reactive.calc
-    def _pairs() -> list[tuple[str, str]]:
-        """
-        All unique pairs of active binding datasets.
-
-        Raises ``SilentException`` when the binding tab is not active, which
-        propagates through ``_all_corr_data`` without creating a direct dependency
-        on ``active_module`` inside the expensive calc.
-
-        :trigger active_binding_datasets: re-runs whenever the user toggles a
-            binding dataset on or off in the Select Datasets sidebar.
-        :trigger active_module: silently blocks when another tab is active.
-        :returns: List of ``(db_a, db_b)`` tuples, length = n_active choose 2.
-
-        """
-        if active_module is not None:
-            req(active_module() == "binding")
-        with perf(session.id, "binding.workspace", "_pairs"):
-            active = active_binding_datasets()
-            pairs = list(itertools.combinations(sorted(active), 2))
-            logger.debug(f"binding _pairs: active={active}, pairs={pairs}")
-            return pairs
+                    new[db] = {}
+        with reactive.isolate():
+            if new != _cond_maps_val():
+                _cond_maps_val.set(new)
 
     @reactive.calc
     def _all_corr_data() -> dict[tuple[str, str], pd.DataFrame]:
@@ -141,8 +143,9 @@ def binding_workspace_server(
         there will be multiple correlation values for that regulator in the output
         dataframe.
 
-        :trigger _pairs: re-runs when the set of active pairs changes; silently
-            blocked when the binding tab is not active via ``_pairs``.
+        :trigger _active_pairs: re-runs when the set of active pairs changes; only
+            invalidated when the pair list content actually changes, so returning to
+            this tab without changing datasets hits the cache.
         :trigger col_preference: re-runs when the user switches between Effect
             and P-value columns.
         :trigger corr_type: re-runs when the user switches between Pearson and
@@ -157,7 +160,7 @@ def binding_workspace_server(
 
         """
         with perf(session.id, "binding.workspace", "_all_corr_data"):
-            pairs = _pairs()
+            pairs = _active_pairs()
             method, preference_str = _corr_params()
             # TODO: get rid of the type ignore
             preference: Literal["effect", "pvalue"] = preference_str  # type: ignore[assignment] # noqa: E501
@@ -217,15 +220,16 @@ def binding_workspace_server(
         """
         Box-plot of per-regulator correlation values for every active pair.
 
-        :trigger _pairs: re-renders when the set of active pairs changes. :trigger
-        _all_corr_data: re-renders when correlation data is recomputed. :trigger
-        corr_type: re-renders when the correlation method changes     (updates the
-        axis/title label).
+        :trigger _active_pairs: re-renders when the set of active pairs changes.
+        :trigger _all_corr_data: re-renders when correlation data is recomputed.
+        :trigger corr_type: re-renders when the correlation method changes.
 
         """
-        pairs = _pairs()
-        corr_data = _all_corr_data()
-        method = corr_type().capitalize()
+        with perf(session.id, "binding.workspace", "distributions_plot"):
+            pairs = _active_pairs()
+            corr_data = _all_corr_data()
+            ct, _ = _corr_params()
+            method = ct.capitalize()
 
         fig = go.Figure()
 
@@ -238,7 +242,7 @@ def binding_workspace_server(
                 y=0.5,
                 showarrow=False,
             )
-            return fig
+            return ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False))
 
         # sym_map is built at server init from the pre-computed lookup table
         try:
@@ -246,7 +250,7 @@ def binding_workspace_server(
         except Exception:
             selected_reg = ""
 
-        cond_maps = _condition_maps()
+        cond_maps = _cond_maps_val()
 
         # Build a single combined box trace using x as the category axis.
         # Each point's x value is the pair label; Plotly groups points under
@@ -353,7 +357,7 @@ def binding_workspace_server(
         return ui.HTML(
             to_html(
                 fig,
-                include_plotlyjs="cdn",
+                include_plotlyjs=False,
                 full_html=False,
                 post_script=post_script,
             )
@@ -425,10 +429,10 @@ def binding_workspace_server(
         selected regulator changes. Each slot is filled independently by its own per-
         pair render.
 
-        :trigger _pairs: re-renders when the active dataset set changes.
+        :trigger _active_pairs: re-renders when the active dataset set changes.
 
         """
-        active_pairs = _pairs()
+        active_pairs = _active_pairs()
         if not active_pairs:
             return ui.span()
         slots = [
@@ -459,7 +463,7 @@ def binding_workspace_server(
             reg = None
         if not reg:
             return ui.span()
-        active_pairs = _pairs()
+        active_pairs = _active_pairs()
         corr_data = _all_corr_data()
         failed: set[str] = set()
         succeeded: set[str] = set()
@@ -512,7 +516,7 @@ def binding_workspace_server(
             :trigger _all_corr_data: re-renders when dataset/filter/method changes.
 
             """
-            active_pairs = _pairs()
+            active_pairs = _active_pairs()
             if (db_a, db_b) not in active_pairs:
                 return ui.span()
 

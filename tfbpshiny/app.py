@@ -72,6 +72,9 @@ virtualdb_config: str = os.getenv(
 hf_token: str | None = os.getenv("HF_TOKEN")
 
 app_ui = ui.page_fillable(
+    ui.tags.head(
+        ui.tags.script(src="plotly-3.5.0.min.js"),
+    ),
     ui.include_css((Path(__file__).parent / "app.css").resolve()),
     ui.div(
         {"class": "app-container"},
