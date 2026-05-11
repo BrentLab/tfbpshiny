@@ -265,16 +265,18 @@ def test_navigation(page: Page, app):
 
 ## Environment Configuration
 
-A `.env` file in the root directory can override the VirtualDB configuration or set
-a HuggingFace token for private repo access. See `python-dotenv` docs for format.
+A `.env` file in the root directory can set `HF_TOKEN` for private HuggingFace repo
+access. `DOCKER_ENV` is set by the Docker environment to suppress `.env` loading.
+The VirtualDB config path is set via `--virtualdb-config` (top-level CLI flag).
+See `python-dotenv` docs for `.env` format.
 
 ## Logging
 
 - Logger name: `"shiny"`
-- Configured via `configure_logger()` from the `configure_logger` module
-- Controlled via environment variables:
-  - `TFBPSHINY_LOG_LEVEL` (default: 10 = DEBUG)
-  - `TFBPSHINY_LOG_HANDLER` (default: "console")
+- Configured via `configure_logger()` in `__main__.py` before `run_app` is called.
+- Controlled via CLI flags on the root parser (available to all subcommands):
+  - `--log-level` (choices: DEBUG, INFO, WARNING, ERROR, CRITICAL; default: INFO)
+  - `--log-handler` (choices: console, file; default: console)
 
 ## Docker Deployment
 

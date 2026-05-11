@@ -15,6 +15,7 @@ from tfbpshiny.modules.comparison.queries import (
     DEFAULT_PVALUE_THRESHOLD,
     DEFAULT_TOP_N,
 )
+from tfbpshiny.utils.perf import perf, reset_render_counts
 
 
 @module.server
@@ -39,6 +40,8 @@ def comparison_sidebar_server(
 
     """
 
+    session.on_flush(lambda: reset_render_counts(session.id))
+
     @reactive.calc
     def top_n() -> int:
         """
@@ -48,11 +51,12 @@ def comparison_sidebar_server(
         :returns: Integer >= 1; defaults to ``DEFAULT_TOP_N``.
 
         """
-        try:
-            val = int(input.top_n())
-            return max(1, val)
-        except Exception:
-            return DEFAULT_TOP_N
+        with perf(session.id, "comparison.sidebar", "top_n"):
+            try:
+                val = int(input.top_n())
+                return max(1, val)
+            except Exception:
+                return DEFAULT_TOP_N
 
     @reactive.calc
     def effect_threshold() -> float:
@@ -63,10 +67,11 @@ def comparison_sidebar_server(
         :returns: Float >= 0; defaults to ``DEFAULT_EFFECT_THRESHOLD``.
 
         """
-        try:
-            return float(input.effect_threshold())
-        except Exception:
-            return DEFAULT_EFFECT_THRESHOLD
+        with perf(session.id, "comparison.sidebar", "effect_threshold"):
+            try:
+                return float(input.effect_threshold())
+            except Exception:
+                return DEFAULT_EFFECT_THRESHOLD
 
     @reactive.calc
     def pvalue_threshold() -> float:
@@ -77,10 +82,11 @@ def comparison_sidebar_server(
         :returns: Float in (0, 1]; defaults to ``DEFAULT_PVALUE_THRESHOLD``.
 
         """
-        try:
-            return float(input.pvalue_threshold())
-        except Exception:
-            return DEFAULT_PVALUE_THRESHOLD
+        with perf(session.id, "comparison.sidebar", "pvalue_threshold"):
+            try:
+                return float(input.pvalue_threshold())
+            except Exception:
+                return DEFAULT_PVALUE_THRESHOLD
 
     @reactive.calc
     def facet_by() -> str:
@@ -92,10 +98,11 @@ def comparison_sidebar_server(
             ``"perturbation"`` (perturbation = facets, binding = color).
 
         """
-        try:
-            return str(input.facet_by())
-        except Exception:
-            return "binding"
+        with perf(session.id, "comparison.sidebar", "facet_by"):
+            try:
+                return str(input.facet_by())
+            except Exception:
+                return "binding"
 
     @render.ui
     def sidebar_controls() -> ui.Tag:
@@ -111,11 +118,20 @@ def comparison_sidebar_server(
                 ),
             )
 
+        # Use isolate() to avoid a reactive dependency on the sidebar calcs here.
+        # Without this the initial DOM render re-fires all four inputs, causing
+        # _topn_data to run twice per navigation.
+        with reactive.isolate():
+            current_top_n = top_n()
+            current_effect = effect_threshold()
+            current_pvalue = pvalue_threshold()
+            current_facet = facet_by()
+
         return ui.div(
             ui.input_numeric(
                 "top_n",
                 "Top N",
-                value=top_n(),
+                value=current_top_n,
                 min=1,
                 max=500,
                 step=5,
@@ -126,7 +142,7 @@ def comparison_sidebar_server(
                 "Min |effect|",
                 min=0.0,
                 max=5.0,
-                value=effect_threshold(),
+                value=current_effect,
                 step=0.1,
             ),
             ui.input_slider(
@@ -134,7 +150,7 @@ def comparison_sidebar_server(
                 "Max p-value",
                 min=0.001,
                 max=1.0,
-                value=pvalue_threshold(),
+                value=current_pvalue,
                 step=0.001,
             ),
             sidebar_label("Facet by"),
@@ -145,7 +161,7 @@ def comparison_sidebar_server(
                     "binding": "Binding source",
                     "perturbation": "Perturbation source",
                 },
-                selected=facet_by(),
+                selected=current_facet,
             ),
         )
 

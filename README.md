@@ -126,6 +126,133 @@ Application and Traefik logs are sent to AWS CloudWatch Logs under the log group
 
 ---
 
+## shinyapps.io deployment
+
+This section describes how to deploy the app to
+[shinyapps.io](https://www.shinyapps.io) as an alternative to the EC2/Docker
+stack above. The two deployments are independent and can run in parallel.
+
+### Prerequisites
+
+- `rsconnect-python` installed: `pip install rsconnect-python`
+- A HuggingFace token if any datasets are private
+
+### 1. Download the HuggingFace data locally
+
+The parquet files must be bundled with the deployment so the app never hits the
+network on startup. Run the `initialize` command once, pointing at a directory
+inside the project:
+
+```bash
+HF_TOKEN=<your_token> python -m tfbpshiny --cache-dir ./hf_cache initialize
+```
+
+**NOTE**: do call this hf_cache as it is already in the `.gitignore`
+
+This downloads all dataset parquet files into `hf_cache/` (~1.2 GB) and
+verifies every view is readable. The directory is created relative to the
+project root and will be included in the rsconnect upload bundle automatically.
+
+Re-run this command any time the upstream datasets are updated.
+
+### 2. Entry point
+
+`shinyapps_entry.py` in the project root is the shinyapps.io entry point. It
+sets `HF_CACHE_DIR` to the bundled `hf_cache/` directory before importing the
+Shiny app object, so no CLI flag is needed at runtime. No changes are required
+— the file is already in the repository.
+
+### 3. Set environment variables in the dashboard
+
+In the shinyapps.io application dashboard under **Settings > Environment**,
+add:
+
+| Variable | Value |
+|---|---|
+| `HF_TOKEN` | your HuggingFace token (if datasets are private) |
+
+Do not add `HF_CACHE_DIR` here — `shinyapps_entry.py` sets it from a path
+relative to the bundle, which is more reliable than a hardcoded absolute path.
+
+### 4. Deploy
+
+**note**: Go to your shinyapps.io account, drop down the user menu, and go
+to `Tokens`. If you click "show", and the python tab, it gives you this cmd with
+the `name`,  `account`, `token` and `secret` filled in. Run `rsconnect add`
+once to store credentials under a nickname; subsequent deploys use `--name`.
+
+Generate a `requirements.txt` from the Poetry lockfile before deploying (rsconnect
+requires it; it is gitignored because it is a generated artifact):
+
+```bash
+poetry export --without-hashes --without dev -f requirements.txt -o requirements.txt
+```
+
+```bash
+rsconnect add \
+    --account <your-shinyapps-account> \
+    --name <nickname> \
+    --token <token> \
+    --secret <secret>
+
+CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
+    --name <nickname> \
+    --entrypoint shinyapps_entry:app \
+    --title "TF Binding and Perturbation" \
+    --exclude "terraform" \
+    --exclude "compose" \
+    --exclude "tests" \
+    --exclude "docs" \
+    --exclude "tmp" \
+    --exclude "data" \
+    --exclude ".github" \
+    --exclude ".vscode" \
+    --exclude ".mypy_cache" \
+    --exclude ".pytest_cache" \
+    --exclude ".claude" \
+    --exclude ".venv" \
+    --exclude "mkdocs.yml" \
+    --exclude "mkdocs_requirements.txt" \
+    --exclude "production.yml" \
+    --exclude "*.log"
+```
+
+rsconnect does not read `.gitignore`; it bundles everything it finds unless told
+otherwise. The `--exclude` flags above strip deployment-irrelevant directories.
+`hf_cache/` is intentionally not excluded — it is the bundled dataset cache and
+must travel with the app. The first deploy uploads ~1.2 GB; set
+`CONNECT_REQUEST_TIMEOUT` (seconds) high enough to cover the upload — 3600 (one
+hour) is safe.
+
+### Updating the data
+
+When upstream datasets change, re-run step 1 and redeploy:
+
+```bash
+HF_TOKEN=<your_token> python -m tfbpshiny --cache-dir ./hf_cache initialize
+CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
+    --name <nickname> \
+    --entrypoint shinyapps_entry:app \
+    --exclude "terraform" \
+    --exclude "compose" \
+    --exclude "tests" \
+    --exclude "docs" \
+    --exclude "tmp" \
+    --exclude "data" \
+    --exclude ".github" \
+    --exclude ".vscode" \
+    --exclude ".mypy_cache" \
+    --exclude ".pytest_cache" \
+    --exclude ".claude" \
+    --exclude ".venv" \
+    --exclude "mkdocs.yml" \
+    --exclude "mkdocs_requirements.txt" \
+    --exclude "production.yml" \
+    --exclude "*.log"
+```
+
+---
+
 ## Contributing
 
 ### Setup
@@ -138,6 +265,31 @@ pre-commit install
 # First-time Playwright setup (required for E2E tests)
 poetry run playwright install chromium
 ```
+
+### Plotly JS bundle
+
+The app loads Plotly from a local bundle (`tfbpshiny/www/plotly-3.5.0.min.js`)
+rather than a CDN to avoid race conditions when multiple outputs initialize
+simultaneously. This file is gitignored due to its size (~4.8 MB). After
+cloning, download it once:
+
+```bash
+curl -fsSL https://cdn.plot.ly/plotly-3.5.0.min.js \
+    -o tfbpshiny/www/plotly-3.5.0.min.js
+```
+
+If the `plotly` Python package is upgraded, check the new JS version it expects:
+
+```bash
+python -c "
+import re, plotly.graph_objects as go
+from plotly.io import to_html
+m = re.search(r'plotly-([\d.]+)\.min\.js', to_html(go.Figure(), include_plotlyjs='cdn'))
+print(m.group(0))
+"
+```
+
+Then download the matching version and update the `src` in `tfbpshiny/app.py`.
 
 ### Environment variables
 

@@ -13,13 +13,13 @@ from shiny.types import SilentException
 
 from tfbpshiny import components
 from tfbpshiny.modules.select_datasets.queries import (
-    FIELD_TYPE_OVERRIDES,
     metadata_query,
     regulator_display_labels_query,
 )
 from tfbpshiny.modules.select_datasets.ui import (
     dataset_filter_modal_ui,
 )
+from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS
 
 
@@ -77,7 +77,7 @@ def dataset_row_server(
     dataset_filters: reactive.Value[dict[str, Any]],
     modal_open_for: reactive.Value[str | None],
     modal_df: reactive.Value[pd.DataFrame | None],
-    active_datasets_fn: Callable[[], list[str]],
+    common_field_levels_fn: Callable[[], dict[str, list[str]]],
     modal_ns: Callable[[str], str],
     logger: Logger,
 ) -> None:
@@ -97,8 +97,10 @@ def dataset_row_server(
     :param dataset_filters: Shared reactive dict of active filters.
     :param modal_open_for: Shared reactive tracking which dataset's modal is open.
     :param modal_df: Shared reactive holding the open modal's metadata DataFrame.
-    :param active_datasets_fn: Callable that returns all currently active dataset
-        names (binding + perturbation), used to compute common-field level unions.
+    :param common_field_levels_fn: Callable returning the pre-computed union of
+        categorical levels for each common field across all active datasets. Read
+        once when the modal opens; avoids re-querying all active datasets on every
+        modal open.
     :param modal_ns: Namespace function from the parent module server
         (``session.ns``). Applied to all input IDs rendered inside the filter
         modal so they are registered under the parent's scope, not the row
@@ -106,6 +108,8 @@ def dataset_row_server(
     :param logger: Application logger.
 
     """
+
+    session.on_flush(lambda: reset_render_counts(session.id))
 
     @reactive.effect
     def _sync_toggle_to_dom() -> None:
@@ -120,14 +124,15 @@ def dataset_row_server(
         :trigger toggle_state: fires whenever any dataset's toggle changes.
 
         """
-        val = toggle_state().get(db_name, False)
-        with reactive.isolate():
-            try:
-                current = bool(input.toggle())
-            except SilentException:
-                return
-        if current != val:
-            ui.update_switch("toggle", value=val)
+        with perf(session.id, "select_datasets.dataset_row", "_sync_toggle_to_dom"):
+            val = toggle_state().get(db_name, False)
+            with reactive.isolate():
+                try:
+                    current = bool(input.toggle())
+                except SilentException:
+                    return
+            if current != val:
+                ui.update_switch("toggle", value=val)
 
     @reactive.effect
     @reactive.event(input.toggle)
@@ -145,18 +150,19 @@ def dataset_row_server(
         :trigger input.toggle: fires when the user flips this dataset's switch.
 
         """
-        try:
-            val = bool(input.toggle())
-        except SilentException:
-            return
-        with reactive.isolate():
-            if toggle_state().get(db_name) == val:
+        with perf(session.id, "select_datasets.dataset_row", "_on_toggle"):
+            try:
+                val = bool(input.toggle())
+            except SilentException:
                 return
-        toggle_state.set({**toggle_state(), db_name: val})
-        if not val:
-            current = dict(dataset_filters())
-            current.pop(db_name, None)
-            dataset_filters.set(current)
+            with reactive.isolate():
+                if toggle_state().get(db_name) == val:
+                    return
+            toggle_state.set({**toggle_state(), db_name: val})
+            if not val:
+                current = dict(dataset_filters())
+                current.pop(db_name, None)
+                dataset_filters.set(current)
 
     @reactive.effect
     @reactive.event(input.filter_btn)
@@ -171,71 +177,48 @@ def dataset_row_server(
         dataset.
 
         """
-        existing_filters = dataset_filters().get(db_name)
-        sql, params = metadata_query(db_name, existing_filters)
-        df = vdb.query(sql, **params)
-        modal_open_for.set(db_name)
-        modal_df.set(df)
-        display_name = dataset_dict[db_name].get("display_name", db_name)
+        with perf(session.id, "select_datasets.dataset_row", "_open_filter_modal"):
+            existing_filters = dataset_filters().get(db_name)
+            sql, params = metadata_query(db_name, existing_filters)
+            df = vdb.query(sql, **params)
+            modal_open_for.set(db_name)
+            modal_df.set(df)
+            display_name = dataset_dict[db_name].get("display_name", db_name)
 
-        # build union of categorical levels for each common field across all
-        # active datasets, so all valid values are selectable in the modal
-        all_active = active_datasets_fn()
-        common_field_levels: dict[str, list[str]] = {}
-        for cf_field in common_fields:
-            if cf_field not in df.columns:
-                continue
-            col_dtype = df[cf_field].dtype
-            type_override = FIELD_TYPE_OVERRIDES.get(
-                (db_name, cf_field)
-            ) or FIELD_TYPE_OVERRIDES.get(("", cf_field))
-            override_kind = type_override[0] if type_override else None
-            if override_kind != "categorical" and col_dtype.name not in (
-                "object",
-                "category",
-            ):
-                continue
-            levels: set[str] = {str(v) for v in df[cf_field].dropna().unique()}
-            for other_db in all_active:
-                if other_db == db_name:
-                    continue
-                try:
-                    other_sql, other_params = metadata_query(other_db)
-                    other_df = vdb.query(other_sql, **other_params)
-                    if cf_field in other_df.columns:
-                        levels |= {str(v) for v in other_df[cf_field].dropna().unique()}
-                except Exception:
-                    pass
-            common_field_levels[cf_field] = list(levels)
+            # Use the pre-computed union of categorical levels from the parent
+            # module's reactive calc — avoids re-querying all active datasets here.
+            common_field_levels = common_field_levels_fn()
 
-        # build {locus_tag: "SYMBOL (LOCUS_TAG)"} map for regulator selectize
-        reg_display_labels: dict[str, str] = {}
-        try:
-            reg_sql, reg_params = regulator_display_labels_query(db_name)
-            reg_df = vdb.query(reg_sql, **reg_params)
-            for _, row in reg_df.iterrows():
-                tag = str(row["regulator_locus_tag"])
-                sym = row.get("regulator_symbol")
-                label = f"{sym} ({tag})" if sym and str(sym) != "nan" else tag
-                reg_display_labels[tag] = label
-        except Exception:
-            logger.exception("Failed to fetch regulator display labels for %s", db_name)
+            # build {locus_tag: "SYMBOL (LOCUS_TAG)"} map for regulator selectize
+            reg_display_labels: dict[str, str] = {}
+            try:
+                reg_sql, reg_params = regulator_display_labels_query(db_name)
+                reg_df = vdb.query(reg_sql, **reg_params)
+                for _, row in reg_df.iterrows():
+                    tag = str(row["regulator_locus_tag"])
+                    sym = row.get("regulator_symbol")
+                    label = f"{sym} ({tag})" if sym and str(sym) != "nan" else tag
+                    reg_display_labels[tag] = label
+            except Exception:
+                logger.exception(
+                    "Failed to fetch regulator display labels for %s", db_name
+                )
 
-        ui.modal_show(
-            dataset_filter_modal_ui(
-                db_name,
-                df,
-                existing_filters,
-                common_fields,
-                display_name=display_name,
-                common_field_levels=common_field_levels,
-                hidden_fields=HIDDEN_FILTER_FIELDS.get("*", set())
-                | HIDDEN_FILTER_FIELDS.get(db_name, set()),
-                regulator_display_labels=reg_display_labels or None,
-                col_meta=all_col_meta.get(db_name) or None,
-                ns=modal_ns,
+            ui.modal_show(
+                dataset_filter_modal_ui(
+                    db_name,
+                    df,
+                    existing_filters,
+                    common_fields,
+                    display_name=display_name,
+                    common_field_levels=common_field_levels,
+                    hidden_fields=HIDDEN_FILTER_FIELDS.get("*", set())
+                    | HIDDEN_FILTER_FIELDS.get(db_name, set()),
+                    regulator_display_labels=reg_display_labels or None,
+                    col_meta=all_col_meta.get(db_name) or None,
+                    ns=modal_ns,
+                )
             )
-        )
 
 
 __all__ = ["dataset_row_ui", "dataset_row_server"]
