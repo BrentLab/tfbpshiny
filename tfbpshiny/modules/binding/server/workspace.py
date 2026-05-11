@@ -10,13 +10,14 @@ import pandas as pd
 import plotly.graph_objects as go
 from labretriever import VirtualDB
 from plotly.io import to_html
-from shiny import module, reactive, render, ui
+from shiny import module, reactive, render, req, ui
 
 from tfbpshiny.modules.binding.queries import (
-    corr_pair_sql,
+    corr_all_pairs_sql,
     get_measurement_column,
     regulator_scatter_sql,
 )
+from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.sample_conditions import fetch_sample_condition_map
 from tfbpshiny.utils.vdb_init import AppDatasets, get_regulator_display_name
 
@@ -33,11 +34,34 @@ def binding_workspace_server(
     vdb: VirtualDB,
     app_datasets: AppDatasets,
     logger: Logger,
+    active_module: reactive.Value[str] | None = None,
 ) -> None:
     """
     Render the binding correlation rows: pairwise distributions
     and per-regulator plots.
     """
+
+    session.on_flush(lambda: reset_render_counts(session.id))
+
+    # Stable reactive value for corr/col params; only invalidates downstream when
+    # values actually change, breaking the input-echo double-run on tab switch.
+    _corr_params: reactive.Value[tuple[str, str]] = reactive.value(
+        ("pearson", "effect")
+    )
+
+    @reactive.effect
+    def _sync_corr_params() -> None:
+        """
+        Write sidebar param values to ``_corr_params`` only when they change.
+
+        :trigger corr_type: re-fires when the correlation type input changes. :trigger
+        col_preference: re-fires when the column preference input changes.
+
+        """
+        new = (corr_type(), col_preference())
+        with reactive.isolate():
+            if new != _corr_params():
+                _corr_params.set(new)
 
     display_names: dict[str, str] = {
         db_name: vdb.get_tags(db_name).get("display_name", db_name)
@@ -49,49 +73,60 @@ def binding_workspace_server(
         zip(_reg_df["regulator_locus_tag"], _reg_df["display_name"])
     )
 
-    @reactive.calc
-    def _condition_maps() -> dict[str, dict[str, str]]:
+    # Stable pair list — updated only when the active dataset set actually changes.
+    # No active_module guard here so distributions_plot and scatter_container can
+    # read the list even on first load before active_module has settled.
+    _active_pairs: reactive.Value[list[tuple[str, str]]] = reactive.value([])
+
+    @reactive.effect
+    def _sync_pairs() -> None:
         """
-        ``{db_name: {sample_id: label}}`` for each active dataset that has
-        experimental_condition columns.
+        Write the pair list to ``_active_pairs`` only when it actually changes.
 
-        Used to annotate tooltips on the selected-regulator overlay in the
-        distribution plot so the user can distinguish multiple samples of the
-        same regulator. Datasets without ``condition_cols`` are omitted from
-        the outer dict, causing the tooltip to skip their side.
+        Gated on the binding tab being active so the sync does not run while
+        another tab is visible, but ``_active_pairs`` itself is readable at any
+        time — downstream renders are never silently suppressed.
 
-        :trigger active_binding_datasets: re-runs when the user toggles a
-            binding dataset on or off.
-        :returns: Outer dict keyed by db_name; inner dict maps sample_id to
-            the joined condition label.
-
-        """
-        out: dict[str, dict[str, str]] = {}
-        for db in active_binding_datasets():
-            cols = app_datasets.condition_cols.get(db, [])
-            if not cols:
-                continue
-            try:
-                out[db] = fetch_sample_condition_map(vdb, db, cols)
-            except Exception:
-                logger.exception("Failed to fetch condition map for %s", db)
-                out[db] = {}
-        return out
-
-    @reactive.calc
-    def _pairs() -> list[tuple[str, str]]:
-        """
-        All unique pairs of active binding datasets.
-
-        :trigger active_binding_datasets: re-runs whenever the user toggles a
-            binding dataset on or off in the Select Datasets sidebar.
-        :returns: List of ``(db_a, db_b)`` tuples, length = n_active choose 2.
+        :trigger active_binding_datasets: re-fires when the dataset selection changes.
+        :trigger active_module: silently blocks when another tab is active.
 
         """
+        if active_module is not None:
+            req(active_module() == "binding")
         active = active_binding_datasets()
-        pairs = list(itertools.combinations(active, 2))
-        logger.debug(f"binding _pairs: active={active}, pairs={pairs}")
-        return pairs
+        new = list(itertools.combinations(sorted(active), 2))
+        with reactive.isolate():
+            if new != _active_pairs():
+                _active_pairs.set(new)
+
+    # Stable condition maps — updated only when the active dataset set changes.
+    _cond_maps_val: reactive.Value[dict[str, dict[str, str]]] = reactive.value({})
+
+    @reactive.effect
+    def _sync_condition_maps() -> None:
+        """
+        Write condition maps to ``_cond_maps_val`` only when they change.
+
+        :trigger active_binding_datasets: re-fires when the dataset selection changes.
+        :trigger active_module: silently blocks when another tab is active.
+
+        """
+        if active_module is not None:
+            req(active_module() == "binding")
+        with perf(session.id, "binding.workspace", "_condition_maps"):
+            new: dict[str, dict[str, str]] = {}
+            for db in active_binding_datasets():
+                cols = app_datasets.condition_cols.get(db, [])
+                if not cols:
+                    continue
+                try:
+                    new[db] = fetch_sample_condition_map(vdb, db, cols)
+                except Exception:
+                    logger.exception("Failed to fetch condition map for %s", db)
+                    new[db] = {}
+        with reactive.isolate():
+            if new != _cond_maps_val():
+                _cond_maps_val.set(new)
 
     @reactive.calc
     def _all_corr_data() -> dict[tuple[str, str], pd.DataFrame]:
@@ -108,7 +143,9 @@ def binding_workspace_server(
         there will be multiple correlation values for that regulator in the output
         dataframe.
 
-        :trigger _pairs: re-runs when the set of active pairs changes.
+        :trigger _active_pairs: re-runs when the set of active pairs changes; only
+            invalidated when the pair list content actually changes, so returning to
+            this tab without changing datasets hits the cache.
         :trigger col_preference: re-runs when the user switches between Effect
             and P-value columns.
         :trigger corr_type: re-runs when the user switches between Pearson and
@@ -122,39 +159,28 @@ def binding_workspace_server(
             failure and error are logged at the ERROR level.
 
         """
-        pairs = _pairs()
-        # TODO: get rid of the type ignore
-        preference: Literal["effect", "pvalue"] = col_preference()  # type: ignore[assignment] # noqa: E501
-        method = corr_type()
-        filters = dataset_filters()
+        with perf(session.id, "binding.workspace", "_all_corr_data"):
+            pairs = _active_pairs()
+            method, preference_str = _corr_params()
+            # TODO: get rid of the type ignore
+            preference: Literal["effect", "pvalue"] = preference_str  # type: ignore[assignment] # noqa: E501
+            filters = dataset_filters()
 
-        if not pairs:
-            return {}
+            if not pairs:
+                return {}
 
-        result: dict[tuple[str, str], pd.DataFrame] = {}
-        for i, (db_a, db_b) in enumerate(pairs):
+            col_map = {
+                db: get_measurement_column(db, preference)
+                for pair in pairs
+                for db in pair
+            }
+            logger.debug(f"binding _all_corr_data: {len(pairs)} pairs, method={method}")
+
             try:
-                col_a = get_measurement_column(db_a, preference)
-                col_b = get_measurement_column(db_b, preference)
-                logger.debug(
-                    f"Correlating {db_a}({col_a}) vs {db_b}({col_b}) ({method})"
-                )
-                result[(db_a, db_b)] = corr_pair_sql(
-                    vdb,
-                    db_a,
-                    col_a,
-                    filters.get(db_a),
-                    db_b,
-                    col_b,
-                    filters.get(db_b),
-                    method,
-                    prefix=f"p{i}_",
-                )
+                combined = corr_all_pairs_sql(vdb, pairs, col_map, filters, method)
             except Exception as exc:
-                logger.error(
-                    f"Failed to correlate {db_a} vs {db_b}: {exc}", exc_info=True
-                )
-                result[(db_a, db_b)] = pd.DataFrame(
+                logger.error(f"corr_all_pairs_sql failed: {exc}", exc_info=True)
+                combined = pd.DataFrame(
                     columns=[
                         "db_a",
                         "db_a_id",
@@ -162,25 +188,48 @@ def binding_workspace_server(
                         "db_b_id",
                         "regulator_locus_tag",
                         "correlation",
+                        "pair_key",
                     ]
                 )
 
-        return result
+            empty_cols = [
+                "db_a",
+                "db_a_id",
+                "db_b",
+                "db_b_id",
+                "regulator_locus_tag",
+                "correlation",
+            ]
+            result: dict[tuple[str, str], pd.DataFrame] = {}
+            for db_a, db_b in pairs:
+                key = f"{db_a}__{db_b}"
+                if combined.empty or "pair_key" not in combined.columns:
+                    result[(db_a, db_b)] = pd.DataFrame(columns=empty_cols)
+                else:
+                    subset = (
+                        combined[combined["pair_key"] == key]
+                        .drop(columns=["pair_key"])
+                        .reset_index(drop=True)
+                    )
+                    result[(db_a, db_b)] = subset
+
+            return result
 
     @render.ui
     def distributions_plot() -> ui.Tag:
         """
         Box-plot of per-regulator correlation values for every active pair.
 
-        :trigger _pairs: re-renders when the set of active pairs changes. :trigger
-        _all_corr_data: re-renders when correlation data is recomputed. :trigger
-        corr_type: re-renders when the correlation method changes     (updates the
-        axis/title label).
+        :trigger _active_pairs: re-renders when the set of active pairs changes.
+        :trigger _all_corr_data: re-renders when correlation data is recomputed.
+        :trigger corr_type: re-renders when the correlation method changes.
 
         """
-        pairs = _pairs()
-        corr_data = _all_corr_data()
-        method = corr_type().capitalize()
+        with perf(session.id, "binding.workspace", "distributions_plot"):
+            pairs = _active_pairs()
+            corr_data = _all_corr_data()
+            ct, _ = _corr_params()
+            method = ct.capitalize()
 
         fig = go.Figure()
 
@@ -193,7 +242,7 @@ def binding_workspace_server(
                 y=0.5,
                 showarrow=False,
             )
-            return fig
+            return ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False))
 
         # sym_map is built at server init from the pre-computed lookup table
         try:
@@ -201,7 +250,7 @@ def binding_workspace_server(
         except Exception:
             selected_reg = ""
 
-        cond_maps = _condition_maps()
+        cond_maps = _cond_maps_val()
 
         # Build a single combined box trace using x as the category axis.
         # Each point's x value is the pair label; Plotly groups points under
@@ -308,7 +357,7 @@ def binding_workspace_server(
         return ui.HTML(
             to_html(
                 fig,
-                include_plotlyjs="cdn",
+                include_plotlyjs=False,
                 full_html=False,
                 post_script=post_script,
             )
@@ -357,74 +406,139 @@ def binding_workspace_server(
             selected=default,
         )
 
+    # All possible pairs across the full dataset catalogue — fixed at init time.
+    # Used to pre-register one @render.ui per pair so each scatter plot resolves
+    # independently without triggering a full-page re-render.
+    _all_possible_pairs: list[tuple[str, str]] = list(
+        itertools.combinations(
+            sorted(
+                db
+                for db in vdb.get_datasets()
+                if vdb.get_tags(db).get("data_type") == "binding"
+            ),
+            2,
+        )
+    )
+
     @render.ui
-    def regulator_plots() -> ui.Tag:
+    def scatter_container() -> ui.Tag:
         """
-        Per-pair scatter plots for the selected regulator.
+        Flex container with one output slot per currently active pair.
 
-        Delegates to ``_build_regulator_plots``; catches and renders any
-        unhandled exceptions as an annotated empty figure.
+        Only re-renders when the active pair set changes — not when plot data or the
+        selected regulator changes. Each slot is filled independently by its own per-
+        pair render.
 
-        :trigger input.selected_regulator: re-renders when the user picks a
-            different regulator from the dropdown.
-        :trigger _all_corr_data: re-renders when correlation data changes
-            (new datasets, filters, column preference, or method).
+        :trigger _active_pairs: re-renders when the active dataset set changes.
 
         """
-        try:
-            return _build_regulator_plots()
-        except Exception as exc:
-            logger.exception("regulator_plots render failed")
-            fig = go.Figure()
-            fig.add_annotation(
-                text=f"Error rendering plots: {exc}",
-                xref="paper",
-                yref="paper",
-                x=0.5,
-                y=0.5,
-                showarrow=False,
-            )
-            return ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False))
+        active_pairs = _active_pairs()
+        if not active_pairs:
+            return ui.span()
+        slots = [
+            ui.output_ui(f"scatter_{db_a}__{db_b}")
+            for db_a, db_b in _all_possible_pairs
+            if (db_a, db_b) in active_pairs
+        ]
+        return ui.div(
+            ui.output_ui("scatter_missing_note"),
+            ui.div(
+                *slots,
+                style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start;",  # noqa: E501
+            ),
+        )
 
-    def _build_regulator_plots() -> ui.Tag:
+    @render.ui
+    def scatter_missing_note() -> ui.Tag:
+        """
+        Warning paragraph listing datasets where the selected regulator was not found.
+
+        :trigger input.selected_regulator: re-renders when the regulator changes.
+        :trigger _all_corr_data: re-renders when dataset/filter/method changes.
+
+        """
         try:
             reg = str(input.selected_regulator()) or None
         except Exception:
             reg = None
-        pairs = list(_all_corr_data().keys())
-        # TODO: get rid of the type ignore
-        preference: Literal["effect", "pvalue"] = col_preference()  # type: ignore[assignment] # noqa: E501
-        filters = dataset_filters()
-        method = corr_type()
-
-        if not reg or not pairs:
-            fig = go.Figure()
-            fig.add_annotation(
-                text="Select a regulator above to see per-pair scatter plots.",
-                xref="paper",
-                yref="paper",
-                x=0.5,
-                y=0.5,
-                showarrow=False,
+        if not reg:
+            return ui.span()
+        active_pairs = _active_pairs()
+        corr_data = _all_corr_data()
+        failed: set[str] = set()
+        succeeded: set[str] = set()
+        for db_a, db_b in active_pairs:
+            df = corr_data.get((db_a, db_b))
+            has_reg = (
+                df is not None
+                and not df.empty
+                and reg in df["regulator_locus_tag"].values
             )
-            return ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False))
+            if has_reg:
+                succeeded.add(display_names.get(db_a, db_a))
+                succeeded.add(display_names.get(db_b, db_b))
+            else:
+                failed.add(display_names.get(db_a, db_a))
+                failed.add(display_names.get(db_b, db_b))
+        truly_missing = failed - succeeded
+        if not truly_missing:
+            return ui.span()
+        names = ", ".join(sorted(truly_missing))
+        return ui.p(
+            f"{reg} was not found in: {names}. "
+            "Pairs involving these datasets are omitted.",
+            style="color: gray; margin: 0.5rem 0;",
+        )
 
-        # First pass: collect data and track which datasets are missing the regulator.
-        # A dataset is only reported missing if it has no successful pair — a dataset
-        # involved in a failed pair but succeeding in another is not "missing".
-        pair_data: list[tuple[str, str, str, str, object]] = []
-        failed_datasets: set[str] = set()
-        succeeded_datasets: set[str] = set()
+    def _make_scatter_render(db_a: str, db_b: str, pair_idx: int) -> None:
+        """
+        Register a ``@render.ui`` for the scatter plot of one dataset pair.
 
-        def _strip_reg(f: dict | None) -> dict | None:
-            # Strip regulator_locus_tag from filters — the scatter query adds its
-            # own per-regulator WHERE clause; keeping it would create an AND conflict.
-            if not f:
-                return f
-            stripped = {k: v for k, v in f.items() if k != "regulator_locus_tag"}
-            return stripped or None
+        All arguments are captured by value via the function signature so each closure
+        refers to its own pair and index, not the loop variables at fire time.
 
-        for idx, (db_a, db_b) in enumerate(pairs, start=1):
+        :param db_a: First dataset name.
+        :param db_b: Second dataset name.
+        :param pair_idx: Stable integer index used to namespace SQL parameters.
+
+        """
+
+        @output(id=f"scatter_{db_a}__{db_b}")
+        @render.ui
+        def _scatter_plot() -> ui.Tag:
+            """
+            Scatter plot for one (db_a, db_b) pair.
+
+            Returns an empty span when this pair is not currently active so the slot
+            takes no space in the DOM.
+
+            :trigger input.selected_regulator: re-renders when the regulator changes.
+            :trigger _all_corr_data: re-renders when dataset/filter/method changes.
+
+            """
+            active_pairs = _active_pairs()
+            if (db_a, db_b) not in active_pairs:
+                return ui.span()
+
+            try:
+                reg = str(input.selected_regulator()) or None
+            except Exception:
+                reg = None
+
+            if not reg:
+                return ui.span()
+
+            # TODO: get rid of the type ignore
+            preference: Literal["effect", "pvalue"] = col_preference()  # type: ignore[assignment] # noqa: E501
+            filters = dataset_filters()
+            method = corr_type()
+
+            def _strip_reg(f: dict | None) -> dict | None:
+                if not f:
+                    return f
+                stripped = {k: v for k, v in f.items() if k != "regulator_locus_tag"}
+                return stripped or None
+
             try:
                 col_a = get_measurement_column(db_a, preference)
                 col_b = get_measurement_column(db_b, preference)
@@ -439,29 +553,17 @@ def binding_workspace_server(
                     fb,
                     method,
                     reg,
-                    idx,
+                    pair_idx,
                 )
                 merged = vdb.query(scatter_sql, **scatter_params)
-                logger.debug(
-                    f"scatter {db_a}/{db_b} reg={reg!r} "
-                    f"rows={len(merged)} fa={fa!r} fb={fb!r}"
-                )
+                logger.debug(f"scatter {db_a}/{db_b} reg={reg!r} rows={len(merged)}")
             except Exception:
-                logger.exception(f"Regulator plot fetch failed for {db_a}/{db_b}")
-                continue
+                logger.exception(f"Scatter fetch failed for {db_a}/{db_b}")
+                return ui.span()
 
             if merged.empty:
-                failed_datasets.add(display_names.get(db_a, db_a))
-                failed_datasets.add(display_names.get(db_b, db_b))
-                continue
+                return ui.span()
 
-            succeeded_datasets.add(display_names.get(db_a, db_a))
-            succeeded_datasets.add(display_names.get(db_b, db_b))
-            pair_data.append((db_a, db_b, col_a, col_b, merged))
-
-        # Build one figure per valid pair
-        plot_divs: list[ui.Tag] = []
-        for db_a, db_b, col_a, col_b, merged in pair_data:
             la = display_names.get(db_a, db_a)
             lb = display_names.get(db_b, db_b)
             r = merged["_val_a"].corr(merged["_val_b"])
@@ -492,43 +594,20 @@ def binding_workspace_server(
                 font=dict(size=12),
             )
             fig.update_layout(
-                title=dict(
-                    text=f"{la}<br>vs<br>{lb}",
-                    x=0.5,
-                    xanchor="center",
-                ),
+                title=dict(text=f"{la}<br>vs<br>{lb}", x=0.5, xanchor="center"),
                 xaxis_title=f"{la}: {col_a}",
                 yaxis_title=f"{lb}: {col_b}",
                 margin=dict(l=50, r=20, t=100, b=50),
                 width=400,
                 height=400,
             )
-            plot_divs.append(
-                ui.div(
-                    ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False)),
-                    style="flex: 0 0 auto;",
-                )
+            return ui.div(
+                ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False)),
+                style="flex: 0 0 auto;",
             )
 
-        missing_note: list[ui.Tag] = []
-        truly_missing = failed_datasets - succeeded_datasets
-        if truly_missing:
-            names = ", ".join(sorted(truly_missing))
-            missing_note.append(
-                ui.p(
-                    f"{reg} was not found in: {names}. "
-                    "Pairs involving these datasets are omitted.",
-                    style="color: gray; margin: 0.5rem 0;",
-                )
-            )
-
-        return ui.div(
-            *missing_note,
-            ui.div(
-                *plot_divs,
-                style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start;",  # noqa: E501
-            ),
-        )
+    for _pair_idx, (_db_a, _db_b) in enumerate(_all_possible_pairs, start=1):
+        _make_scatter_render(_db_a, _db_b, _pair_idx)
 
 
 __all__ = ["binding_workspace_server"]

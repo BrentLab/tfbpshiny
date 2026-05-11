@@ -62,7 +62,7 @@ services:
       driver: awslogs
       options:
         awslogs-group: /tfbpshiny/production
-        awslogs-region: us-east-1
+        awslogs-region: us-east-2
         awslogs-stream: traefik
         awslogs-create-group: "true"
     restart: unless-stopped
