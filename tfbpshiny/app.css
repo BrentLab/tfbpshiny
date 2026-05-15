@@ -504,3 +504,47 @@ body {
     max-width: 300px;
     text-align: left;
 }
+
+/* --- Responsive: narrow / mobile ---------------------------------------- */
+@media (max-width: 767px) {
+    body {
+        overflow-x: hidden;
+    }
+
+    .app-container {
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+    }
+
+    .app-body {
+        flex-direction: column;
+        overflow: visible;
+    }
+
+    .context-sidebar {
+        width: 100%;
+        min-width: 0;
+        overflow-y: visible;
+    }
+
+    .main-workspace {
+        overflow: visible;
+    }
+
+    .workspace-body {
+        overflow-y: visible;
+    }
+
+    .nav-bar {
+        flex-wrap: wrap;
+        height: auto;
+        min-height: var(--nav-height);
+        padding: 8px 12px;
+        gap: 8px;
+    }
+
+    .nav-bar .nav-tags {
+        flex-wrap: wrap;
+    }
+}
