@@ -108,9 +108,7 @@ def _build_where(
             for i, v in enumerate(val):
                 params[f"cat_{p}_{i}"] = v
         elif kind == "numeric":
-            clauses.append(
-                f'TRY_CAST("{field}" AS DOUBLE) BETWEEN $num_{p}_lo AND $num_{p}_hi'
-            )
+            clauses.append(f'"{field}" BETWEEN $num_{p}_lo AND $num_{p}_hi')
             params[f"num_{p}_lo"] = val[0]
             params[f"num_{p}_hi"] = val[1]
         elif kind == "bool":
@@ -198,35 +196,30 @@ def _corr_pair_sql_impl(
     # inputs contain non-finite values.
     # See: https://github.com/duckdb/duckdb/issues/14373
     #      https://github.com/duckdb/duckdb/discussions/10956
+    # The INNER JOIN on (regulator_locus_tag, target_locus_tag) already restricts
+    # both sides to the shared-regulator set, so no explicit shared_regs CTE is needed.
     if method == "spearman":
         sql = f"""
             WITH
               a_raw AS ({sql_a}),
               b_raw AS ({sql_b}),
-              shared_regs AS (
-                SELECT DISTINCT regulator_locus_tag FROM a_raw
-                INTERSECT
-                SELECT DISTINCT regulator_locus_tag FROM b_raw
-              ),
-              a AS (SELECT * FROM a_raw WHERE regulator_locus_tag IN (SELECT regulator_locus_tag FROM shared_regs)),
-              b AS (SELECT * FROM b_raw WHERE regulator_locus_tag IN (SELECT regulator_locus_tag FROM shared_regs)),
               joined AS (
                 SELECT
-                  a.regulator_locus_tag,
-                  a.sample_id  AS db_a_id,
-                  b.sample_id  AS db_b_id,
-                  a.{col_a}    AS val_a,
-                  b.{col_b}    AS val_b
-                FROM a
-                INNER JOIN b
-                  ON a.regulator_locus_tag = b.regulator_locus_tag
-                 AND a.target_locus_tag    = b.target_locus_tag
-                WHERE a.{col_a} IS NOT NULL
-                  AND b.{col_b} IS NOT NULL
-                  AND NOT isinf(a.{col_a})
-                  AND NOT isinf(b.{col_b})
-                  AND NOT isnan(a.{col_a})
-                  AND NOT isnan(b.{col_b})
+                  a_raw.regulator_locus_tag,
+                  a_raw.sample_id  AS db_a_id,
+                  b_raw.sample_id  AS db_b_id,
+                  a_raw.{col_a}    AS val_a,
+                  b_raw.{col_b}    AS val_b
+                FROM a_raw
+                INNER JOIN b_raw
+                  ON  a_raw.regulator_locus_tag = b_raw.regulator_locus_tag
+                 AND a_raw.target_locus_tag    = b_raw.target_locus_tag
+                WHERE a_raw.{col_a} IS NOT NULL
+                  AND b_raw.{col_b} IS NOT NULL
+                  AND NOT isinf(a_raw.{col_a})
+                  AND NOT isinf(b_raw.{col_b})
+                  AND NOT isnan(a_raw.{col_a})
+                  AND NOT isnan(b_raw.{col_b})
               ),
               ranked AS (
                 SELECT
@@ -258,32 +251,25 @@ def _corr_pair_sql_impl(
         sql = f"""
             WITH
               a_raw AS ({sql_a}),
-              b_raw AS ({sql_b}),
-              shared_regs AS (
-                SELECT DISTINCT regulator_locus_tag FROM a_raw
-                INTERSECT
-                SELECT DISTINCT regulator_locus_tag FROM b_raw
-              ),
-              a AS (SELECT * FROM a_raw WHERE regulator_locus_tag IN (SELECT regulator_locus_tag FROM shared_regs)),
-              b AS (SELECT * FROM b_raw WHERE regulator_locus_tag IN (SELECT regulator_locus_tag FROM shared_regs))
+              b_raw AS ({sql_b})
             SELECT
-              '{db_a}'                     AS db_a,
-              a.sample_id                  AS db_a_id,
-              '{db_b}'                     AS db_b,
-              b.sample_id                  AS db_b_id,
-              a.regulator_locus_tag,
-              corr(a.{col_a}, b.{col_b})  AS correlation
-            FROM a
-            INNER JOIN b
-              ON a.regulator_locus_tag = b.regulator_locus_tag
-             AND a.target_locus_tag    = b.target_locus_tag
-            WHERE a.{col_a} IS NOT NULL
-              AND b.{col_b} IS NOT NULL
-              AND NOT isinf(a.{col_a})
-              AND NOT isinf(b.{col_b})
-              AND NOT isnan(a.{col_a})
-              AND NOT isnan(b.{col_b})
-            GROUP BY a.regulator_locus_tag, a.sample_id, b.sample_id
+              '{db_a}'                          AS db_a,
+              a_raw.sample_id                   AS db_a_id,
+              '{db_b}'                          AS db_b,
+              b_raw.sample_id                   AS db_b_id,
+              a_raw.regulator_locus_tag,
+              corr(a_raw.{col_a}, b_raw.{col_b}) AS correlation
+            FROM a_raw
+            INNER JOIN b_raw
+              ON  a_raw.regulator_locus_tag = b_raw.regulator_locus_tag
+             AND a_raw.target_locus_tag    = b_raw.target_locus_tag
+            WHERE a_raw.{col_a} IS NOT NULL
+              AND b_raw.{col_b} IS NOT NULL
+              AND NOT isinf(a_raw.{col_a})
+              AND NOT isinf(b_raw.{col_b})
+              AND NOT isnan(a_raw.{col_a})
+              AND NOT isnan(b_raw.{col_b})
+            GROUP BY a_raw.regulator_locus_tag, a_raw.sample_id, b_raw.sample_id
             HAVING COUNT(*) >= 3
         """
 

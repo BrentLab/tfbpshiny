@@ -114,9 +114,10 @@ def test_regulator_breakdown_query_with_filters():
     )
     assert "BY4741" in params.values()
     assert 'COUNT(DISTINCT "Carbon source")' in sql
-    # filters produce WHERE; the regulator IN clause must use AND, not a second WHERE
-    assert "AND regulator_locus_tag IN" in sql
-    assert sql.count("WHERE") == 3  # filters appear in both multi and per_reg CTEs
+    # Single-scan pattern: filter appears once in the per_reg CTE WHERE clause;
+    # FILTER (WHERE ...) in the aggregate exprs adds one more occurrence.
+    assert "HAVING COUNT(*) > 1" in sql
+    assert sql.count("FROM harbison_meta") == 1
 
 
 def test_full_data_query_no_filters():
@@ -135,7 +136,9 @@ def test_full_data_query_with_filter():
     assert "BY4741" in params.values()
 
 
-def test_regulator_breakdown_query_no_filters_uses_where():
+def test_regulator_breakdown_query_no_filters_uses_having():
     sql, params = regulator_breakdown_query("harbison", ["Carbon source"])
-    # no filters — regulator IN clause must open with WHERE, not AND
-    assert "WHERE regulator_locus_tag IN" in sql
+    # No filters — multi-sample filter is HAVING COUNT(*) > 1;
+    # only one scan of the table.
+    assert "HAVING COUNT(*) > 1" in sql
+    assert sql.count("FROM harbison_meta") == 1

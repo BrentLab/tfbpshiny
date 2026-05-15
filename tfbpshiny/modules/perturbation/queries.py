@@ -105,9 +105,7 @@ def _build_where(
             for i, v in enumerate(val):
                 params[f"cat_{p}_{i}"] = v
         elif kind == "numeric":
-            clauses.append(
-                f'TRY_CAST("{field}" AS DOUBLE) BETWEEN $num_{p}_lo AND $num_{p}_hi'
-            )
+            clauses.append(f'"{field}" BETWEEN $num_{p}_lo AND $num_{p}_hi')
             params[f"num_{p}_lo"] = val[0]
             params[f"num_{p}_hi"] = val[1]
         elif kind == "bool":

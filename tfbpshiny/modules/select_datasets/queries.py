@@ -49,9 +49,7 @@ def _build_where(
                 params[f"cat_{p}_{i}"] = v
         elif kind == "numeric":
             lo, hi = val
-            clauses.append(
-                f'TRY_CAST("{field}" AS DOUBLE)' f" BETWEEN $num_{p}_lo AND $num_{p}_hi"
-            )
+            clauses.append(f'"{field}" BETWEEN $num_{p}_lo AND $num_{p}_hi')
             params[f"num_{p}_lo"] = lo
             params[f"num_{p}_hi"] = hi
         elif kind == "bool":
@@ -158,27 +156,23 @@ def regulator_breakdown_query(
     """
     params: dict[str, Any] = {}
     where = _build_where(filters, params)
-    # per_reg: for each multi-sample regulator, count distinct values per column
+    # per_reg: one scan — count samples per regulator, count distinct values per
+    # candidate col; HAVING filters to multi-sample regulators only.
     per_reg_exprs = ", ".join(f'COUNT(DISTINCT "{c}") AS "{c}"' for c in candidate_cols)
-    # agg: count how many regulators show internal variation (per-regulator distinct > 1)
+    # agg: for each candidate col, count regulators where the distinct-value count > 1.
     agg_exprs = ", ".join(
         f'COUNT(*) FILTER (WHERE "{c}" > 1) AS "{c}"' for c in candidate_cols
     )
-    sql = (
-        f"WITH multi AS ("
-        f"  SELECT regulator_locus_tag"
-        f"  FROM {db_name}_meta{where}"
-        f"  GROUP BY regulator_locus_tag"
-        f"  HAVING COUNT(*) > 1"
-        f"), per_reg AS ("
-        f"  SELECT regulator_locus_tag"
+    per_reg_select = (
+        f"SELECT regulator_locus_tag"
         + (f", {per_reg_exprs}" if per_reg_exprs else "")
-        + f"  FROM {db_name}_meta{where}"
-        + (" AND" if where else " WHERE")
-        + " regulator_locus_tag IN (SELECT regulator_locus_tag FROM multi)"
-        "  GROUP BY regulator_locus_tag"
-        ") "
-        "SELECT COUNT(*) AS n_multi"
+        + f" FROM {db_name}_meta{where}"
+        + " GROUP BY regulator_locus_tag"
+        + " HAVING COUNT(*) > 1"
+    )
+    sql = (
+        f"WITH per_reg AS ({per_reg_select})"
+        " SELECT COUNT(*) AS n_multi"
         + (f", {agg_exprs}" if agg_exprs else "")
         + " FROM per_reg"
     )
@@ -261,40 +255,40 @@ def matrix_cross_dataset_query(
         pair_id = f"{db_a}__{db_b}"
         fa = filters.get(db_a)
         fb = filters.get(db_b)
+        # INTERSECT arms: use distinct prefixes for each arm's WHERE params.
         prefix_a = f"cross_{pair_id}_{db_a}_"
         prefix_b = f"cross_{pair_id}_{db_b}_"
         where_a = _build_where(fa, params, prefix=prefix_a)
         where_b = _build_where(fb, params, prefix=prefix_b)
-        # Common regulators via INTERSECT inside a subquery
-        common_subq = (
-            f"(SELECT regulator_locus_tag FROM {db_a}_meta{where_a}"
-            f" INTERSECT"
-            f" SELECT regulator_locus_tag FROM {db_b}_meta{where_b})"
-        )
-        # Sample counts restricted to common regulators; reuse same WHERE params
-        # by embedding the INTERSECT subquery rather than binding a list.
-        # We need fresh prefix params for the sample-count WHERE clauses since
-        # _build_where already populated the same prefix keys above for the
-        # INTERSECT arms — use distinct prefixes for the IN-filtered counts.
+        # Sample-count arms need their own WHERE params (different prefix).
         prefix_sa = f"cs_{pair_id}_{db_a}_"
         prefix_sb = f"cs_{pair_id}_{db_b}_"
         where_sa = _build_where(fa, params, prefix=prefix_sa)
         where_sb = _build_where(fb, params, prefix=prefix_sb)
         and_common_a = (
             f"{' AND ' if where_sa else ' WHERE '}"
-            f"regulator_locus_tag IN {common_subq}"
+            "regulator_locus_tag IN (SELECT regulator_locus_tag FROM common)"
         )
         and_common_b = (
             f"{' AND ' if where_sb else ' WHERE '}"
-            f"regulator_locus_tag IN {common_subq}"
+            "regulator_locus_tag IN (SELECT regulator_locus_tag FROM common)"
         )
+        # Wrap in an inline CTE so the INTERSECT is materialised once and
+        # referenced three times (n_common, samples_a, samples_b).
         parts.append(
-            f"SELECT '{pair_id}' AS pair_id,"
-            f" (SELECT COUNT(*) FROM {common_subq} AS _c) AS n_common,"
-            f" (SELECT COUNT(DISTINCT sample_id)"
-            f"  FROM {db_a}_meta{where_sa}{and_common_a}) AS samples_a,"
-            f" (SELECT COUNT(DISTINCT sample_id)"
-            f"  FROM {db_b}_meta{where_sb}{and_common_b}) AS samples_b"
+            f"SELECT * FROM ("
+            f" WITH common AS ("
+            f"  SELECT regulator_locus_tag FROM {db_a}_meta{where_a}"
+            f"  INTERSECT"
+            f"  SELECT regulator_locus_tag FROM {db_b}_meta{where_b}"
+            f" )"
+            f" SELECT '{pair_id}' AS pair_id,"
+            f"  (SELECT COUNT(*) FROM common) AS n_common,"
+            f"  (SELECT COUNT(DISTINCT sample_id)"
+            f"   FROM {db_a}_meta{where_sa}{and_common_a}) AS samples_a,"
+            f"  (SELECT COUNT(DISTINCT sample_id)"
+            f"   FROM {db_b}_meta{where_sb}{and_common_b}) AS samples_b"
+            f")"
         )
     if not parts:
         return (
