@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import asyncio
 import itertools
-from collections.abc import Callable
 from html import escape
 from logging import Logger
 from typing import Any, Literal
@@ -10,7 +10,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from labretriever import VirtualDB
 from plotly.io import to_html
-from shiny import module, reactive, render, req, ui
+from shiny import reactive, render, req, ui
 
 from tfbpshiny.modules.binding.queries import (
     corr_all_pairs_sql,
@@ -22,19 +22,16 @@ from tfbpshiny.utils.sample_conditions import fetch_sample_condition_map
 from tfbpshiny.utils.vdb_init import AppDatasets, get_regulator_display_name
 
 
-@module.server
 def binding_workspace_server(
     input: Any,
     output: Any,
     session: Any,
     active_binding_datasets: reactive.Calc_[list[str]],
-    corr_type: Callable[[], str],
-    col_preference: Callable[[], str],
     dataset_filters: reactive.Value[dict[str, Any]],
     vdb: VirtualDB,
     app_datasets: AppDatasets,
     logger: Logger,
-    active_module: reactive.Value[str] | None = None,
+    active_tab: reactive.Calc_[str] | None = None,
 ) -> None:
     """
     Render the binding correlation rows: pairwise distributions
@@ -58,7 +55,7 @@ def binding_workspace_server(
         col_preference: re-fires when the column preference input changes.
 
         """
-        new = (corr_type(), col_preference())
+        new = (input.corr_type(), input.col_preference())
         with reactive.isolate():
             if new != _corr_params():
                 _corr_params.set(new)
@@ -74,8 +71,8 @@ def binding_workspace_server(
     )
 
     # Stable pair list — updated only when the active dataset set actually changes.
-    # No active_module guard here so distributions_plot and scatter_container can
-    # read the list even on first load before active_module has settled.
+    # No active_tab guard here so distributions_plot and scatter_container can
+    # read the list even on first load before active_tab has settled.
     _active_pairs: reactive.Value[list[tuple[str, str]]] = reactive.value([])
 
     @reactive.effect
@@ -88,11 +85,11 @@ def binding_workspace_server(
         time — downstream renders are never silently suppressed.
 
         :trigger active_binding_datasets: re-fires when the dataset selection changes.
-        :trigger active_module: silently blocks when another tab is active.
+        :trigger active_tab: silently blocks when another tab is active.
 
         """
-        if active_module is not None:
-            req(active_module() == "binding")
+        if active_tab is not None:
+            req(active_tab() == "Binding")
         active = active_binding_datasets()
         new = list(itertools.combinations(sorted(active), 2))
         with reactive.isolate():
@@ -108,11 +105,11 @@ def binding_workspace_server(
         Write condition maps to ``_cond_maps_val`` only when they change.
 
         :trigger active_binding_datasets: re-fires when the dataset selection changes.
-        :trigger active_module: silently blocks when another tab is active.
+        :trigger active_tab: silently blocks when another tab is active.
 
         """
-        if active_module is not None:
-            req(active_module() == "binding")
+        if active_tab is not None:
+            req(active_tab() == "Binding")
         with perf(session.id, "binding.workspace", "_condition_maps"):
             new: dict[str, dict[str, str]] = {}
             for db in active_binding_datasets():
@@ -231,18 +228,13 @@ def binding_workspace_server(
             ct, _ = _corr_params()
             method = ct.capitalize()
 
-        fig = go.Figure()
-
         if not pairs:
-            fig.add_annotation(
-                text="Select at least two binding datasets to see correlations.",
-                xref="paper",
-                yref="paper",
-                x=0.5,
-                y=0.5,
-                showarrow=False,
+            return ui.div(
+                {"class": "empty-state"},
+                ui.p("Select binding datasets from the Select Datasets page."),
             )
-            return ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False))
+
+        fig = go.Figure()
 
         # sym_map is built at server init from the pre-computed lookup table
         try:
@@ -505,12 +497,13 @@ def binding_workspace_server(
 
         @output(id=f"scatter_{db_a}__{db_b}")
         @render.ui
-        def _scatter_plot() -> ui.Tag:
+        async def _scatter_plot() -> ui.Tag:
             """
             Scatter plot for one (db_a, db_b) pair.
 
             Returns an empty span when this pair is not currently active so the slot
-            takes no space in the DOM.
+            takes no space in the DOM. The DuckDB query runs off the main thread via
+            ``asyncio.to_thread`` so regulator changes don't block the event loop.
 
             :trigger input.selected_regulator: re-renders when the regulator changes.
             :trigger _all_corr_data: re-renders when dataset/filter/method changes.
@@ -529,9 +522,9 @@ def binding_workspace_server(
                 return ui.span()
 
             # TODO: get rid of the type ignore
-            preference: Literal["effect", "pvalue"] = col_preference()  # type: ignore[assignment] # noqa: E501
+            preference: Literal["effect", "pvalue"] = input.col_preference()  # type: ignore[assignment] # noqa: E501
             filters = dataset_filters()
-            method = corr_type()
+            method = input.corr_type()
 
             def _strip_reg(f: dict | None) -> dict | None:
                 if not f:
@@ -555,7 +548,9 @@ def binding_workspace_server(
                     reg,
                     pair_idx,
                 )
-                merged = vdb.query(scatter_sql, **scatter_params)
+                merged = await asyncio.to_thread(
+                    vdb.query, scatter_sql, **scatter_params
+                )
                 logger.debug(f"scatter {db_a}/{db_b} reg={reg!r} rows={len(merged)}")
             except Exception:
                 logger.exception(f"Scatter fetch failed for {db_a}/{db_b}")

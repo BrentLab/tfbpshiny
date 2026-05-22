@@ -4,21 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-# TODO: open a labretriever issue to expose datacard field types (e.g. factor vs numeric)
-# via VirtualDB so this hard-coding is no longer necessary.
-# The datacard for hackett_2020 marks `time` as a factor, but the _meta view
-# exposes it as a numeric column (DOUBLE). Override it here so the filter modal
-# renders a sorted selectize instead of a slider.
-# if the first element in the tuple key is an empty string, then the override
-# will apply to all datasets that have that key
-# Values are ("categorical", level_dtype) where level_dtype is "numeric" or "string".
-# "numeric" means the category labels are numeric strings and should be sorted
-# numerically; "string" means they should be sorted lexicographically.
-FIELD_TYPE_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
-    ("hackett", "time"): ("categorical", "numeric"),
-    ("", "temperature_celsius"): ("categorical", "string"),
-}
-
 
 def _build_where(
     filters: dict[str, Any] | None,
@@ -43,10 +28,8 @@ def _build_where(
         p = (f"{prefix}{field}" if prefix else field).replace(" ", "_")
 
         if kind == "categorical":
-            placeholders = ", ".join(f"$cat_{p}_{i}" for i in range(len(val)))
-            clauses.append(f'"{field}" IN ({placeholders})')
-            for i, v in enumerate(val):
-                params[f"cat_{p}_{i}"] = v
+            clauses.append(f'"{field}" = ANY($cat_{p})')
+            params[f"cat_{p}"] = val
         elif kind == "numeric":
             lo, hi = val
             clauses.append(f'"{field}" BETWEEN $num_{p}_lo AND $num_{p}_hi')
@@ -299,6 +282,41 @@ def matrix_cross_dataset_query(
     return sql, params
 
 
+def regulator_intersection_query(
+    db_a: str,
+    db_b: str,
+    filters_a: dict[str, Any] | None,
+    filters_b: dict[str, Any] | None,
+) -> tuple[str, dict[str, Any]]:
+    """
+    Return ``(sql, params)`` for the sorted list of regulator locus tags shared between
+    ``db_a`` and ``db_b``, subject to their respective filters.
+
+    The caller is responsible for excluding any existing ``regulator_locus_tag``
+    filter from both filter dicts before calling this function, so that the
+    intersection is computed from the full regulator set for each dataset
+    (subject to other active filters only).
+
+    :param db_a: First dataset name.
+    :param db_b: Second dataset name.
+    :param filters_a: Active filters for ``db_a`` (without ``regulator_locus_tag``).
+    :param filters_b: Active filters for ``db_b`` (without ``regulator_locus_tag``).
+    :returns: ``(sql_string, params_dict)`` — query returns rows with column
+        ``regulator_locus_tag``, ordered ascending.
+
+    """
+    params: dict[str, Any] = {}
+    where_a = _build_where(filters_a, params, prefix=f"ri_{db_a}_")
+    where_b = _build_where(filters_b, params, prefix=f"ri_{db_b}_")
+    sql = (
+        f"SELECT regulator_locus_tag FROM {db_a}_meta{where_a}"
+        f" INTERSECT"
+        f" SELECT regulator_locus_tag FROM {db_b}_meta{where_b}"
+        f" ORDER BY regulator_locus_tag"
+    )
+    return sql, params
+
+
 def full_data_query(
     db_name: str, filters: dict[str, Any] | None = None
 ) -> tuple[str, dict[str, Any]]:
@@ -321,7 +339,6 @@ def full_data_query(
 
 
 __all__ = [
-    "FIELD_TYPE_OVERRIDES",
     "metadata_query",
     "full_data_query",
     "matrix_diagonal_query",
@@ -330,4 +347,5 @@ __all__ = [
     "regulator_locus_tags_query",
     "regulator_breakdown_query",
     "regulator_display_labels_query",
+    "regulator_intersection_query",
 ]

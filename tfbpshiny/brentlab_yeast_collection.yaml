@@ -1,15 +1,16 @@
-genome_resources:
-  region_sets:
-    yiming_promoters:
-      description: >-
-        Yiming et al. (2001) promoter annotations. 700 bp upstream of each
-        ORF start site.
-    mindel_promoters:
-      description: >-
-        Miura & Bhaskara (Mindel) promoter annotations. Boundaries derived
-        from nucleosome-free region calls.
-
 repositories:
+  BrentLab/yeast_genome_resources:
+    genome_resources:
+      region_sets:
+        Kang:
+          description: >-
+            Yiming et al. (2001) promoter annotations. 700 bp upstream of each
+            ORF start site.
+        Mindel:
+          description: >-
+            Miura & Bhaskara (Mindel) promoter annotations. Boundaries derived
+            from nucleosome-free region calls.
+
   BrentLab/callingcards:
     Regulator locus tag:
       field: regulator_locus_tag
@@ -27,15 +28,26 @@ repositories:
           assay: CallingCards
           display_name: "2026 Calling Cards"
         db_name: callingcards
-        # region_set and join_column will be set once multi-region parquet files are generated
-        region_set: null
-        join_column: target_locus_tag
         description: >-
           Data generated with calling cards, a method that inserts transposons
           near TF binding sites, from cells growing on synthetic complete media
-          at room temperature with galactose as the sole carbon source.
+          at room temperature with galactose as the sole carbon source. re-quantified
+          over the Kang et al promoters
         sample_id:
           field: gm_id
+      annotated_feature_reprocess_mindel_analysis:
+        tags:
+          data_type: binding
+          assay: CallingCards
+          display_name: "2026 Calling Cards (Mindel)"
+        db_name: callingcards_mindel
+        description: >-
+          Data generated with calling cards, a method that inserts transposons
+          near TF binding sites, from cells growing on synthetic complete media
+          at room temperature with galactose as the sole carbon source. Quantified
+          over the Mindel promoters.
+        sample_id:
+          field: combined_id
 
   BrentLab/harbison_2004:
     dataset:
@@ -80,9 +92,22 @@ repositories:
           cultures at 25C. Includes DNA-binding transcription factors and
           many other chromatin factors.
         db_name: rossi
-        # region_set and join_column will be set once multi-region parquet files are generated
-        region_set: null
-        join_column: target_locus_tag
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+      rossi_2021_af_combined_mindel:
+        tags:
+          data_type: binding
+          assay: ChIPexo
+          display_name: "2021 ChIP-exo (Rossi, Mindel)"
+        description: >-
+          ChIP-exo data called against the Mindel promoter annotations.
+          Same underlying data as rossi, re-quantified against Mindel
+          promoter boundaries.
+        db_name: rossi_mindel
         sample_id:
           field: sample_id
         Regulator locus tag:
@@ -115,6 +140,9 @@ repositories:
     Temperature:
       path: experimental_conditions.temperature_celsius
       dtype: string
+    Carbon source:
+      path: experimental_conditions.media.carbon_source.compound
+      dtype: string
     dataset:
       # binding
       chec_mahendrawada_m2025_af_combined:
@@ -123,9 +151,24 @@ repositories:
           assay: ChEC-seq
           display_name: "2025 ChEC-seq (Mahendrawada)"
         db_name: chec_m2025
-        # region_set and join_column will be set once multi-region parquet files are generated
-        region_set: null
-        join_column: target_locus_tag
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+        Experimental condition:
+          field: condition
+      chec_mahendrawada_m2025_af_combined_mindel:
+        tags:
+          data_type: binding
+          assay: ChEC-seq
+          display_name: "2025 ChEC-seq (Mahendrawada, Mindel)"
+        description: >-
+          ChEC-seq data called against the Mindel promoter annotations.
+          Same underlying data as chec_m2025, re-quantified against Mindel
+          promoter boundaries.
+        db_name: chec_m2025_mindel
         sample_id:
           field: sample_id
         Regulator locus tag:
@@ -215,7 +258,7 @@ repositories:
   BrentLab/hackett_2020:
     dataset:
       # perturbation
-      hackett_2020:
+      hackett_2020_analysis_set:
         tags:
           data_type: perturbation
           assay: overexpression

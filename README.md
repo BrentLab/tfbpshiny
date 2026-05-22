@@ -188,6 +188,11 @@ requires it; it is gitignored because it is a generated artifact):
 poetry export --without-hashes --without dev -f requirements.txt -o requirements.txt
 ```
 
+**NOTE**: the above must be done before uploading after any change to dependencies in
+`pyproject.toml`.
+
+Then deploy with rsconnect:
+
 ```bash
 rsconnect add \
     --account <your-shinyapps-account> \

@@ -14,13 +14,12 @@ from shiny.types import SilentException
 from tfbpshiny import components
 from tfbpshiny.modules.select_datasets.queries import (
     metadata_query,
-    regulator_display_labels_query,
 )
 from tfbpshiny.modules.select_datasets.ui import (
     dataset_filter_modal_ui,
 )
 from tfbpshiny.utils.perf import perf, reset_render_counts
-from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS
+from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS, get_regulator_display_name
 
 
 @module.ui
@@ -189,20 +188,21 @@ def dataset_row_server(
             # module's reactive calc — avoids re-querying all active datasets here.
             common_field_levels = common_field_levels_fn()
 
-            # build {locus_tag: "SYMBOL (LOCUS_TAG)"} map for regulator selectize
+            # build {locus_tag: display_name} map for regulator selectize;
+            # use the pre-built in-memory table to avoid a second meta view scan.
             reg_display_labels: dict[str, str] = {}
-            try:
-                reg_sql, reg_params = regulator_display_labels_query(db_name)
-                reg_df = vdb.query(reg_sql, **reg_params)
-                for _, row in reg_df.iterrows():
-                    tag = str(row["regulator_locus_tag"])
-                    sym = row.get("regulator_symbol")
-                    label = f"{sym} ({tag})" if sym and str(sym) != "nan" else tag
-                    reg_display_labels[tag] = label
-            except Exception:
-                logger.exception(
-                    "Failed to fetch regulator display labels for %s", db_name
-                )
+            if "regulator_locus_tag" in df.columns:
+                try:
+                    tags = df["regulator_locus_tag"].dropna().unique().tolist()
+                    if tags:
+                        reg_df = get_regulator_display_name(vdb, tags)
+                        reg_display_labels = dict(
+                            zip(reg_df["regulator_locus_tag"], reg_df["display_name"])
+                        )
+                except Exception:
+                    logger.exception(
+                        "Failed to fetch regulator display labels for %s", db_name
+                    )
 
             ui.modal_show(
                 dataset_filter_modal_ui(

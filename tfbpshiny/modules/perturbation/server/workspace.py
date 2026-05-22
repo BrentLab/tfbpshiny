@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import asyncio
 import itertools
-from collections.abc import Callable
 from html import escape
 from logging import Logger
 from typing import Any, Literal
@@ -10,7 +10,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from labretriever import VirtualDB
 from plotly.io import to_html
-from shiny import module, reactive, render, req, ui
+from shiny import reactive, render, req, ui
 
 from tfbpshiny.modules.perturbation.queries import (
     corr_all_pairs_sql,
@@ -22,19 +22,16 @@ from tfbpshiny.utils.sample_conditions import fetch_sample_condition_map
 from tfbpshiny.utils.vdb_init import AppDatasets, get_regulator_display_name
 
 
-@module.server
 def perturbation_workspace_server(
     input: Any,
     output: Any,
     session: Any,
     active_perturbation_datasets: reactive.Calc_[list[str]],
-    corr_type: Callable[[], str],
-    col_preference: Callable[[], str],
     dataset_filters: reactive.Value[dict[str, Any]],
     vdb: VirtualDB,
     app_datasets: AppDatasets,
     logger: Logger,
-    active_module: reactive.Value[str] | None = None,
+    active_tab: reactive.Calc_[str] | None = None,
 ) -> None:
     """
     Render the perturbation correlation rows: pairwise distributions
@@ -58,7 +55,7 @@ def perturbation_workspace_server(
         col_preference: re-fires when the column preference input changes.
 
         """
-        new = (corr_type(), col_preference())
+        new = (input.corr_type(), input.col_preference())
         with reactive.isolate():
             if new != _corr_params():
                 _corr_params.set(new)
@@ -82,11 +79,11 @@ def perturbation_workspace_server(
         Write the pair list to ``_active_pairs`` only when it actually changes.
 
         :trigger active_perturbation_datasets: re-fires when the dataset selection
-        changes. :trigger active_module: silently blocks when another tab is active.
+        changes. :trigger active_tab: silently blocks when another tab is active.
 
         """
-        if active_module is not None:
-            req(active_module() == "perturbation")
+        if active_tab is not None:
+            req(active_tab() == "Perturbation")
         active = active_perturbation_datasets()
         new = list(itertools.combinations(sorted(active), 2))
         with reactive.isolate():
@@ -102,11 +99,11 @@ def perturbation_workspace_server(
         Write condition maps to ``_cond_maps_val`` only when they change.
 
         :trigger active_perturbation_datasets: re-fires when the dataset selection
-        changes. :trigger active_module: silently blocks when another tab is active.
+        changes. :trigger active_tab: silently blocks when another tab is active.
 
         """
-        if active_module is not None:
-            req(active_module() == "perturbation")
+        if active_tab is not None:
+            req(active_tab() == "Perturbation")
         with perf(session.id, "perturbation.workspace", "_condition_maps"):
             new: dict[str, dict[str, str]] = {}
             for db in active_perturbation_datasets():
@@ -215,15 +212,10 @@ def perturbation_workspace_server(
         fig = go.Figure()
 
         if not pairs:
-            fig.add_annotation(
-                text="Select at least two perturbation datasets to see correlations.",
-                xref="paper",
-                yref="paper",
-                x=0.5,
-                y=0.5,
-                showarrow=False,
+            return ui.div(
+                {"class": "empty-state"},
+                ui.p("Select perturbation datasets from the Select Datasets page."),
             )
-            return ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False))
 
         # sym_map is built at server init from the pre-computed lookup table
         try:
@@ -480,11 +472,13 @@ def perturbation_workspace_server(
 
         @output(id=f"scatter_{db_a}__{db_b}")
         @render.ui
-        def _scatter_plot() -> ui.Tag:
+        async def _scatter_plot() -> ui.Tag:
             """
             Scatter plot for one (db_a, db_b) pair.
 
             Returns an empty span when this pair is not currently active.
+            The DuckDB query runs off the main thread via ``asyncio.to_thread``
+            so regulator changes don't block the event loop.
 
             :trigger input.selected_regulator: re-renders when the regulator changes.
             :trigger _all_corr_data: re-renders when dataset/filter/method changes.
@@ -503,9 +497,9 @@ def perturbation_workspace_server(
                 return ui.span()
 
             # TODO: get rid of the type ignore
-            preference: Literal["effect", "pvalue"] = col_preference()  # type: ignore[assignment] # noqa: E501
+            preference: Literal["effect", "pvalue"] = input.col_preference()  # type: ignore[assignment] # noqa: E501
             filters = dataset_filters()
-            method = corr_type()
+            method = input.corr_type()
 
             def _strip_reg(f: dict | None) -> dict | None:
                 if not f:
@@ -529,7 +523,9 @@ def perturbation_workspace_server(
                     reg,
                     pair_idx,
                 )
-                merged = vdb.query(scatter_sql, **scatter_params)
+                merged = await asyncio.to_thread(
+                    vdb.query, scatter_sql, **scatter_params
+                )
                 logger.debug(f"scatter {db_a}/{db_b} reg={reg!r} rows={len(merged)}")
             except Exception:
                 logger.exception(f"Scatter fetch failed for {db_a}/{db_b}")

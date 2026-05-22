@@ -7,10 +7,9 @@ import io
 from logging import Logger
 from typing import Any
 
-import faicons as fa
 import pandas as pd
 from labretriever import ColumnMeta, VirtualDB
-from shiny import module, reactive, render, ui
+from shiny import reactive, render, ui
 from shiny.types import SilentException
 
 from tfbpshiny.components import export_download_button
@@ -19,7 +18,6 @@ from tfbpshiny.modules.select_datasets.export import (
     build_export_tarball,
 )
 from tfbpshiny.modules.select_datasets.queries import (
-    FIELD_TYPE_OVERRIDES,
     full_data_query,
     metadata_query,
 )
@@ -32,6 +30,8 @@ from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.vdb_init import (
     DEFAULT_ACTIVE_DATASETS,
     DEFAULT_DATASET_FILTERS,
+    FIELD_TYPE_OVERRIDES,
+    PRIMARY_DATASETS,
     AppDatasets,
 )
 
@@ -68,7 +68,6 @@ def _build_experimental_condition_field_choices(
     return result
 
 
-@module.server
 def select_datasets_sidebar_server(
     input: Any,
     output: Any,
@@ -76,7 +75,8 @@ def select_datasets_sidebar_server(
     vdb: VirtualDB,
     app_datasets: AppDatasets,
     logger: Logger,
-    active_module: reactive.Value[str] | None = None,
+    active_tab: reactive.Calc_[str] | None = None,
+    pending_regulator_pair: reactive.Value[dict[str, Any] | None] | None = None,
 ) -> tuple[
     reactive.Calc_[list[str]],
     reactive.Calc_[list[str]],
@@ -101,7 +101,10 @@ def select_datasets_sidebar_server(
     dataset_dict: dict[str, dict[str, str]] = {}
     for db_name in vdb.get_datasets():
         tags = vdb.get_tags(db_name)
-        if tags.get("data_type") in ["binding", "perturbation"]:
+        if (
+            tags.get("data_type") in ["binding", "perturbation"]
+            and db_name in PRIMARY_DATASETS
+        ):
             dataset_dict[db_name] = tags
 
     # list of (db_name, display_name, description) tuples, sorted by year
@@ -142,9 +145,6 @@ def select_datasets_sidebar_server(
     }
 
     session.on_flush(lambda: reset_render_counts(session.id))
-
-    # reactives
-    collapsed: reactive.Value[bool] = reactive.value(False)
 
     _initial_toggle: dict[str, bool] = {
         db_name: db_name in DEFAULT_ACTIVE_DATASETS
@@ -214,19 +214,6 @@ def select_datasets_sidebar_server(
         ):
             state = _toggle_state()
             return [db for db, _, _ in perturbation_datasets if state.get(db, False)]
-
-    @reactive.effect
-    @reactive.event(input.toggle_sidebar)
-    def _toggle_sidebar() -> None:
-        """
-        Toggle the sidebar between expanded and collapsed state.
-
-        :trigger input.toggle_sidebar: fires when the user clicks the collapse/expand
-        chevron button in the sidebar header.
-
-        """
-        with perf(session.id, "select_datasets.sidebar", "_toggle_sidebar"):
-            collapsed.set(not collapsed())
 
     # Instantiate one row sub-module per dataset. Each module owns the toggle
     # and filter-open effects for its row; all shared reactive state is passed
@@ -680,15 +667,40 @@ def select_datasets_sidebar_server(
     @reactive.event(input.apply_pending)
     def _apply_pending() -> None:
         """
-        Commit pending toggle and filter state to the live reactive values, triggering
-        the matrix and correlation queries exactly once.
+        Commit pending toggle, filter, and regulator-pair state to the live reactive
+        values, triggering the matrix and correlation queries exactly once.
 
-        :trigger input.apply_pending: fires when the user clicks the     "Apply" button
-        in the sidebar.
+        If a pairwise regulator filter is pending, its pre-computed intersection is
+        merged into the filter state before committing. The pending pair is then
+        cleared.
+
+        :trigger input.apply_pending: fires when the user clicks the Apply button     in
+        the sidebar.
 
         """
+        new_filters = dict(_pending_filters())
+
+        if pending_regulator_pair is not None:
+            pending = pending_regulator_pair()
+            if pending is not None:
+                db_a, db_b = pending["pair"]
+                common_tags: list[str] = pending["common_tags"]
+                display_a, display_b = pending["display"]
+                if common_tags:
+                    reg_spec: dict[str, Any] = {
+                        "type": "categorical",
+                        "value": common_tags,
+                        "from_pair": (display_a, display_b),
+                        "from_pair_db": (db_a, db_b),
+                    }
+                    for db_name in vdb.get_datasets():
+                        ds_filters = dict(new_filters.get(db_name, {}))
+                        ds_filters["regulator_locus_tag"] = reg_spec
+                        new_filters[db_name] = ds_filters
+                pending_regulator_pair.set(None)
+
         _toggle_state.set(_pending_toggle_state())
-        dataset_filters.set(_pending_filters())
+        dataset_filters.set(new_filters)
 
     @render.download(
         filename=lambda: "tfbpshiny_export.tar.gz",
@@ -780,49 +792,30 @@ def select_datasets_sidebar_server(
             yield chunk
 
     @render.ui
-    def sidebar_panel() -> ui.Tag:
+    def sidebar_content() -> ui.Tag:
         """
-        Full sidebar panel: header with collapse button, then Binding and
-        Perturbation dataset rows with per-row toggles and Filter buttons.
+        Dataset rows for the selection sidebar.
 
-        Toggle values are restored from ``_toggle_state`` so that re-renders
-        (e.g. on navigation back to this page) reflect the current selection.
-
-        :trigger collapsed: re-renders when the sidebar is collapsed or expanded.
         :trigger input.search: re-renders when the search input changes.
+        :trigger _pending_filters: re-renders when filter state changes.
 
         Toggle state is read with ``reactive.isolate()`` so that toggling a
         dataset does NOT trigger a full sidebar re-render.  The
         ``ui.input_switch`` widget manages its own client-side state after
         initial render; programmatic state changes are synced via
-        ``ui.update_switch`` in a separate effect.
+        ``ui.update_switch`` in a separate effect in ``dataset_row_server``.
 
-        :trigger active_module: re-renders on page navigation so that
-            toggle values are refreshed from ``_toggle_state`` when the
-            user returns to the Select Datasets page.
         """
-        # Read active_module to invalidate on navigation; the sidebar only
-        # renders when active_module == "selection", but we re-compute on
-        # every navigation change so toggle values are always fresh when the
-        # user returns to this page.  Re-renders while the output element is
-        # absent are deferred by Shiny until the element reappears.
-        if active_module is not None:
-            active_module()
-        is_collapsed = collapsed()
         active_filter_names: set[str] = set(_pending_filters())
         has_pending = _has_pending_changes()
 
         search_term = ""
-        if not is_collapsed:
-            try:
-                search_term = (input.search() or "").strip().lower()
-            except SilentException:
-                pass
+        try:
+            search_term = (input.search() or "").strip().lower()
+        except SilentException:
+            pass
 
         def _dataset_row(db_name: str, label: str, description: str) -> ui.Tag:
-            # isolate: read pending toggle state without creating a reactive
-            # dependency — toggles are synced by the row module's
-            # _sync_toggle_to_dom effect (which reads _pending_toggle_state).
             with reactive.isolate():
                 current_val = _pending_toggle_state().get(db_name, False)
             return dataset_row_ui(
@@ -830,7 +823,7 @@ def select_datasets_sidebar_server(
                 label=label,
                 description=description,
                 current_val=current_val,
-                is_collapsed=is_collapsed,
+                is_collapsed=False,
                 has_active_filter=db_name in active_filter_names,
             )
 
@@ -842,10 +835,9 @@ def select_datasets_sidebar_server(
             if not search_term or search_term in label.lower()
         ]
         if visible_binding:
-            if not is_collapsed:
-                section_tags.append(
-                    ui.div({"class": "group-header sidebar-text"}, "Binding")
-                )
+            section_tags.append(
+                ui.div({"class": "group-header sidebar-text"}, "Binding")
+            )
             for db_name, label, desc in visible_binding:
                 section_tags.append(_dataset_row(db_name, label, desc))
 
@@ -855,10 +847,9 @@ def select_datasets_sidebar_server(
             if not search_term or search_term in label.lower()
         ]
         if visible_perturbation:
-            if not is_collapsed:
-                section_tags.append(
-                    ui.div({"class": "group-header sidebar-text"}, "Perturbation")
-                )
+            section_tags.append(
+                ui.div({"class": "group-header sidebar-text"}, "Perturbation")
+            )
             for db_name, label, desc in visible_perturbation:
                 section_tags.append(_dataset_row(db_name, label, desc))
 
@@ -870,67 +861,19 @@ def select_datasets_sidebar_server(
                 )
             )
 
-        return ui.div(
-            {
-                "class": "context-sidebar selection-sidebar"
-                + (" collapsed" if is_collapsed else ""),
-                "id": "selection-sidebar",
-            },
-            ui.div(
-                {"class": "sidebar-header"},
-                ui.div(
-                    {"class": "sidebar-header-row"},
-                    (
-                        ui.div(
-                            ui.h2("Select datasets\nfor analysis"),
-                        )
-                        if not is_collapsed
-                        else ui.div(ui.h2("SD"))
-                    ),
-                    ui.input_action_button(
-                        "toggle_sidebar",
-                        (
-                            fa.icon_svg("angles-left", width="14px", height="14px")
-                            if not is_collapsed
-                            else fa.icon_svg(
-                                "angles-right", width="14px", height="14px"
-                            )
-                        ),
-                        class_="btn-collapse-sidebar",
-                    ),
-                ),
-            ),
-            ui.div(
-                {"class": "sidebar-body"},
-                ui.div({"class": "dataset-list"}, *section_tags),
-                ui.input_action_button(
-                    "apply_pending",
-                    "Apply",
-                    class_="btn-apply-pending"
-                    + ("" if has_pending else " btn-apply-pending--hidden"),
-                ),
-            ),
-            ui.output_ui("sidebar_footer"),
-        )
-
-    @render.ui
-    def sidebar_footer() -> ui.TagChild:
-        """
-        Export button footer — rendered independently so it can react to active-dataset
-        changes without triggering a full sidebar re-render.
-
-        :trigger: ``_active_binding_datasets``, ``_active_perturbation_datasets``,
-            ``collapsed`` — re-renders when active datasets or collapse state change.
-
-        """
         has_active = bool(_active_binding_datasets() or _active_perturbation_datasets())
-        is_collapsed = collapsed()
-        if has_active and not is_collapsed:
-            return ui.div(
-                {"class": "sidebar-footer"},
-                export_download_button("export_datasets"),
-            )
-        return None
+
+        return ui.div(
+            ui.h2("Select datasets for analysis"),
+            ui.div({"class": "dataset-list"}, *section_tags),
+            ui.input_action_button(
+                "apply_pending",
+                "Apply",
+                class_="btn-apply-pending"
+                + ("" if has_pending else " btn-apply-pending--hidden"),
+            ),
+            export_download_button("export_datasets") if has_active else ui.span(),
+        )
 
     return _active_binding_datasets, _active_perturbation_datasets, dataset_filters
 

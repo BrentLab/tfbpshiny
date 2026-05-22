@@ -24,8 +24,8 @@ def test_build_where_categorical():
     where = _build_where(
         {"strain": {"type": "categorical", "value": ["BY4741"]}}, params
     )
-    assert '"strain" IN' in where
-    assert "BY4741" in params.values()
+    assert '"strain" = ANY' in where
+    assert params["cat_strain"] == ["BY4741"]
 
 
 def test_build_where_numeric():
@@ -57,7 +57,7 @@ def test_metadata_query_with_filter():
         "harbison", {"strain": {"type": "categorical", "value": ["BY4741"]}}
     )
     assert "WHERE" in sql
-    assert "BY4741" in params.values()
+    assert params["cat_strain"] == ["BY4741"]
 
 
 def test_sample_count_query():
@@ -112,7 +112,7 @@ def test_regulator_breakdown_query_with_filters():
         ["Carbon source"],
         {"strain": {"type": "categorical", "value": ["BY4741"]}},
     )
-    assert "BY4741" in params.values()
+    assert params["cat_strain"] == ["BY4741"]
     assert 'COUNT(DISTINCT "Carbon source")' in sql
     # Single-scan pattern: filter appears once in the per_reg CTE WHERE clause;
     # FILTER (WHERE ...) in the aggregate exprs adds one more occurrence.
@@ -133,7 +133,7 @@ def test_full_data_query_with_filter():
     assert "WHERE" in sql
     assert "harbison" in sql
     assert "harbison_meta" not in sql
-    assert "BY4741" in params.values()
+    assert params["cat_strain"] == ["BY4741"]
 
 
 def test_regulator_breakdown_query_no_filters_uses_having():

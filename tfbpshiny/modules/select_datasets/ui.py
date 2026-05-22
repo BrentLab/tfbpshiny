@@ -9,8 +9,8 @@ import pandas as pd
 from labretriever import ColumnMeta
 from shiny import module, ui
 
-from tfbpshiny.components import workspace_heading, workspace_shell
-from tfbpshiny.modules.select_datasets.queries import FIELD_TYPE_OVERRIDES
+from tfbpshiny.components import workspace_heading
+from tfbpshiny.utils.vdb_init import FIELD_TYPE_OVERRIDES
 
 
 def _slugify(s: str) -> str:
@@ -491,18 +491,19 @@ def dataset_filter_modal_ui(
 
 
 @module.ui
-def selection_sidebar_ui() -> ui.Tag:
-    """Render the Active Set sidebar shell."""
-    return ui.output_ui("sidebar_panel")
-
-
-@module.ui
-def selection_matrix_ui() -> ui.Tag:
-    """Render the intersection matrix workspace."""
-    return workspace_shell(
-        "selection-workspace",
-        header=workspace_heading("Regulator Counts in Dataset Intersections"),
-        body=ui.output_ui("matrix_content"),
+def selection_ui() -> ui.Tag:
+    """Sidebar + workspace layout for the dataset selection page."""
+    return ui.layout_sidebar(
+        ui.sidebar(
+            ui.output_ui("sidebar_content"),
+            id="select_datasets_sidebar",
+            class_="selection-sidebar",
+            width=390,
+            open="open",
+            resizable=False,
+        ),
+        workspace_heading("Regulator Counts in Dataset Intersections"),
+        ui.output_ui("matrix_content"),
     )
 
 
@@ -548,18 +549,31 @@ def off_diagonal_cell_modal_ui(
     display_a: str,
     display_b: str,
     n_common: int,
+    pending_pair_display: tuple[str, str] | None = None,
 ) -> ui.Tag:
     """
     Modal for off-diagonal (cross-dataset) matrix cells.
 
     Shows the number of common regulators shared between two datasets and offers a
-    button to restrict both datasets to only those regulators.
+    button to queue the intersection as a cross-dataset regulator filter.
 
     :param display_a: Human-readable name of the first dataset.
     :param display_b: Human-readable name of the second dataset.
     :param n_common: Number of regulators shared between the two datasets.
+    :param pending_pair_display: When not ``None``, a ``(display_a, display_b)``
+        tuple for a different pair already queued. A warning is shown that the
+        existing pending filter will be replaced.
 
     """
+    replace_warning: list[ui.Tag] = []
+    if pending_pair_display is not None:
+        replace_warning = [
+            ui.p(
+                {"class": "text-warning", "style": "font-size:0.85rem;"},
+                f"A pending filter for {pending_pair_display[0]} and "
+                f"{pending_pair_display[1]} will be replaced.",
+            )
+        ]
     return ui.modal(
         ui.p(
             f"{display_a} and {display_b} share ",
@@ -568,14 +582,16 @@ def off_diagonal_cell_modal_ui(
         ),
         ui.p(
             {"class": "text-muted", "style": "font-size:0.85rem;"},
-            "Applying the filter below will restrict both datasets to only samples "
-            "whose regulator appears in both datasets.",
+            "Queuing this filter will restrict both datasets to only samples "
+            "whose regulator appears in both datasets. Click Apply in the "
+            "sidebar to commit.",
         ),
+        *replace_warning,
         easy_close=True,
         footer=ui.div(
             ui.modal_button("Close", class_="btn btn-sm btn-outline-secondary"),
             ui.input_action_button(
-                "modal_select_common_regulators",
+                "modal_queue_common_regulators",
                 f"Select {n_common:,} common regulators",
                 class_="btn btn-sm btn-primary",
             ),
@@ -587,6 +603,5 @@ __all__ = [
     "dataset_filter_modal_ui",
     "diagonal_cell_modal_ui",
     "off_diagonal_cell_modal_ui",
-    "selection_sidebar_ui",
-    "selection_matrix_ui",
+    "selection_ui",
 ]
