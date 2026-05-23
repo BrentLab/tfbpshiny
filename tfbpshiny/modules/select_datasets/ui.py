@@ -474,7 +474,7 @@ def dataset_filter_modal_ui(
         body,
         title=title,
         size="xl",
-        easy_close=True,
+        easy_close=False,
         footer=ui.div(
             ui.input_action_button(
                 ns("modal_reset_filters"),

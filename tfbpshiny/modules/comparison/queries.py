@@ -325,6 +325,30 @@ def topn_responsive_ratio(
 # Source label maps (matching the R code)
 # ---------------------------------------------------------------------------
 
+# Promoter-set-aware constants -----------------------------------------------
+
+#: Maps every binding db_name to its base label (Mindel suffix stripped).
+#: Primary and Mindel variants of the same dataset share the same base label.
+BINDING_BASE_LABEL_MAP: dict[str, str] = {
+    "callingcards": "2026 Calling Cards",
+    "callingcards_mindel": "2026 Calling Cards",
+    "harbison": "2004 ChIP-chip",
+    "rossi": "2021 ChIP-exo",
+    "rossi_mindel": "2021 ChIP-exo",
+    "chec_m2025": "2025 ChEC-seq",
+    "chec_m2025_mindel": "2025 ChEC-seq",
+}
+
+#: Maps every binding db_name to its promoter-set label ("Kang" or "Mindel").
+PROMOTER_SET_MAP: dict[str, str] = {
+    db: (
+        "Mindel"
+        if db in ("callingcards_mindel", "rossi_mindel", "chec_m2025_mindel")
+        else "Kang"
+    )
+    for db in BINDING_BASE_LABEL_MAP
+}
+
 BINDING_LABEL_MAP: dict[str, str] = {
     "callingcards": "2026 Calling Cards",
     "harbison": "2004 ChIP-chip",
@@ -340,6 +364,58 @@ PROMOTER_VARIANT_PAIRS: dict[str, str] = {
     "rossi": "rossi_mindel",
     "chec_m2025": "chec_m2025_mindel",
     "callingcards": "callingcards_mindel",
+}
+
+# ---------------------------------------------------------------------------
+# Method Comparison constants
+# ---------------------------------------------------------------------------
+
+#: Maps every binding db_name that appears in the Method Comparison tab to its
+#: base label; all scoring variants of the same dataset share the same label.
+METHOD_BASE_LABEL_MAP: dict[str, str] = {
+    "chec_m2025": "2025 ChEC-seq",
+    "chec_m2025_peaks": "2025 ChEC-seq",
+    "rossi": "2021 ChIP-exo",
+    "rossi_mindel": "2021 ChIP-exo",
+    "rossi_peaks_kang": "2021 ChIP-exo",
+    "rossi_peaks_mindel": "2021 ChIP-exo",
+}
+
+#: Human-readable label for each scoring variant in the Method Comparison tab.
+SCORING_VARIANT_MAP: dict[str, str] = {
+    "chec_m2025": "Re-quantified",
+    "chec_m2025_peaks": "Original Peaks",
+    "rossi": "Re-quantified (Kang)",
+    "rossi_mindel": "Re-quantified (Mindel)",
+    "rossi_peaks_kang": "Original Peaks (Kang)",
+    "rossi_peaks_mindel": "Original Peaks (Mindel)",
+}
+
+#: Maps each primary binding dataset to the peaks variants produced by the
+#: original authors' peak-calling pipeline.
+PEAKS_VARIANT_MAP: dict[str, list[str]] = {
+    "rossi": ["rossi_peaks_kang", "rossi_peaks_mindel"],
+    "chec_m2025": ["chec_m2025_peaks"],
+}
+
+#: Display order for scoring variants within a subplot.
+SCORING_VARIANT_ORDER: list[str] = [
+    "Re-quantified",
+    "Re-quantified (Kang)",
+    "Re-quantified (Mindel)",
+    "Original Peaks",
+    "Original Peaks (Kang)",
+    "Original Peaks (Mindel)",
+]
+
+#: Color palette for scoring variants in the Method Comparison tab.
+SCORING_VARIANT_COLORS: dict[str, str] = {
+    "Re-quantified": "#4DBBD5",
+    "Re-quantified (Kang)": "#4DBBD5",
+    "Re-quantified (Mindel)": "#00A087",
+    "Original Peaks": "#E64B35",
+    "Original Peaks (Kang)": "#E64B35",
+    "Original Peaks (Mindel)": "#F39B7F",
 }
 
 PERTURBATION_LABEL_MAP: dict[str, str] = {
@@ -393,6 +469,21 @@ BINDING_CONFIGS: dict[str, dict] = {
     "chec_m2025_mindel": dict(
         binding_sample_col="sample_id",
         rank_col="enrichment",
+        rank_asc=False,
+    ),
+    "chec_m2025_peaks": dict(
+        binding_sample_col="sample_id",
+        rank_col="peak_score",
+        rank_asc=False,
+    ),
+    "rossi_peaks_kang": dict(
+        binding_sample_col="sample_id",
+        rank_col="score",
+        rank_asc=False,
+    ),
+    "rossi_peaks_mindel": dict(
+        binding_sample_col="sample_id",
+        rank_col="score",
         rank_asc=False,
     ),
 }

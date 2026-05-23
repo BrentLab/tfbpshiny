@@ -82,7 +82,7 @@
 .btn-apply-pending {
     display: block;
     width: calc(100% - 16px);
-    margin: 8px 8px 0;
+    margin: 8px 8px 0 8px;
     padding: 6px 12px;
     font-size: 0.85rem;
     font-weight: 600;
@@ -98,8 +98,8 @@
     background-color: #bb2d3b;
 }
 
-.btn-apply-pending--hidden {
-    opacity: 0;
+.btn-apply-pending--idle {
+    opacity: 0.35;
     pointer-events: none;
 }
 
@@ -281,6 +281,7 @@
     display: block;
     text-align: left;
     gap: 6px;
+    margin-top: 8px;
     transition: background var(--transition-fast);
 }
 

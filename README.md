@@ -191,6 +191,12 @@ poetry export --without-hashes --without dev -f requirements.txt -o requirements
 **NOTE**: the above must be done before uploading after any change to dependencies in
 `pyproject.toml`.
 
+Make sure the local cache is up to date with the HuggingFace datasets, then deploy with rsconnect:
+
+```bash
+poetry run python -m tfbpshiny --cache-dir ./hf_cache initialize
+```
+
 Then deploy with rsconnect:
 
 ```bash

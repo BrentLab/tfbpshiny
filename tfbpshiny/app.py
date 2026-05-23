@@ -38,7 +38,9 @@ if not os.getenv("DOCKER_ENV"):
 
 logger = logging.getLogger("shiny")
 
-_log_file = f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log"
+_log_dir = Path("tfbpshiny_log")
+_log_dir.mkdir(exist_ok=True)
+_log_file = str(_log_dir / f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log")
 _log_level = int(os.getenv("TFBPSHINY_LOG_LEVEL", str(logging.INFO)))
 _log_handler = cast(
     Literal["console", "file"], os.getenv("TFBPSHINY_LOG_HANDLER", "console")

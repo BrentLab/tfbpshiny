@@ -74,7 +74,7 @@ DEFAULT_ACTIVE_DATASETS: frozenset[str] = frozenset(
 # the initial value with no additional handling.
 DEFAULT_DATASET_FILTERS: dict[str, dict] = {
     "harbison": {
-        "condition": {"type": "categorical", "value": ["YPD"]},
+        "Experimental condition": {"type": "categorical", "value": ["YPD"]},
     },
     "rossi": {
         "treatment": {"type": "categorical", "value": ["Normal"]},

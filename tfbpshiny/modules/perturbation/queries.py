@@ -72,7 +72,7 @@ def perturbation_data_query(
     params: dict[str, Any] = {}
     where_clause = _build_where(filters, params) if filters else ""
     sql = (
-        f"SELECT regulator_locus_tag, target_locus_tag, sample_id, {col} "
+        f"SELECT regulator_locus_tag, target_locus_tag, target_symbol, sample_id, {col} "
         f"FROM {db_name}{where_clause}"
     )
     return sql, params
@@ -278,12 +278,14 @@ def regulator_scatter_sql(
             joined AS (
               SELECT
                 a.target_locus_tag,
+                COALESCE(a.target_symbol, a.target_locus_tag) AS target_symbol,
                 a.{col_a} AS val_a,
                 b.{col_b} AS val_b
               FROM a JOIN b ON a.target_locus_tag = b.target_locus_tag
             )
             SELECT
               target_locus_tag,
+              target_symbol,
               RANK() OVER (ORDER BY {order_val_a}) AS _val_a,
               RANK() OVER (ORDER BY {order_val_b}) AS _val_b
             FROM joined
@@ -291,7 +293,11 @@ def regulator_scatter_sql(
     else:
         sql = f"""
             WITH a AS ({sql_a}), b AS ({sql_b})
-            SELECT a.target_locus_tag, a.{col_a} AS _val_a, b.{col_b} AS _val_b
+            SELECT
+              a.target_locus_tag,
+              COALESCE(a.target_symbol, a.target_locus_tag) AS target_symbol,
+              a.{col_a} AS _val_a,
+              b.{col_b} AS _val_b
             FROM a JOIN b ON a.target_locus_tag = b.target_locus_tag
         """
 

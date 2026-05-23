@@ -151,23 +151,20 @@ def select_datasets_sidebar_server(
         for db_name, _, _ in binding_datasets + perturbation_datasets
     }
 
-    # Committed state — drives the expensive calcs (matrix, correlation queries).
-    # Only updated when the user clicks "Apply".
+    # Two-state model: committed (drives expensive calcs) and pending (staging).
+    # Pending receives all user edits immediately; committed is updated only when
+    # the user clicks Apply. The Apply button is shown whenever pending != committed.
     # {<db_name>: {<field_name>: {"type": "categorical" or "numeric" or "bool",
     #                              "value": list[str] | [lo, hi] | bool}}}
     dataset_filters: reactive.Value[dict[str, Any]] = reactive.value(
         DEFAULT_DATASET_FILTERS
     )
-    _toggle_state: reactive.Value[dict[str, bool]] = reactive.value(_initial_toggle)
+    _committed_toggle: reactive.Value[dict[str, bool]] = reactive.value(_initial_toggle)
 
-    # Pending (staging) state — receives all toggle and filter writes immediately.
-    # Does NOT feed the expensive calcs; only commits to the above on Apply.
     _pending_filters: reactive.Value[dict[str, Any]] = reactive.value(
         DEFAULT_DATASET_FILTERS
     )
-    _pending_toggle_state: reactive.Value[dict[str, bool]] = reactive.value(
-        _initial_toggle
-    )
+    _pending_toggle: reactive.Value[dict[str, bool]] = reactive.value(_initial_toggle)
 
     # tracks which db_name's filter modal is currently open
     modal_open_for: reactive.Value[str | None] = reactive.value(None)
@@ -179,12 +176,12 @@ def select_datasets_sidebar_server(
         """
         True when the pending state differs from the committed state.
 
-        :trigger: ``_pending_toggle_state``, ``_pending_filters``,
-            ``_toggle_state``, ``dataset_filters``.
+        :trigger: ``_pending_toggle``, ``_pending_filters``,
+            ``_committed_toggle``, ``dataset_filters``.
 
         """
         return (
-            _pending_toggle_state() != _toggle_state()
+            _pending_toggle() != _committed_toggle()
             or _pending_filters() != dataset_filters()
         )
 
@@ -194,11 +191,11 @@ def select_datasets_sidebar_server(
         """
         Binding datasets currently toggled on (committed state).
 
-        :trigger: ``_toggle_state`` — re-runs when committed state changes.
+        :trigger: ``_committed_toggle`` — re-runs when committed state changes.
 
         """
         with perf(session.id, "select_datasets.sidebar", "_active_binding_datasets"):
-            state = _toggle_state()
+            state = _committed_toggle()
             return [db for db, _, _ in binding_datasets if state.get(db, False)]
 
     @reactive.calc
@@ -206,42 +203,52 @@ def select_datasets_sidebar_server(
         """
         Perturbation datasets currently toggled on (committed state).
 
-        :trigger: ``_toggle_state`` — re-runs when committed state changes.
+        :trigger: ``_committed_toggle`` — re-runs when committed state changes.
 
         """
         with perf(
             session.id, "select_datasets.sidebar", "_active_perturbation_datasets"
         ):
-            state = _toggle_state()
+            state = _committed_toggle()
             return [db for db, _, _ in perturbation_datasets if state.get(db, False)]
 
     # Instantiate one row sub-module per dataset. Each module owns the toggle
     # and filter-open effects for its row; all shared reactive state is passed
     # by reference so the row module can read and write it directly.
     @reactive.calc
-    def _common_field_levels() -> dict[str, list[str]]:
+    def _cached_meta_dfs() -> dict[str, pd.DataFrame]:
         """
-        Union of categorical levels for each common field across all active datasets.
+        Unfiltered metadata DataFrames for all active datasets.
 
-        Pre-computed so that opening a filter modal does not need to query every
-        active dataset at click time.
+        Fetched once per active-dataset change and held in memory so that
+        opening a filter modal does not trigger a redundant parquet scan.
 
         :trigger: ``_active_binding_datasets``, ``_active_perturbation_datasets`` —
             re-runs whenever the active dataset list changes.
 
         """
         all_active = _active_binding_datasets() + _active_perturbation_datasets()
-        result: dict[str, list[str]] = {}
-        dfs: dict[str, Any] = {}
+        result: dict[str, pd.DataFrame] = {}
         for db in all_active:
             try:
                 sql, params = metadata_query(db)
-                dfs[db] = vdb.query(sql, **params)
+                result[db] = vdb.query(sql, **params)
             except Exception:
-                logger.exception(
-                    "Failed to fetch metadata for %s in _common_field_levels", db
-                )
+                logger.exception("Failed to fetch metadata for %s", db)
+        return result
 
+    @reactive.calc
+    def _common_field_levels() -> dict[str, list[str]]:
+        """
+        Union of categorical levels for each common field across all active datasets.
+
+        Derived from ``_cached_meta_dfs`` so no additional queries are issued.
+
+        :trigger: ``_cached_meta_dfs`` — re-runs whenever the cached DataFrames change.
+
+        """
+        dfs = _cached_meta_dfs()
+        result: dict[str, list[str]] = {}
         for cf_field in common_fields:
             levels: set[str] = set()
             for db, df in dfs.items():
@@ -270,11 +277,13 @@ def select_datasets_sidebar_server(
             dataset_dict=dataset_dict,
             all_col_meta=all_col_meta,
             common_fields=common_fields,
-            toggle_state=_pending_toggle_state,
-            dataset_filters=_pending_filters,
+            pending_toggle_state=_pending_toggle,
+            pending_filters=_pending_filters,
             modal_open_for=modal_open_for,
             modal_df=modal_df,
             common_field_levels_fn=_common_field_levels,
+            meta_dfs_fn=_cached_meta_dfs,
+            upstream_cols=app_datasets.upstream_cols.get(db_name, []),
             modal_ns=session.ns,
             logger=logger,
         )
@@ -287,6 +296,9 @@ def select_datasets_sidebar_server(
     for _db_name, _u_cols in app_datasets.upstream_cols.items():
         _cond_cols = app_datasets.condition_cols[_db_name]
         _db_meta = all_col_meta.get(_db_name, {})
+        # Pre-compute all (column, input_id) pairs for this dataset so every
+        # per-column cascade can read the combined state of all upstream filters.
+        _all_u_col_id_pairs = [(col, f"filter_{_slugify(col)}") for col in _u_cols]
 
         for _upstream_col in _u_cols:
             _u_id = f"filter_{_slugify(_upstream_col)}"
@@ -297,6 +309,7 @@ def select_datasets_sidebar_server(
                 u_col: str,
                 cond_cols: list[str],
                 db_meta: dict[str, ColumnMeta],
+                all_u_col_id_pairs: list[tuple[str, str]],
             ) -> None:
                 """
                 Register a cascade effect for one upstream column.
@@ -315,6 +328,10 @@ def select_datasets_sidebar_server(
                 :param db_meta: Per-column metadata for ``db_name``, used by
                     :func:`_build_experimental_condition_field_choices` to format
                     level labels.
+                :param all_u_col_id_pairs: All ``(column, input_id)`` pairs for
+                    every upstream column of this dataset. Used to build the
+                    combined filter mask so that changes to one upstream selectize
+                    always intersect with the current selections of the others.
 
                 """
 
@@ -323,10 +340,17 @@ def select_datasets_sidebar_server(
                 def _cascade() -> None:
                     """
                     Narrow condition checkbox choices to levels that co-occur with the
-                    current upstream selection. Only updates ``choices``; the user's
-                    checkbox selection is preserved so that previously checked
-                    conditions that are no longer valid are removed without triggering a
-                    further cascade.
+                    intersection of all current categorical upstream selections. Only
+                    updates ``choices``; the user's checkbox selection is preserved so
+                    that previously checked conditions that are no longer valid are
+                    removed without triggering a further cascade.
+
+                    The mask is built across ALL categorical upstream columns
+                    (not just the one that fired) so that datasets with a uniform
+                    upstream column (e.g. every harbison row has Temperature = 37)
+                    do not reset the narrowing done by a discriminating column
+                    (e.g. Carbon source). Reads of other upstream inputs are safe
+                    because ``@reactive.event`` isolates the entire body.
 
                     :trigger input[u_id]: fires when the upstream selectize changes.
 
@@ -337,9 +361,10 @@ def select_datasets_sidebar_server(
                         df = modal_df()
                         if df is None or u_col not in df.columns:
                             return
-                        # Cascade only applies to categorical upstream columns.
-                        # Numeric and boolean columns produce slider/switch values
-                        # that cannot be used with isin() for range-aware filtering.
+                        # Cascade only applies when the triggering column is
+                        # categorical. Numeric and boolean columns produce
+                        # slider/switch values that cannot be used with isin()
+                        # for range-aware filtering.
                         type_override = FIELD_TYPE_OVERRIDES.get(
                             (db_name, u_col)
                         ) or FIELD_TYPE_OVERRIDES.get(("", u_col))
@@ -355,15 +380,33 @@ def select_datasets_sidebar_server(
                         )
                         if not is_categorical:
                             return
-                        try:
-                            sel = list(input[u_id]())
-                        except SilentException:
-                            sel = []
-                        mask = (
-                            df[u_col].isin(sel)
-                            if sel
-                            else pd.Series(True, index=df.index)
-                        )
+                        # Build the combined mask across ALL categorical upstream
+                        # columns. This prevents a race condition where separate
+                        # per-column cascades fire in an unpredictable order and
+                        # a uniform-valued column overwrites the narrowing applied
+                        # by a discriminating one.
+                        mask = pd.Series(True, index=df.index)
+                        for _col, _uid in all_u_col_id_pairs:
+                            if _col not in df.columns:
+                                continue
+                            _col_dtype = df[_col].dtype
+                            _type_override = FIELD_TYPE_OVERRIDES.get(
+                                (db_name, _col)
+                            ) or FIELD_TYPE_OVERRIDES.get(("", _col))
+                            _override_kind = (
+                                _type_override[0] if _type_override else None
+                            )
+                            _is_cat = _override_kind == "categorical" or (
+                                _col_dtype.name in ("object", "category")
+                            )
+                            if not _is_cat:
+                                continue
+                            try:
+                                _sel = list(input[_uid]())
+                            except SilentException:
+                                _sel = []
+                            if _sel:
+                                mask &= df[_col].astype(str).isin(_sel)
                         for (
                             cond_col,
                             choices,
@@ -382,7 +425,12 @@ def select_datasets_sidebar_server(
                             )
 
             _register_upstream_cascade(
-                _db_name, _u_id, _upstream_col, _cond_cols, _db_meta
+                _db_name,
+                _u_id,
+                _upstream_col,
+                _cond_cols,
+                _db_meta,
+                _all_u_col_id_pairs,
             )
 
     @reactive.effect
@@ -656,8 +704,8 @@ def select_datasets_sidebar_server(
             )
 
             # activate the dataset in pending state if it isn't already on
-            if not _pending_toggle_state().get(db_name, False):
-                _pending_toggle_state.set({**_pending_toggle_state(), db_name: True})
+            if not _pending_toggle().get(db_name, False):
+                _pending_toggle.set({**_pending_toggle(), db_name: True})
 
             ui.modal_remove()
             modal_open_for.set(None)
@@ -699,7 +747,7 @@ def select_datasets_sidebar_server(
                         new_filters[db_name] = ds_filters
                 pending_regulator_pair.set(None)
 
-        _toggle_state.set(_pending_toggle_state())
+        _committed_toggle.set(_pending_toggle())
         dataset_filters.set(new_filters)
 
     @render.download(
@@ -817,7 +865,7 @@ def select_datasets_sidebar_server(
 
         def _dataset_row(db_name: str, label: str, description: str) -> ui.Tag:
             with reactive.isolate():
-                current_val = _pending_toggle_state().get(db_name, False)
+                current_val = _pending_toggle().get(db_name, False)
             return dataset_row_ui(
                 db_name,
                 label=label,
@@ -870,7 +918,7 @@ def select_datasets_sidebar_server(
                 "apply_pending",
                 "Apply",
                 class_="btn-apply-pending"
-                + ("" if has_pending else " btn-apply-pending--hidden"),
+                + ("" if has_pending else " btn-apply-pending--idle"),
             ),
             export_download_button("export_datasets") if has_active else ui.span(),
         )
