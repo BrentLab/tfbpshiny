@@ -1,192 +1,14 @@
 /* --- Custom properties -------------------------------------------------- */
 :root {
     --color-primary: #2C7A7B;
-    --color-primary-light: #E6FFFA;
     --color-primary-dark: #1A5456;
     --color-border: #E2E8F0;
     --color-text: #1A202C;
 
     --radius-sm: 6px;
-    --radius-md: 10px;
 
-    --nav-height: 52px;
-    --panel-header-height: 56px;
-    --sidebar-width: 380px;
     --font-size-label: 0.875rem;
     --transition-fast: 150ms ease;
-    --color-nav: #722F37;
-    --color-nav-hover: #8B3A42;
-    --color-nav-active: #4A0E1A;
-}
-
-html,
-body {
-    height: 100%;
-}
-
-/* --- App container (top-nav + body row) --------------------------------- */
-.app-container {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    width: 100%;
-    overflow: hidden;
-}
-
-.app-body {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-}
-
-/* --- Top nav bar -------------------------------------------------------- */
-.nav-bar {
-    height: var(--nav-height);
-    min-height: var(--nav-height);
-    background: white;
-    border-bottom: 1px solid var(--color-border);
-    display: flex;
-    align-items: center;
-    padding: 0 16px;
-    gap: 12px;
-    z-index: 10;
-}
-
-/* Shiny wraps dynamic UI outputs in a span; make it not break flex layout */
-.nav-bar > .shiny-html-output {
-    display: contents;
-}
-
-.nav-bar .nav-tags {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.nav-bar .nav-btn {
-    height: 32px;
-    border: none;
-    border-radius: 999px;
-    background: var(--color-nav);
-    color: #fff;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background var(--transition-fast), color var(--transition-fast);
-    font-size: var(--font-size-label);
-    font-weight: 400;
-    padding: 0 14px;
-    white-space: nowrap;
-}
-
-.nav-bar .nav-btn:hover {
-    background: var(--color-nav-hover);
-    color: #fff;
-}
-
-.nav-bar .nav-btn.active {
-    background: var(--color-nav-active);
-    color: #fff;
-}
-
-/* --- Context sidebar ---------------------------------------------------- */
-.context-sidebar {
-    width: var(--sidebar-width);
-    min-width: var(--sidebar-width);
-    background: white;
-    border-right: 1px solid var(--color-border);
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    z-index: 5;
-}
-
-.sidebar-header {
-    position: sticky;
-    top: 0;
-    background: white;
-    height: var(--panel-header-height);
-    padding: 0 16px;
-    display: flex;
-    align-items: center;
-    border-bottom: 1px solid var(--color-border);
-    z-index: 2;
-}
-
-.sidebar-header h2 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--color-text);
-}
-
-.sidebar-header .subtitle {
-    font-size: var(--font-size-label);
-    color: var(--color-text);
-    margin-top: 2px;
-}
-
-.sidebar-body {
-    flex: 1;
-    padding: 12px 16px;
-    overflow-y: auto;
-}
-
-.sidebar-footer {
-    padding: 12px 16px;
-    border-top: 1px solid var(--color-border);
-    background: white;
-    text-align: left;
-}
-
-/* --- Main workspace ----------------------------------------------------- */
-.main-workspace {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: white;
-}
-
-.workspace-header {
-    height: var(--panel-header-height);
-    padding: 0 24px;
-    display: flex;
-    align-items: center;
-    border-bottom: 1px solid var(--color-border);
-    background: white;
-}
-
-.workspace-header h1 {
-    margin: 0;
-    font-size: 20px;
-    font-weight: 600;
-}
-
-.workspace-body {
-    flex: 1;
-    padding: 24px;
-    overflow-y: auto;
-}
-
-/* --- Sidebar sections --------------------------------------------------- */
-.sidebar-section {
-    margin-bottom: 16px;
-}
-
-.sidebar-section-title {
-    font-size: var(--font-size-label);
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--color-text);
-    margin-bottom: 8px;
-    margin-top: 12px;
-}
-
-.sidebar-section .sidebar-section-title:first-child {
-    margin-top: 0;
 }
 
 /* --- Group headers ------------------------------------------------------ */
@@ -216,48 +38,33 @@ body {
 }
 
 /* --- Selection sidebar -------------------------------------------------- */
-.selection-sidebar {
-    transition: width var(--transition-fast);
-}
-
-.selection-sidebar.collapsed {
-    width: 92px;
-    min-width: 92px;
-}
-
 .sidebar-text {
     color: var(--color-text);
 }
 
-.selection-sidebar .sidebar-header-row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 10px;
-}
-
-/* Dataset row: toggle + label + filter button on one line */
+/* Dataset row: grid with toggle+label taking remaining space, filter button
+   pinned to a fixed-width right column so all buttons align vertically. */
 .selection-sidebar .dataset-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr 52px;
     align-items: center;
     gap: 0.5rem;
     padding: 0.125rem 0;
 }
 
 .selection-sidebar .dataset-row-label {
-    flex: 1;
-    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .selection-sidebar .btn-filter-dataset {
-    flex-shrink: 0;
+    width: 100%;
     font-size: var(--font-size-label);
     padding: 0.125rem 0.4rem;
     line-height: 1.4;
     border-radius: 3px;
+    text-align: center;
 }
 
 .selection-sidebar .btn-filter-dataset.btn-filter-active {
@@ -275,7 +82,7 @@ body {
 .btn-apply-pending {
     display: block;
     width: calc(100% - 16px);
-    margin: 8px 8px 0;
+    margin: 8px 8px 0 8px;
     padding: 6px 12px;
     font-size: 0.85rem;
     font-weight: 600;
@@ -291,49 +98,38 @@ body {
     background-color: #bb2d3b;
 }
 
-.btn-apply-pending--hidden {
-    opacity: 0;
+.btn-apply-pending--idle {
+    opacity: 0.35;
     pointer-events: none;
 }
 
+
+/* Left cell: toggle + label as an inline flex row */
+.selection-sidebar .dataset-row-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
 /* Tighten up Shiny's switch input inside dataset rows */
-.selection-sidebar .dataset-item > .shiny-input-container {
+.selection-sidebar .dataset-row-left .shiny-input-container {
     margin: 0;
     width: auto;
     flex: 0 0 auto;
 }
 
-.selection-sidebar .dataset-item > .shiny-input-container .form-switch {
+.selection-sidebar .dataset-row-left .shiny-input-container .form-switch {
     margin: 0;
     min-height: 0;
 }
 
-.selection-sidebar .dataset-item > .shiny-input-container .form-check-input {
+.selection-sidebar .dataset-row-left .shiny-input-container .form-check-input {
     margin-top: 0;
 }
 
-.selection-sidebar .dataset-item > .shiny-input-container label {
+.selection-sidebar .dataset-row-left .shiny-input-container label {
     display: none;
-}
-
-/* Collapse toggle button */
-.btn-collapse-sidebar {
-    width: 30px;
-    height: 30px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    background: white;
-    color: var(--color-text);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-}
-
-.btn-collapse-sidebar:hover {
-    color: var(--color-primary);
-    border-color: var(--color-primary);
-    background: var(--color-primary-light);
 }
 
 /* --- Intersection matrix ------------------------------------------------ */
@@ -417,6 +213,40 @@ body {
     color: #FFFFFF;
 }
 
+.matrix-summary-table .matrix-cell-pending {
+    background: #7B4F00;
+}
+
+.matrix-summary-table .matrix-cell-pending:hover {
+    background: #9A6300;
+}
+
+.matrix-summary-table .matrix-cell-pending .matrix-cell-button {
+    color: #FFFFFF;
+}
+
+/* --- Pending regulator filter banner ------------------------------------ */
+.pending-regulator-banner {
+    border: 1px solid #9A6300;
+    border-radius: var(--radius-sm);
+    background: #FFF8E7;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+}
+
+.pending-regulator-banner-body {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.pending-regulator-banner-text {
+    font-size: var(--font-size-label);
+    color: #5A3800;
+}
+
 .matrix-cell-button {
     width: 100%;
     height: 100%;
@@ -438,12 +268,8 @@ body {
     color: #FFFFFF;
 }
 
-/* --- Export button (sidebar footer) ------------------------------------- */
-.selection-sidebar.collapsed .sidebar-footer {
-    display: none;
-}
-
-.sidebar-footer .btn-export-datasets {
+/* --- Export button ------------------------------------------------------ */
+.btn-export-datasets {
     width: 100%;
     background: var(--color-primary);
     color: #fff;
@@ -455,28 +281,21 @@ body {
     display: block;
     text-align: left;
     gap: 6px;
+    margin-top: 8px;
     transition: background var(--transition-fast);
 }
 
-.sidebar-footer .btn-export-datasets:hover {
+.btn-export-datasets:hover {
     background: var(--color-primary-dark);
     color: #fff;
 }
 
-
 /* --- GitHub repo badge -------------------------------------------------- */
-.nav-bar > a.github-badge {
-    margin-left: auto;
-}
-
 .github-badge {
     display: inline-flex;
     align-items: center;
-    padding: 4px 10px;
-    border-radius: 6px;
-    border: 1px solid var(--color-border);
-    background: #f6f8fa;
-    color: var(--color-text);
+    padding: 4px 6px;
+    color: #fff;
     font-weight: 500;
     text-decoration: none;
     white-space: nowrap;
@@ -484,19 +303,25 @@ body {
 }
 
 .github-badge:hover {
-    background: #eaeef2;
     text-decoration: none;
-    color: var(--color-text);
+    color: #fff;
+    opacity: 0.85;
 }
 
 .github-badge-version {
     margin-left: 6px;
     padding: 1px 6px;
     border-radius: 10px;
-    background: var(--color-primary, #0969da);
+    background: rgba(255,255,255,0.25);
     color: #fff;
     font-size: var(--font-size-label);
     font-weight: 600;
+}
+
+/* --- Navbar brand title -------------------------------------------------- */
+.navbar-brand {
+    font-size: 1.15rem;
+    font-weight: 700;
 }
 
 /* --- Dataset tooltip ----------------------------------------------------- */

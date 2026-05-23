@@ -6,7 +6,7 @@ from logging import Logger
 from typing import Any
 
 from labretriever import VirtualDB
-from shiny import module, reactive, render, req, ui
+from shiny import reactive, render, req, ui
 from shiny.types import SilentException
 
 from tfbpshiny.components import (
@@ -15,12 +15,13 @@ from tfbpshiny.components import (
     matrix_header_cell,
     matrix_row_label,
     matrix_table,
+    pending_regulator_banner,
 )
 from tfbpshiny.modules.select_datasets.queries import (
     matrix_cross_dataset_query,
     matrix_diagonal_query,
     regulator_breakdown_query,
-    regulator_locus_tags_query,
+    regulator_intersection_query,
 )
 from tfbpshiny.modules.select_datasets.ui import (
     diagonal_cell_modal_ui,
@@ -30,7 +31,6 @@ from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS
 
 
-@module.server
 def select_datasets_workspace_server(
     input: Any,
     output: Any,
@@ -38,9 +38,10 @@ def select_datasets_workspace_server(
     active_binding_datasets: reactive.Calc_[list[str]],
     active_perturbation_datasets: reactive.Calc_[list[str]],
     dataset_filters: reactive.Value[dict[str, Any]],
+    pending_regulator_pair: reactive.Value[dict[str, Any] | None],
     vdb: VirtualDB,
     logger: Logger,
-    active_module: reactive.Value[str] | None = None,
+    active_tab: reactive.Value[str] | None = None,
 ) -> None:
     """Render the sample-count matrix for all active datasets."""
 
@@ -50,6 +51,11 @@ def select_datasets_workspace_server(
         db_name: vdb.get_tags(db_name).get("display_name", db_name)
         for db_name in vdb.get_datasets()
     }
+
+    # Canonical dataset ordering from vdb — used for button IDs and cross_dataset keys
+    # so that all lookups are consistent regardless of active-list ordering.
+    all_dbs: list[str] = list(vdb.get_datasets())
+    _dbs_rank: dict[str, int] = {db: i for i, db in enumerate(all_dbs)}
 
     # Stable dataset list — updated only when the active dataset set actually changes.
     _settled_val: reactive.Value[list[str]] = reactive.value([])
@@ -61,11 +67,11 @@ def select_datasets_workspace_server(
 
         :trigger active_binding_datasets: re-fires when binding selection changes.
         :trigger active_perturbation_datasets: re-fires when perturbation selection
-        changes. :trigger active_module: silently blocks when another tab is active.
+        changes. :trigger active_tab: silently blocks when another tab is active.
 
         """
-        if active_module is not None:
-            req(active_module() == "selection")
+        if active_tab is not None:
+            req(active_tab() == "Dataset selection")
         new = active_binding_datasets() + active_perturbation_datasets()
         with reactive.isolate():
             if new != _settled_val():
@@ -115,22 +121,57 @@ def select_datasets_workspace_server(
                 cross_sql, cross_params = matrix_cross_dataset_query(pairs, filters)
                 cross_df = vdb.query(cross_sql, **cross_params)
                 for _, row in cross_df.iterrows():
-                    db_a, db_b = str(row["pair_id"]).split("__", 1)
-                    cross_dataset[(db_a, db_b)] = {
-                        "common_regulators": int(row["n_common"]),
-                        "samples_a": int(row["samples_a"]),
-                        "samples_b": int(row["samples_b"]),
-                    }
+                    db_a_raw, db_b_raw = str(row["pair_id"]).split("__", 1)
+                    n_common = int(row["n_common"])
+                    s_a = int(row["samples_a"])
+                    s_b = int(row["samples_b"])
+                    # Normalize to canonical all_dbs order so both _on_click (which
+                    # uses canonical order) and matrix_content (via canonical_pair)
+                    # always hit the correct key.
+                    if _dbs_rank.get(db_a_raw, -1) <= _dbs_rank.get(db_b_raw, -1):
+                        cross_dataset[(db_a_raw, db_b_raw)] = {
+                            "common_regulators": n_common,
+                            "samples_a": s_a,
+                            "samples_b": s_b,
+                        }
+                    else:
+                        cross_dataset[(db_b_raw, db_a_raw)] = {
+                            "common_regulators": n_common,
+                            "samples_a": s_b,
+                            "samples_b": s_a,
+                        }
 
             return {"diagonal": diagonal, "cross_dataset": cross_dataset}
 
+    @reactive.calc
+    def _committed_regulator_pair() -> tuple[str, str] | None:
+        """
+        Derive the committed regulator-filter pair from ``dataset_filters``.
+
+        Reads the ``from_pair_db`` key stored by ``_apply_pending`` when a
+        pairwise filter is committed. Returns ``None`` when no pairwise filter
+        is active.
+
+        :trigger: ``dataset_filters`` — re-runs on every filter change.
+
+        """
+        for ds_filters in dataset_filters().values():
+            reg = ds_filters.get("regulator_locus_tag")
+            if reg and reg.get("from_pair_db"):
+                pair = reg["from_pair_db"]
+                return (str(pair[0]), str(pair[1]))
+        return None
+
+    # Tracks which off-diagonal modal is currently open, so that the single
+    # _on_queue_common_regulators effect knows which pair to compute.
+    _open_modal_pair: reactive.Value[tuple[str, str] | None] = reactive.value(None)
+
     def _make_diagonal_effect(db_name: str) -> None:
         """
-        Create the modal and contents on click of a diagonal cell.
+        Create the click effect for one diagonal cell.
 
-        The modal text will describe whether there is a 1-1 correspondence between
-        regulators and samples. If there are not, then it will list the metadata columns
-        that differentiate samples with the same regulator.
+        :param db_name: Dataset identifier; used to derive the button input ID and to
+            query the breakdown data.
 
         """
         btn_id = f"diag_{db_name}"
@@ -150,9 +191,6 @@ def select_datasets_workspace_server(
                 filters = dataset_filters().get(db_name)
 
                 all_cols = vdb.get_fields(f"{db_name}_meta")
-                # TODO: this is a good use case for the field `role` experimental
-                # condition -- only use experimental condition fields and remove
-                # any hidden filter fields
                 remove_cols = (
                     {"sample_id"}
                     | {c for c in all_cols if c.lower().startswith("regulator")}
@@ -185,16 +223,15 @@ def select_datasets_workspace_server(
                 )
 
     def _make_off_diagonal_effect(db_a: str, db_b: str) -> None:
-        """Register per-pair click and modal-action effects for an off-diagonal cell."""
+        """Register the click effect for one off-diagonal cell."""
         btn_id = f"offdiag_{db_a}__{db_b}"
-        apply_btn_id = "modal_select_common_regulators"
 
         @reactive.effect
         @reactive.event(input[btn_id])
         def _on_click() -> None:
             """
-            If this pair is the active regulator filter, clear the filter and
-            unhighlight the cell. Otherwise, show the off-diagonal cell modal.
+            If this pair is the committed regulator filter, clear the filter. Otherwise
+            show the off-diagonal cell modal.
 
             :trigger: ``input[offdiag_{db_a}__{db_b}]`` — fires when the user
                 clicks the off-diagonal matrix cell button for this pair.
@@ -203,8 +240,8 @@ def select_datasets_workspace_server(
             with perf(
                 session.id, "select_datasets.workspace", "off_diagonal._on_click"
             ):
-                if _active_regulator_pair() == (db_a, db_b):
-                    # Remove regulator_locus_tag from all datasets and clear highlight.
+                if _committed_regulator_pair() == (db_a, db_b):
+                    # Clear the committed pairwise regulator filter from all datasets.
                     current = dict(dataset_filters())
                     for db_name in list(current):
                         ds_filters = dict(current[db_name])
@@ -214,143 +251,103 @@ def select_datasets_workspace_server(
                         else:
                             current.pop(db_name)
                     dataset_filters.set(current)
-                    _active_regulator_pair.set(None)
                     return
                 data = _matrix_data()
                 info = data["cross_dataset"].get((db_a, db_b), {})
                 n_common = info.get("common_regulators", 0)
+                # Check whether a different pair is already pending.
+                existing = pending_regulator_pair()
+                pending_display = None
+                if existing is not None and existing["pair"] != (db_a, db_b):
+                    pending_display = existing["display"]
                 _open_modal_pair.set((db_a, db_b))
                 ui.modal_show(
                     off_diagonal_cell_modal_ui(
                         display_names.get(db_a, db_a),
                         display_names.get(db_b, db_b),
                         n_common,
+                        pending_pair_display=pending_display,
                     )
                 )
 
-        @reactive.effect
-        @reactive.event(input[apply_btn_id])
-        def _on_apply_common_regulators() -> None:
-            """
-            Compute the regulator intersection for this pair, write it as a
-            ``regulator_locus_tag`` filter to all datasets, and highlight the cell.
-
-            Only acts when this pair's modal is the one currently open, preventing
-            all registered apply effects from firing on a single button click.
-
-            :trigger: ``input[modal_select_common_regulators]`` — fires when the
-                user clicks the "Select common regulators" button in the off-diagonal
-                modal.
-
-            """
-            with perf(
-                session.id,
-                "select_datasets.workspace",
-                "off_diagonal._on_apply_common_regulators",
-            ):
-                if _open_modal_pair() != (db_a, db_b):
-                    return
-                reg_sets = {}
-                filters = dataset_filters()
-                for db_name in (db_a, db_b):
-                    # Exclude any existing regulator_locus_tag filter so the pairwise
-                    # intersection is computed from the full regulator
-                    # set for each dataset (subject to other filters only).
-                    db_filters = {
-                        k: v
-                        for k, v in (filters.get(db_name) or {}).items()
-                        if k != "regulator_locus_tag"
-                    } or None
-                    sql, params = regulator_locus_tags_query(db_name, db_filters)
-                    reg_df = vdb.query(sql, **params)
-                    reg_sets[db_name] = set(
-                        reg_df["regulator_locus_tag"].dropna().astype(str)
-                    )
-                common = sorted(reg_sets[db_a] & reg_sets[db_b])
-                if not common:
-                    ui.modal_remove()
-                    return
-                current = dict(dataset_filters())
-                pair_display = (
-                    display_names.get(db_a, db_a),
-                    display_names.get(db_b, db_b),
-                )
-                for db_name in vdb.get_datasets():
-                    ds_filters = dict(current.get(db_name, {}))
-                    ds_filters.pop("regulator_locus_tag", None)
-                    ds_filters["regulator_locus_tag"] = {
-                        "type": "categorical",
-                        "value": common,
-                        "from_pair": pair_display,
-                    }
-                    current[db_name] = ds_filters
-                dataset_filters.set(current)
-                _active_regulator_pair.set((db_a, db_b))
-                _open_modal_pair.set(None)
-                ui.modal_remove()
-
-    # Tracks the (db_a, db_b) pair whose intersection is the current regulator filter.
-    # Used to highlight that cell in the matrix. None when no pairwise filter is active.
-    _active_regulator_pair: reactive.Value[tuple[str, str] | None] = reactive.value(
-        None
-    )
-
-    # Tracks which pair's off-diagonal modal is currently open.
-    # All _on_apply_common_regulators effects share the same button ID, so this
-    # guards against every registered effect firing on a single Apply click.
-    _open_modal_pair: reactive.Value[tuple[str, str] | None] = reactive.value(None)
-
-    # Track which cell effects have already been registered to avoid duplicates
-    # when active_datasets changes but some datasets remain.
-    _registered_effects: set[str] = set()
-
+    # Single effect that responds to the "Select common regulators" button
+    # across all off-diagonal modals. Uses _open_modal_pair to determine which
+    # pair was active when the modal was opened.
     @reactive.effect
-    def _register_cell_effects() -> None:
+    @reactive.event(input.modal_queue_common_regulators)
+    def _on_queue_common_regulators() -> None:
         """
-        Register click effects for any newly active dataset cells that have not yet been
-        registered, avoiding duplicate effect registration.
+        Compute the regulator intersection eagerly and store it as a pending regulator
+        filter. The filter is committed to ``dataset_filters`` only when the user clicks
+        Apply in the sidebar.
 
-        :trigger: ``_settled_val`` — re-runs whenever the active dataset list changes
-            so that new diagonal and off-diagonal cell effects are created
-            for any newly added datasets.
-
-        """
-        if active_module is not None:
-            req(active_module() == "selection")
-        with perf(session.id, "select_datasets.workspace", "_register_cell_effects"):
-            active = _settled_val()
-            for db_name in active:
-                if db_name not in _registered_effects:
-                    _make_diagonal_effect(db_name)
-                    _registered_effects.add(db_name)
-            for i, db_a in enumerate(active):
-                for db_b in active[i + 1 :]:
-                    pair_id = f"{db_a}__{db_b}"
-                    if pair_id not in _registered_effects:
-                        _make_off_diagonal_effect(db_a, db_b)
-                        _registered_effects.add(pair_id)
-
-    @reactive.effect
-    def _clear_pair_when_filter_removed() -> None:
-        """
-        Clear the highlighted cell pair when no ``regulator_locus_tag`` filter remains
-        in ``dataset_filters``.
-
-        :trigger: ``dataset_filters`` — re-runs on every filter change; clears
-            ``_active_regulator_pair`` once the regulator filter has been removed.
+        :trigger: ``input.modal_queue_common_regulators`` — fires when the user
+            clicks the "Select common regulators" button in the off-diagonal modal.
 
         """
-        if active_module is not None:
-            req(active_module() == "selection")
         with perf(
-            session.id, "select_datasets.workspace", "_clear_pair_when_filter_removed"
+            session.id,
+            "select_datasets.workspace",
+            "_on_queue_common_regulators",
         ):
+            pair = _open_modal_pair()
+            if pair is None:
+                return
+            db_a, db_b = pair
+            # Exclude any existing regulator_locus_tag filter so the pairwise
+            # intersection is computed from the full regulator set for each
+            # dataset (subject to other filters only).
             filters = dataset_filters()
-            has_reg_filter = any(
-                "regulator_locus_tag" in (v or {}) for v in filters.values()
+            fa = {
+                k: v
+                for k, v in (filters.get(db_a) or {}).items()
+                if k != "regulator_locus_tag"
+            } or None
+            fb = {
+                k: v
+                for k, v in (filters.get(db_b) or {}).items()
+                if k != "regulator_locus_tag"
+            } or None
+            sql, params = regulator_intersection_query(db_a, db_b, fa, fb)
+            df = vdb.query(sql, **params)
+            common_tags = df["regulator_locus_tag"].dropna().astype(str).tolist()
+            if not common_tags:
+                ui.modal_remove()
+                _open_modal_pair.set(None)
+                return
+            pending_regulator_pair.set(
+                {
+                    "pair": (db_a, db_b),
+                    "common_tags": common_tags,
+                    "display": (
+                        display_names.get(db_a, db_a),
+                        display_names.get(db_b, db_b),
+                    ),
+                }
             )
-            if not has_reg_filter:
-                _active_regulator_pair.set(None)
+            _open_modal_pair.set(None)
+            ui.modal_remove()
+
+    @reactive.effect
+    @reactive.event(input.cancel_pending_regulator)
+    def _on_cancel_pending() -> None:
+        """
+        Clear the pending regulator filter without committing it.
+
+        :trigger: ``input.cancel_pending_regulator`` — fires when the user
+            clicks the Cancel button in the pending filter banner.
+
+        """
+        pending_regulator_pair.set(None)
+
+    # Register click effects at startup for every dataset and every ordered
+    # pair that vdb knows about. Inactive datasets have no buttons rendered,
+    # so their effects are registered but never triggered.
+    for _db in all_dbs:
+        _make_diagonal_effect(_db)
+    for _i, _db_a in enumerate(all_dbs):
+        for _db_b in all_dbs[_i + 1 :]:
+            _make_off_diagonal_effect(_db_a, _db_b)
 
     @render.ui
     def matrix_content() -> ui.Tag:
@@ -383,6 +380,16 @@ def select_datasets_workspace_server(
         diagonal = data["diagonal"]
         cross_dataset = data["cross_dataset"]
 
+        pending = pending_regulator_pair()
+        committed = _committed_regulator_pair()
+
+        # Pending banner shown above the matrix when a regulator filter is queued.
+        banner_tags: list[ui.Tag] = []
+        if pending is not None:
+            display_a, display_b = pending["display"]
+            n_pending = len(pending["common_tags"])
+            banner_tags = [pending_regulator_banner(display_a, display_b, n_pending)]
+
         # --- header row ---
         header_cells = [matrix_header_cell("Dataset", row=True)]
         for db_name in active:
@@ -414,29 +421,45 @@ def select_datasets_workspace_server(
                     )
                 else:
                     # upper triangle — common regulators only
-                    key = (db_row, db_col)
-                    info = cross_dataset.get(key, {})
-                    is_active = _active_regulator_pair() == (db_row, db_col)
+                    # Derive canonical pair (matches effect registration order and
+                    # cross_dataset key normalization in _matrix_data).
+                    if _dbs_rank.get(db_row, -1) < _dbs_rank.get(db_col, -1):
+                        canonical_pair: tuple[str, str] = (db_row, db_col)
+                    else:
+                        canonical_pair = (db_col, db_row)
+                    info = cross_dataset.get(canonical_pair, {})
+                    offdiag_btn_id = f"offdiag_{canonical_pair[0]}__{canonical_pair[1]}"
+                    is_active = committed == canonical_pair
+                    is_pending = (
+                        pending is not None and pending["pair"] == canonical_pair
+                    )
+                    tooltip_text: str | None = None
+                    if is_active:
+                        tooltip_text = "Click to remove the regulator filter"
+                    elif is_pending:
+                        tooltip_text = (
+                            "Regulator filter pending — click Apply to commit"
+                        )
                     cells.append(
                         matrix_cell(
                             "interactive",
                             matrix_cell_button(
-                                f"offdiag_{db_row}__{db_col}",
+                                offdiag_btn_id,
                                 f"{info.get('common_regulators', 0):,} "
                                 "common regulators",
-                                tooltip=(
-                                    "Click to remove the regulator filter"
-                                    if is_active
-                                    else None
-                                ),
+                                tooltip=tooltip_text,
                             ),
                             active=is_active,
+                            pending=is_pending,
                         )
                     )
 
             body_rows.append(ui.tags.tr(*cells))
 
-        return matrix_table(ui.tags.tr(*header_cells), *body_rows)
+        return ui.div(
+            *banner_tags,
+            matrix_table(ui.tags.tr(*header_cells), *body_rows),
+        )
 
 
 __all__ = ["select_datasets_workspace_server"]

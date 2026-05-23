@@ -188,6 +188,17 @@ requires it; it is gitignored because it is a generated artifact):
 poetry export --without-hashes --without dev -f requirements.txt -o requirements.txt
 ```
 
+**NOTE**: the above must be done before uploading after any change to dependencies in
+`pyproject.toml`.
+
+Make sure the local cache is up to date with the HuggingFace datasets, then deploy with rsconnect:
+
+```bash
+poetry run python -m tfbpshiny --cache-dir ./hf_cache initialize
+```
+
+Then deploy with rsconnect:
+
 ```bash
 rsconnect add \
     --account <your-shinyapps-account> \
