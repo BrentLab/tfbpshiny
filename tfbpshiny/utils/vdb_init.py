@@ -35,6 +35,26 @@ HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
     "hughes_knockout": {"oe_passed_qc", "sgd_description"},
 }
 
+# The canonical db_name for each underlying dataset. When multiple db_names exist for
+# the same experiment called against different promoter sets (e.g. rossi vs
+# rossi_mindel), only the entry in this set is shown in the dataset selector. Alternate
+# promoter variants remain registered in VirtualDB and are accessible to analysis
+# modules once a promoter selector is wired up.
+PRIMARY_DATASETS: frozenset[str] = frozenset(
+    {
+        "callingcards",
+        "harbison",
+        "rossi",
+        "chec_m2025",
+        "hackett",
+        "hu_reimand",
+        "hughes_overexpression",
+        "hughes_knockout",
+        "kemmeren",
+        "degron",
+    }
+)
+
 # Datasets whose toggles are on by default. A superset of DEFAULT_DATASET_FILTERS
 # — datasets with no preset conditions are listed here but not in the filter dict.
 DEFAULT_ACTIVE_DATASETS: frozenset[str] = frozenset(
@@ -54,7 +74,7 @@ DEFAULT_ACTIVE_DATASETS: frozenset[str] = frozenset(
 # the initial value with no additional handling.
 DEFAULT_DATASET_FILTERS: dict[str, dict] = {
     "harbison": {
-        "condition": {"type": "categorical", "value": ["YPD"]},
+        "Experimental condition": {"type": "categorical", "value": ["YPD"]},
     },
     "rossi": {
         "treatment": {"type": "categorical", "value": ["Normal"]},
@@ -67,97 +87,16 @@ DEFAULT_DATASET_FILTERS: dict[str, dict] = {
     },
 }
 
-# NOTE: the following regulators have multiple samples with the same mechanism and
-# restriction. For convenience for now, they are excluded since it is not possible
-# to choose between them based on features in the dataset. They are essentially
-# replicates and would need to be chosen by comparison to binding, for example
-# 'GCN4', 'RDS2', 'SWI1', 'MAC1'
-_HACKETT_ANALYSIS_SET_SQL = """
-CREATE OR REPLACE TABLE hackett_analysis_set AS
-WITH regulator_tiers AS (
-    SELECT
-        regulator_locus_tag,
-        CASE
-            WHEN BOOL_OR(mechanism = 'ZEV' AND restriction = 'P') THEN 1
-            WHEN BOOL_OR(mechanism = 'GEV' AND restriction = 'P') THEN 2
-            ELSE 3
-        END AS tier
-    FROM hackett_meta
-    GROUP BY regulator_locus_tag
-),
-tier_filtered AS (
-    SELECT
-        h.sample_id,
-        h.regulator_locus_tag,
-        h.regulator_symbol,
-        h.mechanism,
-        h.restriction,
-        h.time,
-        h.date,
-        h.strain,
-        t.tier
-    FROM hackett_meta h
-    JOIN regulator_tiers t USING (regulator_locus_tag)
-    WHERE
-        (t.tier = 1 AND h.mechanism = 'ZEV' AND h.restriction = 'P')
-        OR (t.tier = 2 AND h.mechanism = 'GEV' AND h.restriction = 'P')
-        OR (t.tier = 3 AND h.mechanism = 'GEV' AND h.restriction = 'M')
-)
-SELECT DISTINCT
-    sample_id,
-    regulator_locus_tag,
-    regulator_symbol,
-    mechanism,
-    restriction,
-    time,
-    date,
-    strain
-FROM tier_filtered
-WHERE regulator_symbol NOT IN ('GCN4', 'RDS2', 'SWI1', 'MAC1')
-"""
-
-
-def _filter_hackett_views(vdb: VirtualDB) -> None:
-    """
-    Replace the ``hackett_meta`` and ``hackett`` DuckDB views with versions filtered to
-    sample IDs present in ``hackett_analysis_set``.
-
-    Extracts the original SELECT body from ``duckdb_views()`` and wraps it as an
-    inline subquery, avoiding self-referential view replacement.
-
-    :param vdb: The application VirtualDB instance.
-
-    """
-    conn = vdb._conn
-    for view_name in ("hackett_meta", "hackett"):
-        row = conn.execute(
-            "SELECT sql FROM duckdb_views() WHERE view_name = ?", [view_name]
-        ).fetchone()
-        if row is None:
-            continue
-        full_sql: str = row[0]
-        # full_sql is "CREATE VIEW view_name AS <select_body>;"
-        # Split after the first " AS " to extract just the SELECT body.
-        select_body = full_sql.split(" AS ", 1)[1].rstrip(";").strip()
-        conn.execute(
-            f"CREATE OR REPLACE VIEW {view_name} AS "
-            f"SELECT * FROM ({select_body}) __base "
-            f"WHERE sample_id IN (SELECT sample_id FROM hackett_analysis_set)"
-        )
-
-
-def ensure_hackett_analysis_set(vdb: VirtualDB) -> None:
-    """
-    Build the ``hackett_analysis_set`` table and permanently filter the ``hackett_meta``
-    and ``hackett`` views to include only those samples.
-
-    Safe to call multiple times; uses ``CREATE OR REPLACE``.
-
-    :param vdb: The application VirtualDB instance.
-
-    """
-    vdb._conn.execute(_HACKETT_ANALYSIS_SET_SQL)
-    _filter_hackett_views(vdb)
+# Column-type overrides for fields whose DuckDB type does not match how they
+# should be filtered in the UI. Keys are ``(db_name, field_name)`` tuples;
+# use an empty string as db_name to apply the override to every dataset that
+# has the field. Values are ``("categorical", level_dtype)`` where
+# ``level_dtype`` is ``"numeric"`` (sort levels numerically) or ``"string"``
+# (sort lexicographically).
+FIELD_TYPE_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
+    ("hackett", "time"): ("categorical", "numeric"),
+    ("", "temperature_celsius"): ("categorical", "string"),
+}
 
 
 _REGULATOR_DISPLAY_NAME_TABLE = "regulator_display_names"
@@ -273,7 +212,9 @@ def check_local_cache(virtualdb_config: str) -> list[str]:
     config = MetadataConfig.from_yaml(virtualdb_config)
     hub_cache = get_cache_dir()
     missing: list[str] = []
-    for repo_id in config.repositories:
+    for repo_id, repo_cfg in config.repositories.items():
+        if repo_cfg.genome_resources is not None and not repo_cfg.dataset:
+            continue  # genome-resource-only repo — nothing to download from HuggingFace
         # HF cache path: datasets--{owner}--{repo_name}
         cache_dir = hub_cache / ("datasets--" + repo_id.replace("/", "--"))
         snapshots = cache_dir / "snapshots"
@@ -306,13 +247,6 @@ def initialize_data(
     vdb = VirtualDB(virtualdb_config, token=hf_token, local_files_only=local_files_only)
     logger.debug(
         "initialize_data: VirtualDB() completed in %.3fs", time.monotonic() - t
-    )
-
-    t = time.monotonic()
-    ensure_hackett_analysis_set(vdb)
-    logger.debug(
-        "initialize_data: ensure_hackett_analysis_set completed in %.3fs",
-        time.monotonic() - t,
     )
 
     t = time.monotonic()
@@ -361,11 +295,12 @@ def initialize_data(
 
 __all__ = [
     "HIDDEN_FILTER_FIELDS",
+    "FIELD_TYPE_OVERRIDES",
+    "PRIMARY_DATASETS",
     "DEFAULT_ACTIVE_DATASETS",
     "DEFAULT_DATASET_FILTERS",
     "AppDatasets",
     "check_local_cache",
-    "ensure_hackett_analysis_set",
     "get_regulator_display_name",
     "initialize_data",
 ]

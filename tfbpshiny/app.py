@@ -3,66 +3,53 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import threading
 import time
 from pathlib import Path
 from typing import Any, Literal, cast
 
 from dotenv import load_dotenv
-from labretriever import VirtualDB
 from shiny import App, reactive, render, ui
-from shiny.reactive._core import flush as reactive_flush
-from shiny.reactive._core import lock as reactive_lock
+from shiny.reactive import extended_task
 
 from configure_logger import configure_logger
-from tfbpshiny.components import github_badge, nav_button
-from tfbpshiny.modules.binding.server import (
-    binding_sidebar_server,
-    binding_workspace_server,
-)
-from tfbpshiny.modules.binding.ui import binding_sidebar_ui, binding_workspace_ui
-from tfbpshiny.modules.comparison.server import (
-    comparison_sidebar_server,
-    comparison_workspace_server,
-)
-from tfbpshiny.modules.comparison.ui import (
-    comparison_sidebar_ui,
-    comparison_workspace_ui,
-)
+from tfbpshiny.components import github_badge
+from tfbpshiny.modules.binding.server import binding_server
+from tfbpshiny.modules.binding.ui import binding_ui
+from tfbpshiny.modules.comparison.server import comparison_server
+from tfbpshiny.modules.comparison.ui import comparison_ui
 from tfbpshiny.modules.home.ui import home_ui
-from tfbpshiny.modules.perturbation.server import (
-    perturbation_sidebar_server,
-    perturbation_workspace_server,
-)
-from tfbpshiny.modules.perturbation.ui import (
-    perturbation_sidebar_ui,
-    perturbation_workspace_ui,
-)
-from tfbpshiny.modules.select_datasets.server import (
-    select_datasets_sidebar_server,
-    select_datasets_workspace_server,
-)
-from tfbpshiny.modules.select_datasets.ui import (
-    selection_matrix_ui,
-    selection_sidebar_ui,
-)
-from tfbpshiny.utils.vdb_init import AppDatasets, check_local_cache, initialize_data
+from tfbpshiny.modules.perturbation.server import perturbation_server
+from tfbpshiny.modules.perturbation.ui import perturbation_ui
+from tfbpshiny.modules.select_datasets.server import select_datasets_server
+from tfbpshiny.modules.select_datasets.ui import selection_ui
+from tfbpshiny.utils.vdb_init import check_local_cache, initialize_data
+
+# Module UIs are declared once at startup. The actual output bindings inside
+# each module only resolve after the server is registered (post-init), so the
+# panels show Shiny's default blank/loading state until data is ready without
+# any extra wrapper render functions.
+_selection_ui = selection_ui("select_datasets")
+_binding_ui = binding_ui("binding")
+_perturbation_ui = perturbation_ui("perturbation")
+_comparison_ui = comparison_ui("comparison")
 
 if not os.getenv("DOCKER_ENV"):
     load_dotenv(dotenv_path=Path(".env"))
 
 logger = logging.getLogger("shiny")
 
-# Log config is set by __main__.py via env vars before run_app() (and before any reload
-# worker re-imports this module). Env vars are the only mechanism that crosses the
-# uvicorn subprocess boundary. HF_TOKEN stays env-var-only for security.
-_log_file = f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log"
+_log_dir = Path("tfbpshiny_log")
+_log_dir.mkdir(exist_ok=True)
+_log_file = str(_log_dir / f"tfbpshiny_{time.strftime('%Y%m%d-%H%M%S')}.log")
 _log_level = int(os.getenv("TFBPSHINY_LOG_LEVEL", str(logging.INFO)))
 _log_handler = cast(
     Literal["console", "file"], os.getenv("TFBPSHINY_LOG_HANDLER", "console")
 )
 configure_logger(
     "shiny", level=_log_level, handler_type=_log_handler, log_file=_log_file
+)
+configure_logger(
+    "labretriever", level=_log_level, handler_type=_log_handler, log_file=_log_file
 )
 
 virtualdb_config: str = os.getenv(
@@ -71,269 +58,158 @@ virtualdb_config: str = os.getenv(
 )
 hf_token: str | None = os.getenv("HF_TOKEN")
 
-app_ui = ui.page_fillable(
-    ui.tags.head(
+
+_not_ready_ui = ui.div(
+    {
+        "style": "display:flex; align-items:center; justify-content:center;"
+        " height:60%; color:#888; text-align:center;"
+    },
+    ui.p("Please visit the Dataset selection tab first to load the data."),
+)
+
+app_ui = ui.page_navbar(
+    ui.nav_panel("Home", home_ui()),
+    ui.nav_panel("Dataset selection", ui.output_ui("selection_status"), _selection_ui),
+    ui.nav_panel("Binding", ui.output_ui("binding_status"), _binding_ui),
+    ui.nav_panel("Perturbation", ui.output_ui("perturbation_status"), _perturbation_ui),
+    ui.nav_panel("Comparison", ui.output_ui("comparison_status"), _comparison_ui),
+    ui.nav_spacer(),
+    ui.nav_control(github_badge()),
+    title="TF Binding & Perturbation Explorer",
+    id="main_nav",
+    fillable=["Dataset selection", "Binding", "Perturbation", "Comparison"],
+    navbar_options=ui.navbar_options(bg="#722F37", theme="dark"),
+    header=ui.tags.head(
         ui.tags.script(src="plotly-3.5.0.min.js"),
+        ui.include_css((Path(__file__).parent / "app.css").resolve()),
     ),
-    ui.include_css((Path(__file__).parent / "app.css").resolve()),
-    ui.div(
-        {"class": "app-container"},
-        ui.div(
-            {"class": "nav-bar"},
-            ui.div({"class": "nav-logo"}, "TF\nBinding & Perturbation\nExplorer"),
-            ui.div(
-                {"class": "nav-tags"},
-                nav_button("home", "Home"),
-                nav_button("selection", "Dataset selection"),
-                nav_button("binding", "Binding"),
-                nav_button("perturbation", "Perturbation"),
-                nav_button("comparison", "Comparison"),
-            ),
-            github_badge(),
-        ),
-        ui.div(
-            {"class": "app-body"},
-            ui.output_ui("sidebar_region"),
-            ui.output_ui("workspace_region"),
-        ),
-    ),
-    padding=0,
-    gap=0,
 )
 
 
 def app_server(input: Any, output: Any, session: Any) -> None:
     """Create shared reactive state and call all module servers."""
 
-    active_module: reactive.Value[str] = reactive.value("home")
+    @reactive.calc
+    def _active_tab() -> str:
+        return input.main_nav()
 
-    # Holds (vdb, app_datasets) once the background thread finishes.
-    # None means init is still running.
-    _init_result: reactive.Value[tuple[VirtualDB, AppDatasets] | None] = reactive.value(
-        None
-    )
-
-    # Capture the event loop on the main thread before spawning the worker.
-    _loop = asyncio.get_event_loop()
-
-    def _run_init() -> None:
-        missing = check_local_cache(virtualdb_config)
-        if missing:
-            logger.error(
-                "Local HuggingFace cache is incomplete. Run "
-                "'tfbpshiny initialize' to download all datasets before "
-                "starting the app. Missing repos: %s",
-                missing,
-            )
-            return
-        logger.info("Starting VirtualDB initialization in background thread.")
-        try:
-            result = initialize_data(virtualdb_config, hf_token)
-            logger.info("VirtualDB initialization complete.")
-        except Exception:
-            logger.exception("VirtualDB initialization failed.")
-            return
-
-        async def _deliver() -> None:
-            async with reactive_lock():
-                _init_result.set(result)
-                await reactive_flush()
-
-        _loop.call_soon_threadsafe(asyncio.create_task, _deliver())
-
-    threading.Thread(target=_run_init, daemon=True).start()
-
-    # Fires exactly once when init finishes; registers all module servers.
+    # Fires exactly once when init succeeds; registers all module servers.
     @reactive.effect
     def _register_modules() -> None:
-        result = _init_result()
-        if result is None:
+        if _init_task.status() != "success":
             return
 
-        vdb, app_datasets = result
+        vdb, app_datasets = _init_task.result()
 
         active_binding_datasets, active_perturbation_datasets, dataset_filters = (
-            select_datasets_sidebar_server(
-                "select_datasets_sidebar",
+            select_datasets_server(
+                "select_datasets",
                 vdb=vdb,
                 app_datasets=app_datasets,
                 logger=logger,
-                active_module=active_module,
+                active_tab=_active_tab,
             )
         )
-        select_datasets_workspace_server(
-            "select_datasets_workspace",
-            active_binding_datasets=active_binding_datasets,
-            active_perturbation_datasets=active_perturbation_datasets,
-            dataset_filters=dataset_filters,
-            vdb=vdb,
-            logger=logger,
-            active_module=active_module,
-        )
 
-        corr_type, col_preference = binding_sidebar_server(
-            "binding_sidebar",
+        binding_server(
+            "binding",
             active_binding_datasets=active_binding_datasets,
-            dataset_filters=dataset_filters,
-            vdb=vdb,
-            logger=logger,
-        )
-        binding_workspace_server(
-            "binding_workspace",
-            active_binding_datasets=active_binding_datasets,
-            corr_type=corr_type,
-            col_preference=col_preference,
             dataset_filters=dataset_filters,
             vdb=vdb,
             app_datasets=app_datasets,
             logger=logger,
-            active_module=active_module,
+            active_tab=_active_tab,
         )
 
-        corr_type_p, col_preference_p = perturbation_sidebar_server(
-            "perturbation_sidebar",
+        perturbation_server(
+            "perturbation",
             active_perturbation_datasets=active_perturbation_datasets,
-            dataset_filters=dataset_filters,
-            vdb=vdb,
-            logger=logger,
-        )
-        perturbation_workspace_server(
-            "perturbation_workspace",
-            active_perturbation_datasets=active_perturbation_datasets,
-            corr_type=corr_type_p,
-            col_preference=col_preference_p,
             dataset_filters=dataset_filters,
             vdb=vdb,
             app_datasets=app_datasets,
             logger=logger,
-            active_module=active_module,
+            active_tab=_active_tab,
         )
 
-        top_n, effect_threshold, pvalue_threshold, facet_by = comparison_sidebar_server(
-            "comparison_sidebar",
-            active_binding_datasets=active_binding_datasets,
-            active_perturbation_datasets=active_perturbation_datasets,
-            vdb=vdb,
-            logger=logger,
-        )
-        comparison_workspace_server(
-            "comparison_workspace",
+        comparison_server(
+            "comparison",
             active_binding_datasets=active_binding_datasets,
             active_perturbation_datasets=active_perturbation_datasets,
             dataset_filters=dataset_filters,
-            top_n=top_n,
-            effect_threshold=effect_threshold,
-            pvalue_threshold=pvalue_threshold,
-            facet_by=facet_by,
             vdb=vdb,
             logger=logger,
-            active_module=active_module,
+            active_tab=_active_tab,
         )
 
-    @reactive.effect
-    @reactive.event(input.home, ignore_init=True)
-    def _nav_home() -> None:
-        """
-        Switch the active module to the home page.
+    @extended_task
+    async def _init_task(config: str, token: str | None) -> Any:
+        """Run VirtualDB initialization off the main thread."""
+        missing = await asyncio.to_thread(check_local_cache, config)
+        if missing:
+            raise RuntimeError(
+                "Data cache is insufficient. Contact administrator with "
+                "an issue at https://github.com/BrentLab/tfbpshiny/issues. "
+                f"Missing repos: {missing}"
+            )
+        return await asyncio.to_thread(initialize_data, config, token)
 
-        :trigger: ``input.home`` — fires when the user clicks the HOME nav button.
+    # Auto-start init on session load — no button required.
+    _init_task.invoke(virtualdb_config, hf_token)
 
-        """
-        active_module.set("home")
-
-    @reactive.effect
-    @reactive.event(input.selection, ignore_init=True)
-    def _nav_selection() -> None:
-        """
-        Switch the active module to the dataset selection page.
-
-        :trigger: ``input.selection`` — fires when the user clicks the SELECT
-            DATASETS nav button.
-
-        """
-        active_module.set("selection")
-
-    @reactive.effect
-    @reactive.event(input.binding, ignore_init=True)
-    def _nav_binding() -> None:
-        """
-        Switch the active module to the binding data page.
-
-        :trigger: ``input.binding`` — fires when the user clicks the BINDING nav
-            button.
-
-        """
-        active_module.set("binding")
-
-    @reactive.effect
-    @reactive.event(input.perturbation, ignore_init=True)
-    def _nav_perturbation() -> None:
-        """
-        Switch the active module to the perturbation data page.
-
-        :trigger: ``input.perturbation`` — fires when the user clicks the
-            PERTURBATION nav button.
-
-        """
-        active_module.set("perturbation")
-
-    @reactive.effect
-    @reactive.event(input.comparison, ignore_init=True)
-    def _nav_comparison() -> None:
-        """
-        Switch the active module to the comparison analysis page.
-
-        :trigger: ``input.comparison`` — fires when the user clicks the COMPARISON
-            nav button.
-
-        """
-        active_module.set("comparison")
-
-    _loading_ui = ui.div(
+    _preparing_ui = ui.div(
         {
-            "style": "display:flex; align-items:center; "
-            "justify-content:center; height:100%; color:#888;"
+            "style": "display:flex; align-items:center; justify-content:center;"
+            " padding: 2rem; color:#888; text-align:center;"
         },
-        ui.p("Loading data, please wait..."),
+        ui.p(
+            "Preparing datasets. "
+            "This typically takes less than 5 seconds. "
+            "Thank you for your patience..."
+        ),
     )
 
-    @render.ui
-    def sidebar_region() -> ui.Tag:
-        selected_module = active_module()
-        logger.debug(f"Rendering sidebar for active module: {selected_module}")
-        if selected_module == "home":
-            return ui.span()
-        if _init_result() is None:
-            return ui.span()
-        if selected_module == "selection":
-            return selection_sidebar_ui("select_datasets_sidebar")
-        if selected_module == "binding":
-            return binding_sidebar_ui("binding_sidebar")
-        if selected_module == "perturbation":
-            return perturbation_sidebar_ui("perturbation_sidebar")
-        if selected_module == "comparison":
-            return comparison_sidebar_ui("comparison_sidebar")
-        logger.error(f"No sidebar for active module: {selected_module}")
-        return ui.span(ui.p("ERROR: No sidebar for: " + selected_module))
+    def _status_panel(ready_content: ui.Tag | None = None) -> ui.Tag:
+        """Return a status message or empty span based on init task state."""
+        status = _init_task.status()
+        if status == "success":
+            return ready_content if ready_content is not None else ui.span()
+        if status in ("error", "cancelled"):
+            err = _init_task.error() if status == "error" else None
+            msg = str(err) if err else "Initialisation was cancelled."
+            return ui.div(
+                {
+                    "style": "display:flex; align-items:center;"
+                    " justify-content:center; padding:2rem; color:#b00;"
+                    " text-align:center;"
+                },
+                ui.p(msg),
+            )
+        return _preparing_ui
 
     @render.ui
-    def workspace_region() -> ui.Tag:
-        selected_module = active_module()
-        logger.debug(f"Rendering workspace for active module: {selected_module}")
-        if selected_module == "home":
-            return home_ui()
-        if _init_result() is None:
-            return _loading_ui
-        if selected_module == "selection":
-            return selection_matrix_ui("select_datasets_workspace")
-        if selected_module == "binding":
-            return binding_workspace_ui("binding_workspace")
-        if selected_module == "perturbation":
-            return perturbation_workspace_ui("perturbation_workspace")
-        if selected_module == "comparison":
-            return comparison_workspace_ui("comparison_workspace")
-        logger.error(f"No workspace for active module: {selected_module}")
-        return ui.span(ui.p("ERROR: No workspace for: " + selected_module))
+    def selection_status() -> ui.Tag:
+        return _status_panel()
+
+    @render.ui
+    def binding_status() -> ui.Tag:
+        status = _init_task.status()
+        if status == "success":
+            return ui.span()
+        return _status_panel(_not_ready_ui)
+
+    @render.ui
+    def perturbation_status() -> ui.Tag:
+        status = _init_task.status()
+        if status == "success":
+            return ui.span()
+        return _status_panel(_not_ready_ui)
+
+    @render.ui
+    def comparison_status() -> ui.Tag:
+        status = _init_task.status()
+        if status == "success":
+            return ui.span()
+        return _status_panel(_not_ready_ui)
 
 
 app = App(

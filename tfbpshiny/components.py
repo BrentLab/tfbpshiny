@@ -32,19 +32,12 @@ Maintenance rules
 CSS variable reference (from ``app.css`` ``:root``)
 ----------------------------------------------------
 --color-primary        #2C7A7B
---color-primary-light  #E6FFFA
 --color-primary-dark   #1A5456
 --color-border         #E2E8F0
 --color-text           #1A202C
 --radius-sm            6px
---radius-md            10px
---nav-height           52px
---sidebar-width        380px
 --font-size-label      0.875rem
 --transition-fast      150ms ease
---color-nav            #722F37
---color-nav-hover      #8B3A42
---color-nav-active     #4A0E1A
 
 """
 
@@ -114,113 +107,8 @@ def tooltip(
 
 
 # ---------------------------------------------------------------------------
-# Layout shells
+# Typography
 # ---------------------------------------------------------------------------
-
-
-def sidebar_shell(
-    id: str,
-    *,
-    header: ui.Tag | str,
-    body: ui.Tag,
-    footer: ui.Tag | None = None,
-) -> ui.Tag:
-    """
-    Full sidebar chrome: sticky header, scrollable body, optional footer.
-
-    CSS: ``.context-sidebar``, ``.sidebar-header``, ``.sidebar-body``,
-    ``.sidebar-footer``
-
-    .. note::
-        The Select Datasets sidebar uses ``context-sidebar selection-sidebar``
-        and ``sidebar-header-row`` CSS modifiers that are not factored into
-        component functions here. Those classes appear only once, in
-        ``select_datasets/server/sidebar.py``, and carry collapsed-state
-        conditional logic that makes a generic factory impractical.
-    """
-    children: list[Any] = [
-        ui.div({"class": "sidebar-header"}, header),
-        ui.div({"class": "sidebar-body"}, body),
-    ]
-    if footer is not None:
-        children.append(ui.div({"class": "sidebar-footer"}, footer))
-    return ui.div({"class": "context-sidebar", "id": id}, *children)
-
-
-def workspace_shell(id: str, *, header: ui.Tag | str, body: ui.Tag) -> ui.Tag:
-    """
-    Full workspace chrome: fixed header bar, scrollable body.
-
-    CSS: ``.main-workspace``, ``.workspace-header``, ``.workspace-body``
-    """
-    return ui.div(
-        {"class": "main-workspace", "id": id},
-        ui.div({"class": "workspace-header"}, header),
-        ui.div({"class": "workspace-body"}, body),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Sidebar typography
-# ---------------------------------------------------------------------------
-
-
-def sidebar_heading(text: str) -> ui.Tag:
-    """
-    Primary sidebar section title (``h2``-level, 16 px, 600 weight).
-
-    CSS: ``.sidebar-header h2``
-
-    """
-    return ui.h2(text)
-
-
-def sidebar_subtitle(text: str) -> ui.Tag:
-    """
-    Muted sub-line beneath a sidebar heading (12 px, ``--color-text-muted``).
-
-    CSS: ``.sidebar-header .subtitle``
-
-    """
-    return ui.div({"class": "subtitle"}, text)
-
-
-def sidebar_section(title: str, *children: Any) -> ui.Tag:
-    """
-    Wrapper div that groups related sidebar controls under a labelled heading.
-
-    CSS: ``.sidebar-section``, ``.sidebar-section-title``
-
-    :param title: Short label rendered above the controls (e.g. ``"Column"``).
-    :param children: One or more Shiny input elements placed below the title.
-
-    """
-    return ui.div(
-        {"class": "sidebar-section"},
-        ui.div({"class": "sidebar-section-title"}, title),
-        *children,
-    )
-
-
-def group_header(text: str) -> ui.Tag:
-    """
-    All-caps section divider label inside a sidebar or workspace body (11 px, 700
-    weight, ``--color-text-muted``).
-
-    CSS: ``.group-header``
-
-    """
-    return ui.div({"class": "group-header"}, text)
-
-
-def sidebar_text(*children: Any) -> ui.Tag:
-    """
-    Inline body text styled to ``--color-text``.
-
-    CSS: ``.sidebar-text``
-
-    """
-    return ui.span({"class": "sidebar-text"}, *children)
 
 
 def sidebar_label(text: str) -> ui.Tag:
@@ -277,22 +165,6 @@ def empty_state(*children: Any, compact: bool = False) -> ui.Tag:
 # ---------------------------------------------------------------------------
 
 
-def nav_button(id: str, label: str, *, active: bool = False) -> ui.Tag:
-    """
-    Pill-shaped navigation button in the top nav bar.
-
-    CSS: ``.nav-bar .nav-btn`` / ``.nav-bar .nav-btn.active``
-
-    Active state is applied at render time; the server is responsible for
-    toggling the ``active`` class dynamically via JavaScript.
-
-    :param active: Render with ``.active`` class (primary background, white text).
-
-    """
-    cls = "nav-btn active" if active else "nav-btn"
-    return ui.input_action_button(id, label, class_=cls)
-
-
 def github_badge() -> ui.Tag:
     """
     GitHub repo link with version pill, displayed at the right end of the nav bar.
@@ -339,8 +211,11 @@ def dataset_row(toggle: ui.Tag, label: str, filter_button: ui.Tag) -> ui.Tag:
     """
     return ui.div(
         {"class": "dataset-row dataset-item"},
-        toggle,
-        ui.span({"class": "dataset-row-label sidebar-text"}, label),
+        ui.div(
+            {"class": "dataset-row-left"},
+            toggle,
+            ui.span({"class": "dataset-row-label sidebar-text"}, label),
+        ),
         filter_button,
     )
 
@@ -367,16 +242,6 @@ def filter_button(id: str) -> ui.Tag:
         "Filter",
         class_="btn btn-sm btn-outline-secondary btn-filter-dataset",
     )
-
-
-def collapse_sidebar_button(id: str, icon: ui.Tag) -> ui.Tag:
-    """
-    Square icon button used to collapse/expand the selection sidebar.
-
-    CSS: ``.btn-collapse-sidebar``
-
-    """
-    return ui.input_action_button(id, icon, class_="btn-collapse-sidebar")
 
 
 # ---------------------------------------------------------------------------
@@ -484,6 +349,7 @@ def matrix_cell(
     button: ui.Tag | None = None,
     *,
     active: bool = False,
+    pending: bool = False,
 ) -> ui.Tag:
     """
     Data cell (``<td>``) in the intersection matrix.
@@ -495,16 +361,16 @@ def matrix_cell(
     - ``"diagonal"`` — on-diagonal cell showing regulator/sample counts for one
       dataset: ``.matrix-cell-diagonal``. Wraps a ``matrix_cell_button``.
     - ``"interactive"`` — upper-triangle cell showing the common-regulator count
-      for a dataset pair: ``.matrix-cell-interactive``. Wraps a
-      ``matrix_cell_button``. When ``active=True`` also adds
-      ``.matrix-cell-active`` to highlight the pair whose intersection is the
-      current regulator filter.
+      for a dataset pair: ``.matrix-cell-interactive``. When ``active=True``
+      adds ``.matrix-cell-active`` for the committed regulator filter pair;
+      when ``pending=True`` adds ``.matrix-cell-pending`` for a queued but
+      uncommitted pair. ``active`` takes precedence over ``pending``.
 
     :param kind: One of ``"empty"``, ``"diagonal"``, or ``"interactive"``.
     :param button: A ``matrix_cell_button`` element. Required for ``"diagonal"``
         and ``"interactive"``; ignored for ``"empty"``.
-    :param active: Only relevant for ``kind="interactive"``. Adds
-        ``.matrix-cell-active`` when ``True``.
+    :param active: Marks the committed regulator filter pair.
+    :param pending: Marks a queued regulator filter pair not yet committed.
 
     """
     if kind == "empty":
@@ -512,12 +378,50 @@ def matrix_cell(
     if kind == "diagonal":
         return ui.tags.td({"class": "matrix-cell-diagonal"}, button)
     # interactive
-    cls = (
-        "matrix-cell-interactive matrix-cell-active"
-        if active
-        else "matrix-cell-interactive"
-    )
+    if active:
+        cls = "matrix-cell-interactive matrix-cell-active"
+    elif pending:
+        cls = "matrix-cell-interactive matrix-cell-pending"
+    else:
+        cls = "matrix-cell-interactive"
     return ui.tags.td({"class": cls}, button)
+
+
+def pending_regulator_banner(
+    display_a: str,
+    display_b: str,
+    n_common: int,
+) -> ui.Tag:
+    """
+    Persistent inline notification shown when a regulator filter is queued.
+
+    Appears above the matrix table. Not a modal — clicking outside has no effect.
+    The Cancel button emits ``input.cancel_pending_regulator``.
+
+    CSS: ``.pending-regulator-banner``
+
+    :param display_a: Human-readable name of the first dataset.
+    :param display_b: Human-readable name of the second dataset.
+    :param n_common: Number of common regulators in the pending filter.
+
+    """
+    return ui.div(
+        {"class": "pending-regulator-banner"},
+        ui.div(
+            {"class": "pending-regulator-banner-body"},
+            ui.span(
+                {"class": "pending-regulator-banner-text"},
+                ui.strong(f"{n_common:,} common regulators"),
+                f" between {display_a} and {display_b} queued as a filter. "
+                "Click Apply in the sidebar to commit.",
+            ),
+            ui.input_action_button(
+                "cancel_pending_regulator",
+                "Cancel",
+                class_="btn btn-sm btn-outline-secondary",
+            ),
+        ),
+    )
 
 
 def matrix_table(header_row: ui.Tag, *body_rows: ui.Tag) -> ui.Tag:
@@ -560,28 +464,17 @@ def export_download_button(id: str) -> ui.Tag:
 __all__ = [
     # tooltips
     "tooltip",
-    # layout
-    "sidebar_shell",
-    "workspace_shell",
-    # sidebar typography
-    "sidebar_heading",
-    "sidebar_subtitle",
-    "sidebar_section",
-    "group_header",
-    "sidebar_text",
+    # typography
     "sidebar_label",
-    # workspace typography
     "workspace_heading",
     # states
     "empty_state",
     # nav
-    "nav_button",
     "github_badge",
     # dataset selection
     "dataset_row",
     "dataset_list",
     "filter_button",
-    "collapse_sidebar_button",
     # filter modal
     "filter_option_card",
     "modal_section",
@@ -591,6 +484,7 @@ __all__ = [
     "matrix_row_label",
     "matrix_cell",
     "matrix_table",
+    "pending_regulator_banner",
     # export
     "export_download_button",
 ]
