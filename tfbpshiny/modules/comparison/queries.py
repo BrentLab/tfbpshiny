@@ -23,11 +23,6 @@ DTO_LOG_PSEUDO = 1e-3
 #: Default top-N cutoff
 DEFAULT_TOP_N = 25
 
-#: Default effect size threshold (|effect| must exceed this to be "responsive")
-DEFAULT_EFFECT_THRESHOLD = 0.0
-
-#: Default p-value threshold (pvalue must be below this to be "responsive")
-DEFAULT_PVALUE_THRESHOLD = 0.05
 
 # ---------------------------------------------------------------------------
 # DTO query
@@ -161,7 +156,8 @@ def _responsive_expr(
     :returns: SQL CASE expression string evaluating to 1 or 0.
 
     """
-    effect_col, pvalue_col = DATASET_COLUMNS.get(perturbation_view, ("", ""))
+    cols = DATASET_COLUMNS.get(perturbation_view, ("", ""))
+    effect_col, pvalue_col = cols[0], cols[1]
 
     eff_key = f"{param_prefix}_eff_thresh"
     pval_key = f"{param_prefix}_pval_thresh"
@@ -187,8 +183,8 @@ def topn_responsive_ratio(
     binding_sample_col: str,
     rank_col: str,
     top_n: int = DEFAULT_TOP_N,
-    effect_threshold: float = DEFAULT_EFFECT_THRESHOLD,
-    pvalue_threshold: float = DEFAULT_PVALUE_THRESHOLD,
+    effect_threshold: float = 0.0,
+    pvalue_threshold: float = 0.05,
     binding_filters: dict[str, Any] | None = None,
     perturbation_filters: dict[str, Any] | None = None,
     rank_asc: bool = True,
@@ -504,8 +500,7 @@ def topn_all_pairs_sql(
     pairs: list[tuple[str, str]],
     filters: dict[str, Any],
     top_n: int,
-    effect_threshold: float,
-    pvalue_threshold: float,
+    preset: dict[str, tuple[float, float]],
 ) -> pd.DataFrame:
     """
     Compute top-N responsive ratio for all (binding, perturbation) pairs in one query.
@@ -514,12 +509,15 @@ def topn_all_pairs_sql(
     ``vdb.query()`` call. Each pair is prefixed with ``bp{i}_`` to prevent
     parameter name collisions.
 
+    Responsiveness thresholds are looked up per perturbation dataset from ``preset``.
+    Use ``"*"`` as a fallback key for datasets not explicitly listed.
+
     :param vdb: VirtualDB instance.
     :param pairs: List of ``(binding_db, perturbation_db)`` tuples.
     :param filters: Active filter dict keyed by dataset name.
     :param top_n: Number of top binding targets per binding sample.
-    :param effect_threshold: Minimum absolute effect size to count as responsive.
-    :param pvalue_threshold: Maximum p-value to count as responsive.
+    :param preset: Per-dataset responsiveness thresholds; see
+        :data:`~tfbpshiny.utils.vdb_init.DEFAULT_RESPONSIVENESS_PRESETS`.
     :returns: DataFrame with all columns returned by ``topn_responsive_ratio``
         plus ``pair_key`` (``"{b_db}__{p_db}"``).
 
@@ -535,6 +533,9 @@ def topn_all_pairs_sql(
         p_cfg = PERTURBATION_CONFIGS.get(p_db)
         if b_cfg is None or p_cfg is None:
             continue
+        effect_threshold, pvalue_threshold = preset.get(
+            p_db, preset.get("*", (0.0, 0.05))
+        )
         pair_sql, pair_params = topn_responsive_ratio(
             vdb=vdb,
             binding_view=b_db,

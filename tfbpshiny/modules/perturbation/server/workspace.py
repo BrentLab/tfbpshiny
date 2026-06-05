@@ -5,6 +5,7 @@ import itertools
 from logging import Logger
 from typing import Any, Literal
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from labretriever import VirtualDB
@@ -18,10 +19,13 @@ from shiny.ui import (  # noqa: F401 (bind_task_button used as decorator)
 from shinywidgets import output_widget, render_plotly
 
 from tfbpshiny.modules.perturbation.queries import (
+    LOG10P_FLOOR,
     corr_all_pairs_sql,
+    get_log10p_source,
     get_measurement_column,
     regulator_scatter_sql,
 )
+from tfbpshiny.utils.correlation_matrix import build_correlation_matrix_ui
 from tfbpshiny.utils.perf import reset_render_counts
 from tfbpshiny.utils.vdb_init import AppDatasets, get_regulator_display_name
 
@@ -38,8 +42,9 @@ def perturbation_workspace_server(
     active_tab: reactive.Calc_[str] | None = None,
 ) -> None:
     """
-    Render the perturbation correlation workspace: per-pair box plots and
-    per-regulator scatter plots, gated on an explicit Execute Analysis button.
+    Render the perturbation correlation workspace: correlation matrix, pair
+    distribution box plot, and per-regulator scatter plots, gated on an explicit
+    Execute Analysis button.
 
     :param active_perturbation_datasets: Reactive calc returning the list of active
         perturbation dataset names from the select-datasets module.
@@ -66,11 +71,10 @@ def perturbation_workspace_server(
     # Currently selected regulator locus tag — shared across box and scatter renders.
     selected_reg: reactive.Value[str] = reactive.value("")
 
-    # Box render-phase tracking: reset on Execute, incremented inside each
-    # render_plotly closure so analysis_status can bridge the gap between task
-    # completion and final plot appearance.
-    _boxes_rendered: reactive.Value[int] = reactive.value(0)
-    _boxes_expected: reactive.Value[int] = reactive.value(0)
+    # pending_pairs: updated immediately on cell click, drives matrix highlight only.
+    # committed_pairs: set on Execute, drives box plots and scatter plots.
+    pending_pairs: reactive.Value[list[tuple[str, str]]] = reactive.value([])
+    committed_pairs: reactive.Value[list[tuple[str, str]]] = reactive.value([])
 
     # Scatter render-phase tracking — bumped on each regulator change; each
     # _scatter_plot closure captures the epoch at render-start so stale async
@@ -79,10 +83,9 @@ def perturbation_workspace_server(
     _scatter_rendered: reactive.Value[int] = reactive.value(0)
     _scatter_expected: reactive.Value[int] = reactive.value(0)
 
-    # Plain dicts mutated by render closures and _update_all_highlights.
-    # Not reactive — intentionally updated in-place to avoid triggering re-renders.
-    _box_widgets: dict[tuple[str, str], go.FigureWidget | None] = {}
-    _box_data: dict[tuple[str, str], dict] = {}
+    # Dicts keyed by pair for the active box FigureWidgets and their backing data.
+    _pair_box_widgets: dict[tuple[str, str], go.FigureWidget | None] = {}
+    _pair_box_data: dict[tuple[str, str], dict] = {}
 
     # Stable pair list — updated only when the active dataset set actually changes.
     _active_pairs: reactive.Value[list[tuple[str, str]]] = reactive.value([])
@@ -103,6 +106,7 @@ def perturbation_workspace_server(
             input.col_preference(),
             input.corr_type(),
             filters_repr,
+            tuple(sorted(pending_pairs())),
         )
 
     @reactive.effect
@@ -138,10 +142,15 @@ def perturbation_workspace_server(
         current = _snapshot_current()
         last = _last_run_snapshot()
         has_pending = (last is None) or (current != last)
-        if has_pending:
-            return ui.span()
         btn_id = session.ns("execute_analysis")
-        return ui.tags.style(f"#{btn_id} {{ opacity: 0.35; }}")
+        if has_pending:
+            return ui.div(
+                {"class": "pending-banner"},
+                "Analysis options have changed. Click Execute Analysis to apply.",
+            )
+        return ui.tags.style(
+            f"#{btn_id} {{ opacity: 0.35; pointer-events: none; cursor: not-allowed; }}"
+        )
 
     # --- Execute Analysis task --------------------------------------------------
 
@@ -150,6 +159,7 @@ def perturbation_workspace_server(
     async def _run_analysis(
         pairs: list[tuple[str, str]],
         col_map: dict[str, str],
+        col_preference: str,
         filters: dict,
         method: str,
     ) -> dict:
@@ -158,10 +168,12 @@ def perturbation_workspace_server(
 
         :param pairs: Dataset pairs to compute.
         :param col_map: Mapping from db_name to measurement column name.
+        :param col_preference: User's column preference (``"effect"``, ``"pvalue"``,
+            or ``"log10pval"``).
         :param filters: Active dataset filters at execute time.
         :param method: Correlation method (``"pearson"`` or ``"spearman"``).
-        :returns: Dict with keys ``corr_data``, ``pairs``, ``col_map``, ``method``,
-            and ``filters``.
+        :returns: Dict with keys ``corr_data``, ``pairs``, ``col_map``,
+            ``col_preference``, ``method``, and ``filters``.
 
         """
         empty_cols = [
@@ -177,6 +189,7 @@ def perturbation_workspace_server(
                 "corr_data": {},
                 "pairs": [],
                 "col_map": col_map,
+                "col_preference": col_preference,
                 "method": method,
                 "filters": filters,
             }
@@ -206,6 +219,7 @@ def perturbation_workspace_server(
             "corr_data": corr_data,
             "pairs": pairs,
             "col_map": col_map,
+            "col_preference": col_preference,
             "method": method,
             "filters": filters,
         }
@@ -221,7 +235,7 @@ def perturbation_workspace_server(
         """
         pairs = _active_pairs()
         method = input.corr_type()
-        preference: Literal["effect", "pvalue"] = (
+        preference: Literal["effect", "pvalue", "log10pval"] = (
             input.col_preference()  # type: ignore[assignment]
         )
         filters = dataset_filters()
@@ -229,23 +243,41 @@ def perturbation_workspace_server(
         col_map = {
             db: get_measurement_column(db, preference) for pair in pairs for db in pair
         }
-        _boxes_rendered.set(0)
-        _boxes_expected.set(len(pairs))
         # Scatter counters reset here; _init_selected_reg or _reset_scatter_epoch
         # will set _scatter_expected once the task succeeds.
         _scatter_rendered.set(0)
         _scatter_expected.set(0)
-        _run_analysis.invoke(pairs, col_map, filters, method)
-        # Capture snapshot so _update_pending_indicator dims the button.
+        with reactive.isolate():
+            committed_pairs.set(list(pending_pairs()))
+        _run_analysis.invoke(pairs, col_map, preference, filters, method)
+        # Capture snapshot so execute_pending_style dims the button.
         _last_run_snapshot.set(_snapshot_current())
 
-    # --- Eager regulator initialization and scatter epoch tracking ---------------
+    # --- Helpers ----------------------------------------------------------------
+
+    def _visible_scatter_count(
+        pairs: list[tuple[str, str]], sel: list[tuple[str, str]]
+    ) -> int:
+        """
+        Return the number of active pairs that will have scatter slots emitted, matching
+        the filter logic in ``scatter_container``.
+
+        :param pairs: Active pairs from the task result.
+        :param sel: Currently selected pairs.
+
+        """
+        if not sel:
+            return len(pairs)
+        sel_dbs: set[str] = {db for p in sel for db in p}
+        return sum(1 for p in pairs if set(p) <= sel_dbs)
+
+    # --- Eager regulator and pair initialization --------------------------------
 
     @reactive.effect
     def _init_selected_reg() -> None:
         """
         Set ``selected_reg`` as soon as the task succeeds so scatter plots start
-        computing in parallel with box-plot renders.
+        computing immediately after the matrix renders.
 
         Preserves the current selection if still valid; falls back to the
         alphabetically first entry otherwise. When the selection is already valid,
@@ -280,19 +312,44 @@ def perturbation_workspace_server(
             # Reg is unchanged; manually bump the epoch so the "preparing" message
             # fires and scatter plots start counting from zero for this run.
             with reactive.isolate():
+                sel = committed_pairs()
                 _scatter_epoch.set(_scatter_epoch() + 1)
                 _scatter_rendered.set(0)
-                _scatter_expected.set(len(result["pairs"]))
+                _scatter_expected.set(_visible_scatter_count(result["pairs"], sel))
+
+    @reactive.effect
+    def _init_selected_pairs() -> None:
+        """
+        Seed ``pending_pairs`` and ``committed_pairs`` with the first active pair when
+        the task succeeds and nothing is currently selected, or prune stale pairs that
+        are no longer in the result.
+
+        :trigger _run_analysis.status: fires when the task transitions to success.
+
+        """
+        if _run_analysis.status() != "success":
+            return
+        pairs = _run_analysis.result()["pairs"]
+        pairs_set = set(pairs)
+        with reactive.isolate():
+            cur_pending = pending_pairs()
+            cur_committed = committed_pairs()
+        valid_pending = [p for p in cur_pending if p in pairs_set]
+        valid_committed = [p for p in cur_committed if p in pairs_set]
+        if valid_pending != cur_pending:
+            pending_pairs.set(valid_pending if valid_pending else pairs[:1])
+        if valid_committed != cur_committed:
+            committed_pairs.set(valid_committed if valid_committed else pairs[:1])
 
     @reactive.effect
     def _reset_scatter_epoch() -> None:
         """
-        Bump the scatter render epoch whenever ``selected_reg`` changes.
-
-        Reading ``_run_analysis`` under ``reactive.isolate`` means this effect fires
-        only on ``selected_reg`` changes, not on task-status transitions.
+        Bump the scatter render epoch whenever ``selected_reg`` or ``selected_pairs``
+        changes so the expected count always matches the number of visible scatter
+        slots.
 
         :trigger selected_reg: fires when the user selects a different regulator.
+        :trigger selected_pairs: fires when the matrix selection changes.
 
         """
         reg = selected_reg()
@@ -302,23 +359,19 @@ def perturbation_workspace_server(
             if _run_analysis.status() != "success":
                 return
             result = _run_analysis.result()
+            sel = committed_pairs()
             _scatter_epoch.set(_scatter_epoch() + 1)
             _scatter_rendered.set(0)
-            _scatter_expected.set(len(result["pairs"]))
+            _scatter_expected.set(_visible_scatter_count(result["pairs"], sel))
 
     # --- Status render ----------------------------------------------------------
 
     @render.ui
     def analysis_status() -> ui.Tag:
         """
-        User feedback spanning both phases: task computation and plot rendering.
-
-        Phase 1 (task running): shown while ``_run_analysis`` is off-thread.
-        Phase 2 (rendering): shown after the task succeeds but before all
-        ``render_plotly`` closures have completed.
+        User feedback while the task is running or has errored.
 
         :trigger _run_analysis.status: re-renders when the task state changes.
-        :trigger _boxes_rendered: re-renders as each box plot finishes building.
 
         """
         status = _run_analysis.status()
@@ -335,45 +388,40 @@ def perturbation_workspace_server(
                 {"class": "empty-state"},
                 ui.p(f"Error: {_run_analysis.error()}"),
             )
-        if status == "success" and _boxes_rendered() < _boxes_expected():
-            return ui.div(
-                {"class": "empty-state"},
-                ui.p("Building visualizations, please wait..."),
-            )
         return ui.span()
 
     # --- Box plot helpers -------------------------------------------------------
 
-    def _highlight_one(
-        fig: go.FigureWidget,
-        pair: tuple[str, str],
-        reg: str,
-    ) -> None:
+    def _highlight_one(pair: tuple[str, str], reg: str) -> None:
         """
-        Mutate trace 1 of ``fig`` in-place to highlight ``reg``'s points.
+        Mutate trace 1 of the box FigureWidget for ``pair`` in-place to highlight
+        ``reg``'s point.
 
         Sends a ``_py2js_restyle`` delta via ``batch_update``; the box trace is
         never touched, so no full figure re-render occurs.
 
-        :param fig: The FigureWidget to update.
-        :param pair: ``(db_a, db_b)`` key into ``_box_data``.
+        :param pair: Dataset pair key into ``_pair_box_widgets`` / ``_pair_box_data``.
         :param reg: Regulator locus tag to highlight, or ``""`` to clear.
 
         """
-        data = _box_data.get(pair)
-        if data is None or not reg:
-            sel_x: list = []
-            sel_y: list = []
-            sel_hover: list = []
-        else:
-            all_x = data["all_x"]
-            all_y = data["all_y"]
-            all_tags = data["all_tags"]
-            all_hover = data["all_hover"]
-            idx = [i for i, t in enumerate(all_tags) if t == reg]
-            sel_x = [all_x[i] for i in idx]
-            sel_y = [all_y[i] for i in idx]
-            sel_hover = [all_hover[i] for i in idx]
+        fig = _pair_box_widgets.get(pair)
+        data = _pair_box_data.get(pair)
+        if fig is None:
+            return
+        if not reg or data is None:
+            with fig.batch_update():
+                fig.data[1].x = []
+                fig.data[1].y = []
+                fig.data[1].hovertext = []
+            return
+        all_x = data["all_x"]
+        all_y = data["all_y"]
+        all_tags = data["all_tags"]
+        all_hover = data["all_hover"]
+        idx = [i for i, t in enumerate(all_tags) if t == reg]
+        sel_x = [all_x[i] for i in idx]
+        sel_y = [all_y[i] for i in idx]
+        sel_hover = [all_hover[i] for i in idx]
         with fig.batch_update():
             fig.data[1].x = sel_x
             fig.data[1].y = sel_y
@@ -384,17 +432,50 @@ def perturbation_workspace_server(
         """
         In-place update of the highlight trace in every live box FigureWidget.
 
-        Never calls any render function; only the delta for trace 1 is sent to the
-        client.
+        Never calls any render function; only the delta for trace 1 is sent to each
+        widget.
 
         :trigger selected_reg: fires when the user clicks a point or picks from
         dropdown.
 
         """
         reg = selected_reg()
-        for pair, fig in _box_widgets.items():
+        for pair, fig in _pair_box_widgets.items():
             if fig is not None:
-                _highlight_one(fig, pair, reg)
+                _highlight_one(pair, reg)
+
+    def _apply_log10p_transform(
+        series: pd.Series,
+        db_name: str,
+        col: str,
+        display: str,
+    ) -> tuple[pd.Series, str]:
+        """
+        Apply the -log10 transform appropriate for the dataset's p-value source.
+
+        Returns the transformed series and an axis label string.
+
+        :param series: Raw column values from the query.
+        :param db_name: Dataset name (used to look up the source type).
+        :param col: Column name (used in the fallback axis label).
+        :param display: Dataset display name for the axis label.
+
+        """
+        cap = -np.log10(LOG10P_FLOOR)  # = 10
+        source = get_log10p_source(db_name)
+        if source == "neglog10p":
+            transformed = series.clip(upper=cap)
+            label = f"{display}: -log10(p)"
+        elif source == "log10p":
+            transformed = (-series).clip(upper=cap)
+            label = f"{display}: -log10(p)"
+        elif source == "pval":
+            transformed = -np.log10(series.clip(lower=LOG10P_FLOOR))
+            label = f"{display}: -log10(p)"
+        else:
+            transformed = series
+            label = f"{display}: {col}"
+        return transformed, label
 
     # --- All possible pairs (fixed at init) ------------------------------------
 
@@ -409,14 +490,20 @@ def perturbation_workspace_server(
         )
     )
 
-    # --- Box plot container ----------------------------------------------------
+    # --- Correlation matrix ----------------------------------------------------
 
+    @output(suspend_when_hidden=False)
     @render.ui
-    def box_plot_container() -> ui.Tag:
+    def corr_matrix_container() -> ui.Tag:
         """
-        Flex container of one ``output_widget`` slot per active pair.
+        N×N correlation matrix table showing median r per dataset pair.
+
+        Calls :func:`~tfbpshiny.utils.correlation_matrix.build_correlation_matrix_ui`
+        to produce the table tag.  Re-renders when the task result changes or when
+        ``selected_pair`` changes (to move the active-cell highlight).
 
         :trigger _run_analysis.status: re-renders when the task completes.
+        :trigger selected_pair: re-renders to update the active-cell highlight.
 
         """
         status = _run_analysis.status()
@@ -442,63 +529,135 @@ def perturbation_workspace_server(
                 ),
             )
 
-        slots = [
-            ui.div(
-                output_widget(f"box_{db_a}__{db_b}"),
-                style="flex: 0 0 auto;",
+        with reactive.isolate():
+            active_datasets = active_perturbation_datasets()
+
+        return build_correlation_matrix_ui(
+            all_possible_pairs=_all_possible_pairs,
+            active_pairs=pairs,
+            active_datasets=sorted(active_datasets),
+            corr_data=result["corr_data"],
+            display_names=display_names,
+            selected_pairs=set(pending_pairs()),
+        )
+
+    # --- Cell click factory — pre-register one toggle effect per possible pair -
+
+    def _make_cell_click_effect(db_a: str, db_b: str) -> None:
+        """
+        Pre-register the reactive effect that toggles ``(db_a, db_b)`` in
+        ``selected_pairs`` when the corresponding matrix cell button is clicked.
+
+        :param db_a: First dataset name (canonical order from ``_all_possible_pairs``).
+        :param db_b: Second dataset name.
+
+        """
+        btn_id = f"corrpair_{db_a}__{db_b}"
+        pair = (db_a, db_b)
+
+        @reactive.effect
+        @reactive.event(input[btn_id])
+        def _on_cell_click() -> None:
+            with reactive.isolate():
+                cur = list(pending_pairs())
+            if pair in cur:
+                cur.remove(pair)
+            else:
+                cur.append(pair)
+            pending_pairs.set(cur)
+
+    for _db_a, _db_b in _all_possible_pairs:
+        _make_cell_click_effect(_db_a, _db_b)
+
+    # --- Pair distribution box plots -------------------------------------------
+
+    @output(suspend_when_hidden=False)
+    @render.ui
+    def pair_box_status() -> ui.Tag:
+        """
+        Shown when the task has succeeded but no pairs are selected yet.
+
+        :trigger _run_analysis.status: re-renders when the task completes. :trigger
+        selected_pairs: re-renders when the selection changes.
+
+        """
+        if _run_analysis.status() != "success":
+            return ui.span()
+        if not committed_pairs():
+            return ui.div(
+                {"class": "empty-state"},
+                ui.p(
+                    "Select cells in the Correlation Matrix and click Execute Analysis "
+                    "to view their distributions."
+                ),
             )
+        return ui.span()
+
+    @output(suspend_when_hidden=False)
+    @render.ui
+    def pair_box_container() -> ui.Tag:
+        """
+        Flex container of one ``output_widget`` slot per selected pair.
+
+        :trigger selected_pairs: re-renders when the selection changes. :trigger
+        _run_analysis.status: re-renders on task completion.
+
+        """
+        if _run_analysis.status() != "success":
+            return ui.span()
+        pairs = committed_pairs()
+        if not pairs:
+            return ui.span()
+        result = _run_analysis.result()
+        active_pair_set = set(result["pairs"])
+        slots = [
+            ui.div(output_widget(f"pair_box_{db_a}__{db_b}"), style="flex: 0 0 auto;")
             for db_a, db_b in _all_possible_pairs
-            if (db_a, db_b) in pairs
+            if (db_a, db_b) in active_pair_set and (db_a, db_b) in set(pairs)
         ]
+        if not slots:
+            return ui.span()
         return ui.div(
             *slots,
             style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start;",
         )
 
-    # --- Per-pair box plot renders ---------------------------------------------
-
-    def _make_box_render(db_a: str, db_b: str) -> None:
+    def _make_pair_box_render(db_a: str, db_b: str) -> None:
         """
         Register a ``render_plotly`` for one dataset pair's box plot.
-
-        The returned FigureWidget is stored in ``_box_widgets`` so
-        ``_update_all_highlights`` can mutate it in-place when the selected
-        regulator changes without triggering a re-render.
 
         :param db_a: First dataset name.
         :param db_b: Second dataset name.
 
         """
+        pair = (db_a, db_b)
 
-        @output(id=f"box_{db_a}__{db_b}")
+        @output(id=f"pair_box_{db_a}__{db_b}")
         @render_plotly
-        def _box_plot() -> go.FigureWidget:
+        def _pair_box() -> go.FigureWidget:
             """
-            Box + jittered-points plot of per-regulator correlations for one pair.
+            Box + jittered-points for one selected pair's per-regulator correlations.
 
-            Returns an empty FigureWidget when the task has not succeeded or this
-            pair is not in the current result. On success, stores references in
-            ``_box_widgets`` and ``_box_data`` for in-place highlight updates.
-
-            :trigger _run_analysis.status: re-renders when the task completes.
+            :trigger selected_pairs: re-renders when this pair enters the selection.
+            :trigger _run_analysis.status: re-renders on task completion.
 
             """
-
-            def _count_rendered() -> None:
-                """Increment the render counter without creating a reactive dep."""
-                with reactive.isolate():
-                    _boxes_rendered.set(_boxes_rendered() + 1)
-
             if _run_analysis.status() != "success":
+                _pair_box_widgets[pair] = None
+                return go.FigureWidget()
+
+            with reactive.isolate():
+                sel = committed_pairs()
+            if pair not in sel:
+                _pair_box_widgets[pair] = None
                 return go.FigureWidget()
 
             result = _run_analysis.result()
-            if (db_a, db_b) not in result["pairs"]:
-                _box_widgets[(db_a, db_b)] = None
-                _count_rendered()
+            if pair not in result["pairs"]:
+                _pair_box_widgets[pair] = None
                 return go.FigureWidget()
 
-            df = result["corr_data"].get((db_a, db_b), pd.DataFrame())
+            df = result["corr_data"].get(pair, pd.DataFrame())
             method = result["method"]
             label_a = display_names.get(db_a, db_a)
             label_b = display_names.get(db_b, db_b)
@@ -536,7 +695,6 @@ def perturbation_workspace_server(
                     showlegend=False,
                 )
             )
-            # Trace 1: highlight overlay — populated by _highlight_one in-place.
             fig.add_trace(
                 go.Scatter(
                     x=[],
@@ -556,45 +714,157 @@ def perturbation_workspace_server(
                 yaxis=dict(title=f"{method.capitalize()} r", range=[-1, 1]),
                 showlegend=False,
                 margin=dict(l=50, r=20, t=100, b=60),
-                width=380,
-                height=420,
+                width=480,
+                height=460,
             )
 
-            _box_data[(db_a, db_b)] = {
+            _pair_box_data[pair] = {
                 "all_x": all_x,
                 "all_y": all_y,
                 "all_tags": all_tags,
                 "all_hover": all_hover,
             }
-            _box_widgets[(db_a, db_b)] = fig
+            _pair_box_widgets[pair] = fig
 
-            # Register click handler: sets selected_reg reactive value.
             def _on_click(trace: Any, points: Any, state: Any) -> None:
                 if not points.point_inds:
                     return
-                reg = all_tags[points.point_inds[0]]
-                selected_reg.set(reg)
+                selected_reg.set(all_tags[points.point_inds[0]])
 
             fig.data[0].on_click(_on_click)
 
-            # Pre-populate highlight for any already-selected regulator.
             with reactive.isolate():
                 cur = selected_reg()
             if cur:
-                _highlight_one(fig, (db_a, db_b), cur)
+                _highlight_one(pair, cur)
 
-            _count_rendered()
             return fig
 
     for _db_a, _db_b in _all_possible_pairs:
-        _make_box_render(_db_a, _db_b)
+        _make_pair_box_render(_db_a, _db_b)
 
-    # --- Regulator selector and scatter tab status ----------------------------
+    # --- Regulator selectors (one per tab, linked via selected_reg) ------------
 
+    def _reg_selector_choices() -> dict[str, str] | None:
+        """
+        Build the sorted choices dict for the regulator selectize inputs.
+
+        Returns ``None`` when the task has not succeeded or no regulators exist.
+
+        """
+        if _run_analysis.status() != "success":
+            return None
+        all_regs: set[str] = set()
+        for df in _run_analysis.result()["corr_data"].values():
+            if not df.empty:
+                all_regs |= set(df["regulator_locus_tag"].dropna().unique())
+        if not all_regs:
+            return None
+        choices = {r: sym_map.get(r, r) for r in all_regs}
+        return dict(sorted(choices.items(), key=lambda kv: kv[1].lower()))
+
+    def _reg_selector_tag(input_id: str) -> ui.Tag:
+        """
+        Render a regulator selectize input with the given ``input_id``.
+
+        Returns ``ui.span()`` when choices are unavailable.
+
+        :param input_id: Shiny input ID for this selectize instance.
+
+        """
+        choices = _reg_selector_choices()
+        if choices is None:
+            return ui.span()
+        with reactive.isolate():
+            cur = selected_reg()
+        default = cur if cur in choices else next(iter(choices), "")
+        if not default:
+            return ui.span()
+        return ui.input_selectize(
+            input_id, "Regulator", choices=choices, selected=default
+        )
+
+    @output(suspend_when_hidden=False)
+    @render.ui
+    def regulator_selector_box() -> ui.Tag:
+        """
+        Regulator dropdown on the Pair Distribution tab.
+
+        :trigger _run_analysis.status: re-renders when the task completes. :trigger
+        selected_reg: re-renders to reflect the current selection.
+
+        """
+        return _reg_selector_tag("selected_regulator_box")
+
+    @output(suspend_when_hidden=False)
+    @render.ui
+    def regulator_selector_scatter() -> ui.Tag:
+        """
+        Regulator dropdown on the Gene Scatter tab.
+
+        :trigger _run_analysis.status: re-renders when the task completes. :trigger
+        selected_reg: re-renders to reflect the current selection.
+
+        """
+        return _reg_selector_tag("selected_regulator_scatter")
+
+    @reactive.effect
+    @reactive.event(input.selected_regulator_box)
+    def _sync_box_dropdown() -> None:
+        """
+        Propagate the Pair Distribution dropdown selection to ``selected_reg``.
+
+        :trigger input.selected_regulator_box: fires when the user picks a regulator.
+
+        """
+        try:
+            val = str(input.selected_regulator_box())
+        except Exception:
+            return
+        with reactive.isolate():
+            if val != selected_reg():
+                selected_reg.set(val)
+
+    @reactive.effect
+    @reactive.event(input.selected_regulator_scatter)
+    def _sync_scatter_dropdown() -> None:
+        """
+        Propagate the Gene Scatter dropdown selection to ``selected_reg``.
+
+        :trigger input.selected_regulator_scatter: fires when the user picks a
+        regulator.
+
+        """
+        try:
+            val = str(input.selected_regulator_scatter())
+        except Exception:
+            return
+        with reactive.isolate():
+            if val != selected_reg():
+                selected_reg.set(val)
+
+    @reactive.effect
+    def _sync_reg_to_dropdowns() -> None:
+        """
+        Push ``selected_reg`` changes back into both selectize inputs so they stay in
+        sync regardless of which one (or a box-plot click) triggered the change.
+
+        :trigger selected_reg: fires whenever the selected regulator changes.
+
+        """
+        reg = selected_reg()
+        if not reg:
+            return
+        ui.update_selectize("selected_regulator_box", selected=reg, session=session)
+        ui.update_selectize("selected_regulator_scatter", selected=reg, session=session)
+
+    # --- Scatter tab status and plots ------------------------------------------
+
+    @output(suspend_when_hidden=False)
     @render.ui
     def scatter_status() -> ui.Tag:
         """
-        Status message on the Scatter tab while plots are being built.
+        Status message on the Gene Scatter tab while plots are being built.
 
         :trigger _scatter_rendered: re-renders as each scatter plot finishes. :trigger
         _scatter_expected: re-renders when expected count is set.
@@ -609,74 +879,15 @@ def perturbation_workspace_server(
             )
         return ui.span()
 
-    @render.ui
-    def regulator_selector() -> ui.Tag:
-        """
-        Dropdown of regulators present in at least one pair's correlation data.
-
-        Initial selection is managed by ``_init_selected_reg``; this render only
-        reflects the current value.
-
-        :trigger _run_analysis.status: re-renders when the task completes.
-        :trigger selected_reg: re-renders to reflect the current selection.
-
-        """
-        if _run_analysis.status() != "success":
-            return ui.span()
-
-        result = _run_analysis.result()
-        corr_data: dict[tuple[str, str], pd.DataFrame] = result["corr_data"]
-
-        all_regs: set[str] = set()
-        for df in corr_data.values():
-            if not df.empty:
-                all_regs |= set(df["regulator_locus_tag"].dropna().unique())
-
-        if not all_regs:
-            return ui.span()
-
-        choices = {r: sym_map.get(r, r) for r in all_regs}
-        choices = dict(sorted(choices.items(), key=lambda kv: kv[1].lower()))
-
-        with reactive.isolate():
-            cur = selected_reg()
-        default = cur if cur in choices else next(iter(choices), "")
-        if not default:
-            return ui.span()
-
-        return ui.input_selectize(
-            "selected_regulator_dropdown",
-            "Regulator",
-            choices=choices,
-            selected=default,
-        )
-
-    @reactive.effect
-    @reactive.event(input.selected_regulator_dropdown)
-    def _sync_dropdown_to_reg() -> None:
-        """
-        Propagate dropdown selection to ``selected_reg``.
-
-        :trigger input.selected_regulator_dropdown: fires when the user picks a
-        regulator.
-
-        """
-        try:
-            val = str(input.selected_regulator_dropdown())
-        except Exception:
-            return
-        with reactive.isolate():
-            if val != selected_reg():
-                selected_reg.set(val)
-
-    # --- Scatter plots ---------------------------------------------------------
-
+    @output(suspend_when_hidden=False)
     @render.ui
     def scatter_container() -> ui.Tag:
         """
-        Flex container with one output slot per currently active pair.
+        Flex container with one slot per active pair that shares a dataset with the
+        currently selected pair.  When no pair is selected all active pairs are shown.
 
-        :trigger _run_analysis.status: re-renders when the task completes.
+        :trigger _run_analysis.status: re-renders when the task completes. :trigger
+        selected_pair: re-renders when the selected pair changes.
 
         """
         if _run_analysis.status() != "success":
@@ -687,10 +898,21 @@ def perturbation_workspace_server(
         if not pairs:
             return ui.span()
 
+        sel = committed_pairs()
+        if sel:
+            sel_dbs: set[str] = {db for p in sel for db in p}
+            visible = [p for p in pairs if set(p) <= sel_dbs]
+        else:
+            visible = pairs
+
+        if not visible:
+            return ui.span()
+
+        visible_set = set(visible)
         slots = [
             ui.output_ui(f"scatter_{db_a}__{db_b}")
             for db_a, db_b in _all_possible_pairs
-            if (db_a, db_b) in pairs
+            if (db_a, db_b) in visible_set
         ]
         return ui.div(
             ui.output_ui("scatter_missing_note"),
@@ -703,13 +925,16 @@ def perturbation_workspace_server(
             ),
         )
 
+    @output(suspend_when_hidden=False)
     @render.ui
     def scatter_missing_note() -> ui.Tag:
         """
-        Warning listing datasets where the selected regulator was not found.
+        Warning listing datasets where the selected regulator was not found, scoped to
+        the visible pairs only.
 
         :trigger selected_reg: re-renders when the regulator changes. :trigger
-        _run_analysis.status: re-renders when the task completes.
+        _run_analysis.status: re-renders when the task completes. :trigger
+        committed_pairs: re-renders when the pair selection changes.
 
         """
         if _run_analysis.status() != "success":
@@ -719,12 +944,19 @@ def perturbation_workspace_server(
             return ui.span()
 
         result = _run_analysis.result()
-        corr_data = result["corr_data"]
         pairs: list[tuple[str, str]] = result["pairs"]
+        corr_data = result["corr_data"]
+
+        sel = committed_pairs()
+        if sel:
+            sel_dbs: set[str] = {db for p in sel for db in p}
+            visible = [p for p in pairs if set(p) <= sel_dbs]
+        else:
+            visible = pairs
 
         failed: set[str] = set()
         succeeded: set[str] = set()
-        for db_a, db_b in pairs:
+        for db_a, db_b in visible:
             df = corr_data.get((db_a, db_b))
             has_reg = (
                 df is not None
@@ -830,15 +1062,31 @@ def perturbation_workspace_server(
                 _count_scatter()
                 return ui.span()
 
+            col_preference = result.get("col_preference", "effect")
             la = display_names.get(db_a, db_a)
             lb = display_names.get(db_b, db_b)
-            r = merged["_val_a"].corr(merged["_val_b"])
+
+            val_a = merged["_val_a"].copy()
+            val_b = merged["_val_b"].copy()
+            if col_preference == "log10pval" and method != "spearman":
+                val_a, axis_label_a = _apply_log10p_transform(val_a, db_a, col_a, la)
+                val_b, axis_label_b = _apply_log10p_transform(val_b, db_b, col_b, lb)
+            elif col_preference == "log10pval" and method == "spearman":
+                # Spearman query returns ranks (1 = most significant); the
+                # -log10 transform does not apply to rank integers.
+                axis_label_a = f"{la}: rank by p-value"
+                axis_label_b = f"{lb}: rank by p-value"
+            else:
+                axis_label_a = f"{la}: {col_a}"
+                axis_label_b = f"{lb}: {col_b}"
+
+            r = val_a.corr(val_b)
 
             fig = go.Figure()
             fig.add_trace(
                 go.Scatter(
-                    x=merged["_val_a"],
-                    y=merged["_val_b"],
+                    x=val_a,
+                    y=val_b,
                     mode="markers",
                     marker=dict(size=4, opacity=0.6, color="#4A90D9"),
                     text=merged["target_symbol"],
@@ -859,8 +1107,8 @@ def perturbation_workspace_server(
             )
             fig.update_layout(
                 title=dict(text=f"{la}<br>vs<br>{lb}", x=0.5, xanchor="center"),
-                xaxis_title=f"{la}: {col_a}",
-                yaxis_title=f"{lb}: {col_b}",
+                xaxis_title=axis_label_a,
+                yaxis_title=axis_label_b,
                 margin=dict(l=50, r=20, t=100, b=50),
                 width=400,
                 height=400,

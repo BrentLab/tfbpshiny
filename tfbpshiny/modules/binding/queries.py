@@ -7,50 +7,86 @@ from typing import Any, Literal
 import pandas as pd
 from labretriever import VirtualDB
 
-# Map of db_name -> (effect_col, pvalue_col).
-# pvalue_col is empty string for datasets that have no pvalue column.
+# Map of db_name -> (effect_col, pvalue_col, log10p_col, neglog10p_col).
+# Empty string means the column does not exist in that dataset.
+# log10p_col: precomputed log10(pval) column (positive, not yet negated).
+# neglog10p_col: precomputed -log10(pval) column (already negated).
 # TODO: this information should be moved to virtualdb config.
-# it will mean that there will need t be a way to differentiate between
-# metadata and full data fields
-# Better: expose the role from the datacard through vdb. for quantitative measure
-# fields, allow user to specify which field to use for what
-# use vdb config to set defaults
-DATASET_COLUMNS: dict[str, tuple[str, str]] = {
-    "callingcards": ("callingcards_enrichment", "poisson_pval"),
-    "harbison": ("effect", "pvalue"),
-    "rossi": ("enrichment", "poisson_pval"),
-    "chec_m2025": ("enrichment", "poisson_pval"),
+DATASET_COLUMNS: dict[str, tuple[str, str, str, str]] = {
+    "callingcards": ("callingcards_enrichment", "poisson_pval", "", ""),
+    "harbison": ("effect", "pvalue", "", ""),
+    "rossi": ("enrichment", "poisson_pval", "log_poisson_pval", ""),
+    "chec_m2025": ("enrichment", "poisson_pval", "log_poisson_pval", ""),
 }
+
+#: P-values below this floor are capped before -log10 is applied.
+LOG10P_FLOOR = 1e-10
 
 
 def get_measurement_column(
-    db_name: str, which_measurement_field: Literal["effect", "pvalue"]
+    db_name: str, which_measurement_field: Literal["effect", "pvalue", "log10pval"]
 ) -> str:
     """
-    The user can choose to use either the "effect" column or "pvalue" column for their
-    analysis. the effect/pvalue are mapped to db_name in BINDING_DATASET_COLUMNS. given
-    a db_name and.
+    Return the column to use for a dataset given the user's preference.
 
-    If ``which_measurement_field`` is ``"pvalue"`` but the dataset has no pvalue column,
-    falls back to the effect column.
+    For ``"log10pval"``, returns the most direct available column:
+    ``neglog10p_col`` > ``log10p_col`` > ``pvalue_col``. Falls back to the
+    effect column when no p-value variant exists.
+
+    For ``"pvalue"``, returns ``pvalue_col`` when non-empty, else ``effect_col``.
 
     :param db_name: Dataset name (key in ``DATASET_COLUMNS``).
-    :param which_measurement_field: ``"effect"`` or ``"pvalue"``.
+    :param which_measurement_field: ``"effect"``, ``"pvalue"``, or ``"log10pval"``.
     :return: Column name to use in queries.
 
     :raises ValueError: If ``which_measurement_field`` is invalid.
-    :raises KeyError: If ``db_name`` is not in ``DATASET_COLUMNS``
+    :raises KeyError: If ``db_name`` is not in ``DATASET_COLUMNS``.
 
     """
-    if which_measurement_field not in ("effect", "pvalue"):
+    if which_measurement_field not in ("effect", "pvalue", "log10pval"):
         raise ValueError(f"Invalid measurement field: {which_measurement_field}")
     try:
-        effect_col, pvalue_col = DATASET_COLUMNS[db_name]
+        effect_col, pvalue_col, log10p_col, neglog10p_col = DATASET_COLUMNS[db_name]
     except KeyError as exc:
         raise KeyError(f"Unknown dataset name: {db_name}") from exc
-    if which_measurement_field == "pvalue" and pvalue_col:
-        return pvalue_col
+    if which_measurement_field == "log10pval":
+        return neglog10p_col or log10p_col or pvalue_col or effect_col
+    if which_measurement_field == "pvalue":
+        return pvalue_col or effect_col
     return effect_col
+
+
+def get_log10p_source(
+    db_name: str,
+) -> Literal["neglog10p", "log10p", "pval", "none"]:
+    """
+    Return which source column provides the -log10(pval) value for a dataset.
+
+    The caller uses this to determine what Python-side transform is needed after
+    the query returns:
+
+    - ``"neglog10p"``: column is already ``-log10(pval)`` — apply upper cap only.
+    - ``"log10p"``: negate the column, then apply upper cap.
+    - ``"pval"``: apply ``-log10(clip(lower=LOG10P_FLOOR))``.
+    - ``"none"``: no p-value variant exists; -log10(pval) is unavailable.
+
+    :param db_name: Dataset name (key in ``DATASET_COLUMNS``).
+    :return: Source indicator string.
+
+    :raises KeyError: If ``db_name`` is not in ``DATASET_COLUMNS``.
+
+    """
+    try:
+        _, pvalue_col, log10p_col, neglog10p_col = DATASET_COLUMNS[db_name]
+    except KeyError as exc:
+        raise KeyError(f"Unknown dataset name: {db_name}") from exc
+    if neglog10p_col:
+        return "neglog10p"
+    if log10p_col:
+        return "log10p"
+    if pvalue_col:
+        return "pval"
+    return "none"
 
 
 def binding_data_query(
@@ -472,7 +508,9 @@ def regulator_scatter_sql(
 
 __all__ = [
     "DATASET_COLUMNS",
+    "LOG10P_FLOOR",
     "get_measurement_column",
+    "get_log10p_source",
     "binding_data_query",
     "_corr_pair_sql_impl",
     "corr_pair_sql",

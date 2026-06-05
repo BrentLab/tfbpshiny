@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from shiny import module, ui
-from shinywidgets import output_widget  # noqa: F401 (used in server-rendered slots)
 
 from tfbpshiny.components import sidebar_label
 
@@ -24,7 +23,21 @@ def perturbation_ui() -> ui.Tag:
             ui.input_radio_buttons(
                 "col_preference",
                 label=None,
-                choices={"effect": "Effect", "pvalue": "P-value"},
+                choices={
+                    "log10pval": ui.tooltip(
+                        ui.span("-log10(p-value)"),
+                        "Negative log10 of the p-value. "
+                        "Values below 1e-10 are capped at 10.",
+                    ),
+                    "effect": ui.tooltip(
+                        ui.span("Effect"),
+                        "Raw effect size (e.g. log2 fold-change).",
+                    ),
+                    "pvalue": ui.tooltip(
+                        ui.span("P-value"),
+                        "Raw p-value. Smaller is more significant.",
+                    ),
+                },
                 selected="effect",
                 inline=True,
             ),
@@ -49,26 +62,35 @@ def perturbation_ui() -> ui.Tag:
                 "regulators."
             ),
             ui.p(
-                "The Distributions tab shows one box plot per dataset pair. "
-                "Each point represents the correlation for a single regulator. "
-                "Click a point to select that regulator and highlight it across "
-                "all plots."
+                "The Correlation Matrix tab shows median correlation for each "
+                "dataset pair. Click a cell to select that pair."
             ),
             ui.p(
-                "The Scatter tab shows per-target scores for the selected regulator "
-                "in each pair. Use the dropdown to change the active regulator."
+                "The Pair Distribution tab shows the per-regulator correlation "
+                "distribution for the selected pair. Click a point to select a "
+                "regulator."
+            ),
+            ui.p(
+                "The Gene Scatter tab shows per-target scores for the selected "
+                "regulator. Use the dropdown to change the active regulator."
             ),
         ),
         ui.output_ui("analysis_status"),
         ui.navset_tab(
             ui.nav_panel(
-                "Distributions",
-                ui.output_ui("box_plot_container"),
+                "Correlation Matrix",
+                ui.output_ui("corr_matrix_container"),
             ),
             ui.nav_panel(
-                "Scatter",
+                "Pair Distribution",
+                ui.output_ui("regulator_selector_box"),
+                ui.output_ui("pair_box_status"),
+                ui.output_ui("pair_box_container"),
+            ),
+            ui.nav_panel(
+                "Gene Scatter",
+                ui.output_ui("regulator_selector_scatter"),
                 ui.output_ui("scatter_status"),
-                ui.output_ui("regulator_selector"),
                 ui.output_ui("scatter_container"),
             ),
             id="perturbation_view_tabs",

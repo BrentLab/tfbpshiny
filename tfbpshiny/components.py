@@ -369,7 +369,8 @@ def matrix_cell(
     :param kind: One of ``"empty"``, ``"diagonal"``, or ``"interactive"``.
     :param button: A ``matrix_cell_button`` element. Required for ``"diagonal"``
         and ``"interactive"``; ignored for ``"empty"``.
-    :param active: Marks the committed regulator filter pair.
+    :param active: Marks the selected item (e.g. committed regulator filter pair
+        or currently selected correlation pair).
     :param pending: Marks a queued regulator filter pair not yet committed.
 
     """

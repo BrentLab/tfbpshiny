@@ -59,7 +59,6 @@ PRIMARY_DATASETS: frozenset[str] = frozenset(
 # — datasets with no preset conditions are listed here but not in the filter dict.
 DEFAULT_ACTIVE_DATASETS: frozenset[str] = frozenset(
     {
-        "harbison",
         "rossi",
         "chec_m2025",
         "hackett",
@@ -97,6 +96,23 @@ FIELD_TYPE_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
     ("hackett", "time"): ("categorical", "numeric"),
     ("", "temperature_celsius"): ("categorical", "string"),
 }
+
+# Type alias for one responsiveness preset used by the Comparison module.
+# Keys are db_names; use "*" as a fallback for datasets not explicitly listed.
+# Values are (effect_threshold, pvalue_threshold) tuples.
+ResponsivenessPreset = dict[str, tuple[float, float]]
+
+# Named presets for per-dataset responsiveness definitions in the Comparison module.
+# Add or modify entries here to tune what counts as a "responsive" target.
+DEFAULT_RESPONSIVENESS_PRESETS: dict[str, ResponsivenessPreset] = {
+    "Standard": {
+        "*": (0.0, 0.05),
+    },
+}
+
+# The preset that the Comparison module applies. Must be a key in
+# DEFAULT_RESPONSIVENESS_PRESETS.
+DEFAULT_RESPONSIVENESS_PRESET: str = "Standard"
 
 
 _REGULATOR_DISPLAY_NAME_TABLE = "regulator_display_names"
@@ -299,6 +315,9 @@ __all__ = [
     "PRIMARY_DATASETS",
     "DEFAULT_ACTIVE_DATASETS",
     "DEFAULT_DATASET_FILTERS",
+    "ResponsivenessPreset",
+    "DEFAULT_RESPONSIVENESS_PRESETS",
+    "DEFAULT_RESPONSIVENESS_PRESET",
     "AppDatasets",
     "check_local_cache",
     "get_regulator_display_name",
