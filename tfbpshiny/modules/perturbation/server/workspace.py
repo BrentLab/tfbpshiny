@@ -26,7 +26,7 @@ from tfbpshiny.modules.perturbation.queries import (
     regulator_scatter_sql,
 )
 from tfbpshiny.utils.correlation_matrix import build_correlation_matrix_ui
-from tfbpshiny.utils.perf import reset_render_counts
+from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.vdb_init import AppDatasets, get_regulator_display_name
 
 
@@ -194,10 +194,14 @@ def perturbation_workspace_server(
                 "filters": filters,
             }
 
+        logger.debug(
+            "perturbation _run_analysis: %d pairs, method=%s", len(pairs), method
+        )
         try:
             combined = await asyncio.to_thread(
                 corr_all_pairs_sql, vdb, pairs, col_map, filters, method
             )
+            logger.debug("perturbation corr query done: %d rows", len(combined))
         except Exception as exc:
             logger.error("corr_all_pairs_sql failed: %s", exc, exc_info=True)
             combined = pd.DataFrame(columns=empty_cols + ["pair_key"])
@@ -233,25 +237,25 @@ def perturbation_workspace_server(
         :trigger input.execute_analysis: fires when Execute Analysis is clicked.
 
         """
-        pairs = _active_pairs()
-        method = input.corr_type()
-        preference: Literal["effect", "pvalue", "log10pval"] = (
-            input.col_preference()  # type: ignore[assignment]
-        )
-        filters = dataset_filters()
+        with perf(session.id, "perturbation.workspace", "_on_execute"):
+            pairs = _active_pairs()
+            method = input.corr_type()
+            preference: Literal["effect", "pvalue", "log10pval"] = (
+                input.col_preference()  # type: ignore[assignment]
+            )
+            filters = dataset_filters()
 
-        col_map = {
-            db: get_measurement_column(db, preference) for pair in pairs for db in pair
-        }
-        # Scatter counters reset here; _init_selected_reg or _reset_scatter_epoch
-        # will set _scatter_expected once the task succeeds.
-        _scatter_rendered.set(0)
-        _scatter_expected.set(0)
-        with reactive.isolate():
-            committed_pairs.set(list(pending_pairs()))
-        _run_analysis.invoke(pairs, col_map, preference, filters, method)
-        # Capture snapshot so execute_pending_style dims the button.
-        _last_run_snapshot.set(_snapshot_current())
+            col_map = {
+                db: get_measurement_column(db, preference)
+                for pair in pairs
+                for db in pair
+            }
+            _scatter_rendered.set(0)
+            _scatter_expected.set(0)
+            with reactive.isolate():
+                committed_pairs.set(list(pending_pairs()))
+            _run_analysis.invoke(pairs, col_map, preference, filters, method)
+            _last_run_snapshot.set(_snapshot_current())
 
     # --- Helpers ----------------------------------------------------------------
 
@@ -506,40 +510,41 @@ def perturbation_workspace_server(
         :trigger selected_pair: re-renders to update the active-cell highlight.
 
         """
-        status = _run_analysis.status()
-        if status != "success":
-            if status == "initial":
+        with perf(session.id, "perturbation.workspace", "corr_matrix_container"):
+            status = _run_analysis.status()
+            if status != "success":
+                if status == "initial":
+                    return ui.div(
+                        {"class": "empty-state"},
+                        ui.p(
+                            "Click Execute Analysis to compute pairwise perturbation"
+                            " correlations."
+                        ),
+                    )
+                return ui.span()
+
+            result = _run_analysis.result()
+            pairs: list[tuple[str, str]] = result["pairs"]
+            if not pairs:
                 return ui.div(
                     {"class": "empty-state"},
                     ui.p(
-                        "Click Execute Analysis to compute pairwise perturbation"
-                        " correlations."
+                        "No active perturbation dataset pairs. Select at least two"
+                        " datasets on the Select Datasets page."
                     ),
                 )
-            return ui.span()
 
-        result = _run_analysis.result()
-        pairs: list[tuple[str, str]] = result["pairs"]
-        if not pairs:
-            return ui.div(
-                {"class": "empty-state"},
-                ui.p(
-                    "No active perturbation dataset pairs. Select at least two"
-                    " datasets on the Select Datasets page."
-                ),
+            with reactive.isolate():
+                active_datasets = active_perturbation_datasets()
+
+            return build_correlation_matrix_ui(
+                all_possible_pairs=_all_possible_pairs,
+                active_pairs=pairs,
+                active_datasets=sorted(active_datasets),
+                corr_data=result["corr_data"],
+                display_names=display_names,
+                selected_pairs=set(pending_pairs()),
             )
-
-        with reactive.isolate():
-            active_datasets = active_perturbation_datasets()
-
-        return build_correlation_matrix_ui(
-            all_possible_pairs=_all_possible_pairs,
-            active_pairs=pairs,
-            active_datasets=sorted(active_datasets),
-            corr_data=result["corr_data"],
-            display_names=display_names,
-            selected_pairs=set(pending_pairs()),
-        )
 
     # --- Cell click factory — pre-register one toggle effect per possible pair -
 
@@ -603,24 +608,30 @@ def perturbation_workspace_server(
         _run_analysis.status: re-renders on task completion.
 
         """
-        if _run_analysis.status() != "success":
-            return ui.span()
-        pairs = committed_pairs()
-        if not pairs:
-            return ui.span()
-        result = _run_analysis.result()
-        active_pair_set = set(result["pairs"])
-        slots = [
-            ui.div(output_widget(f"pair_box_{db_a}__{db_b}"), style="flex: 0 0 auto;")
-            for db_a, db_b in _all_possible_pairs
-            if (db_a, db_b) in active_pair_set and (db_a, db_b) in set(pairs)
-        ]
-        if not slots:
-            return ui.span()
-        return ui.div(
-            *slots,
-            style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start;",
-        )
+        with perf(session.id, "perturbation.workspace", "pair_box_container"):
+            if _run_analysis.status() != "success":
+                return ui.span()
+            pairs = committed_pairs()
+            if not pairs:
+                return ui.span()
+            result = _run_analysis.result()
+            active_pair_set = set(result["pairs"])
+            slots = [
+                ui.div(
+                    output_widget(f"pair_box_{db_a}__{db_b}"), style="flex: 0 0 auto;"
+                )
+                for db_a, db_b in _all_possible_pairs
+                if (db_a, db_b) in active_pair_set and (db_a, db_b) in set(pairs)
+            ]
+            if not slots:
+                return ui.span()
+            return ui.div(
+                *slots,
+                style=(
+                    "display: flex; flex-wrap: wrap;"
+                    " gap: 1rem; align-items: flex-start;"
+                ),
+            )
 
     def _make_pair_box_render(db_a: str, db_b: str) -> None:
         """
@@ -642,103 +653,104 @@ def perturbation_workspace_server(
             :trigger _run_analysis.status: re-renders on task completion.
 
             """
-            if _run_analysis.status() != "success":
-                _pair_box_widgets[pair] = None
-                return go.FigureWidget()
+            with perf(session.id, "perturbation.workspace", f"pair_box_{db_a}__{db_b}"):
+                if _run_analysis.status() != "success":
+                    _pair_box_widgets[pair] = None
+                    return go.FigureWidget()
 
-            with reactive.isolate():
-                sel = committed_pairs()
-            if pair not in sel:
-                _pair_box_widgets[pair] = None
-                return go.FigureWidget()
+                with reactive.isolate():
+                    sel = committed_pairs()
+                if pair not in sel:
+                    _pair_box_widgets[pair] = None
+                    return go.FigureWidget()
 
-            result = _run_analysis.result()
-            if pair not in result["pairs"]:
-                _pair_box_widgets[pair] = None
-                return go.FigureWidget()
+                result = _run_analysis.result()
+                if pair not in result["pairs"]:
+                    _pair_box_widgets[pair] = None
+                    return go.FigureWidget()
 
-            df = result["corr_data"].get(pair, pd.DataFrame())
-            method = result["method"]
-            label_a = display_names.get(db_a, db_a)
-            label_b = display_names.get(db_b, db_b)
+                df = result["corr_data"].get(pair, pd.DataFrame())
+                method = result["method"]
+                label_a = display_names.get(db_a, db_a)
+                label_b = display_names.get(db_b, db_b)
 
-            all_x: list[str] = []
-            all_y: list[float] = []
-            all_tags: list[str] = []
-            all_hover: list[str] = []
+                all_x: list[str] = []
+                all_y: list[float] = []
+                all_tags: list[str] = []
+                all_hover: list[str] = []
 
-            if not df.empty:
-                df_clean = df.dropna(subset=["correlation"])
-                for tag, corr in zip(
-                    df_clean["regulator_locus_tag"],
-                    df_clean["correlation"],
-                ):
-                    all_x.append(f"{label_a}\nvs\n{label_b}")
-                    all_y.append(float(corr))
-                    all_tags.append(tag)
-                    all_hover.append(sym_map.get(tag, tag))
+                if not df.empty:
+                    df_clean = df.dropna(subset=["correlation"])
+                    for tag, corr in zip(
+                        df_clean["regulator_locus_tag"],
+                        df_clean["correlation"],
+                    ):
+                        all_x.append(f"{label_a}\nvs\n{label_b}")
+                        all_y.append(float(corr))
+                        all_tags.append(tag)
+                        all_hover.append(sym_map.get(tag, tag))
 
-            fig = go.FigureWidget()
-            fig.add_trace(
-                go.Box(
-                    x=all_x,
-                    y=all_y,
-                    text=all_hover,
-                    customdata=all_tags,
-                    hovertemplate="%{text}<extra></extra>",
-                    hoveron="points",
-                    boxpoints="all",
-                    jitter=0.4,
-                    pointpos=0,
-                    marker=dict(size=4, opacity=0.5),
-                    line=dict(width=1.5),
-                    showlegend=False,
+                fig = go.FigureWidget()
+                fig.add_trace(
+                    go.Box(
+                        x=all_x,
+                        y=all_y,
+                        text=all_hover,
+                        customdata=all_tags,
+                        hovertemplate="%{text}<extra></extra>",
+                        hoveron="points",
+                        boxpoints="all",
+                        jitter=0.4,
+                        pointpos=0,
+                        marker=dict(size=4, opacity=0.5),
+                        line=dict(width=1.5),
+                        showlegend=False,
+                    )
                 )
-            )
-            fig.add_trace(
-                go.Scatter(
-                    x=[],
-                    y=[],
-                    mode="markers",
-                    hovertext=[],
-                    hovertemplate="%{hovertext}<extra></extra>",
-                    marker=dict(size=10, color="black", symbol="circle"),
-                    showlegend=False,
+                fig.add_trace(
+                    go.Scatter(
+                        x=[],
+                        y=[],
+                        mode="markers",
+                        hovertext=[],
+                        hovertemplate="%{hovertext}<extra></extra>",
+                        marker=dict(size=10, color="black", symbol="circle"),
+                        showlegend=False,
+                    )
                 )
-            )
 
-            fig.update_layout(
-                title=dict(
-                    text=f"{label_a}<br>vs<br>{label_b}", x=0.5, xanchor="center"
-                ),
-                yaxis=dict(title=f"{method.capitalize()} r", range=[-1, 1]),
-                showlegend=False,
-                margin=dict(l=50, r=20, t=100, b=60),
-                width=480,
-                height=460,
-            )
+                fig.update_layout(
+                    title=dict(
+                        text=f"{label_a}<br>vs<br>{label_b}", x=0.5, xanchor="center"
+                    ),
+                    yaxis=dict(title=f"{method.capitalize()} r", range=[-1, 1]),
+                    showlegend=False,
+                    margin=dict(l=50, r=20, t=100, b=60),
+                    width=480,
+                    height=460,
+                )
 
-            _pair_box_data[pair] = {
-                "all_x": all_x,
-                "all_y": all_y,
-                "all_tags": all_tags,
-                "all_hover": all_hover,
-            }
-            _pair_box_widgets[pair] = fig
+                _pair_box_data[pair] = {
+                    "all_x": all_x,
+                    "all_y": all_y,
+                    "all_tags": all_tags,
+                    "all_hover": all_hover,
+                }
+                _pair_box_widgets[pair] = fig
 
-            def _on_click(trace: Any, points: Any, state: Any) -> None:
-                if not points.point_inds:
-                    return
-                selected_reg.set(all_tags[points.point_inds[0]])
+                def _on_click(trace: Any, points: Any, state: Any) -> None:
+                    if not points.point_inds:
+                        return
+                    selected_reg.set(all_tags[points.point_inds[0]])
 
-            fig.data[0].on_click(_on_click)
+                fig.data[0].on_click(_on_click)
 
-            with reactive.isolate():
-                cur = selected_reg()
-            if cur:
-                _highlight_one(pair, cur)
+                with reactive.isolate():
+                    cur = selected_reg()
+                if cur:
+                    _highlight_one(pair, cur)
 
-            return fig
+                return fig
 
     for _db_a, _db_b in _all_possible_pairs:
         _make_pair_box_render(_db_a, _db_b)
@@ -1006,118 +1018,128 @@ def perturbation_workspace_server(
             :trigger _run_analysis.status: re-renders when the task completes.
 
             """
-            # Capture epoch without creating a reactive dep on _scatter_epoch itself.
-            with reactive.isolate():
-                my_epoch = _scatter_epoch()
-
-            def _count_scatter() -> None:
-                """Increment the scatter counter if this render's epoch is current."""
+            with perf(session.id, "perturbation.workspace", f"scatter_{db_a}__{db_b}"):
+                # Capture epoch without creating a reactive dep on _scatter_epoch.
                 with reactive.isolate():
-                    if _scatter_epoch() == my_epoch:
-                        _scatter_rendered.set(_scatter_rendered() + 1)
+                    my_epoch = _scatter_epoch()
 
-            if _run_analysis.status() != "success":
-                return ui.span()
+                def _count_scatter() -> None:
+                    """Increment the scatter counter if this render's epoch matches."""
+                    with reactive.isolate():
+                        if _scatter_epoch() == my_epoch:
+                            _scatter_rendered.set(_scatter_rendered() + 1)
 
-            result = _run_analysis.result()
-            pairs: list[tuple[str, str]] = result["pairs"]
-            if (db_a, db_b) not in pairs:
-                return ui.span()
+                if _run_analysis.status() != "success":
+                    return ui.span()
 
-            reg = selected_reg()
-            if not reg:
+                result = _run_analysis.result()
+                pairs: list[tuple[str, str]] = result["pairs"]
+                if (db_a, db_b) not in pairs:
+                    return ui.span()
+
+                reg = selected_reg()
+                if not reg:
+                    _count_scatter()
+                    return ui.span()
+
+                col_map = result["col_map"]
+                method = result["method"]
+                filters = result["filters"]
+
+                def _strip_reg(f: dict | None) -> dict | None:
+                    if not f:
+                        return f
+                    stripped = {
+                        k: v for k, v in f.items() if k != "regulator_locus_tag"
+                    }
+                    return stripped or None
+
+                try:
+                    col_a = col_map.get(db_a) or get_measurement_column(db_a, "effect")
+                    col_b = col_map.get(db_b) or get_measurement_column(db_b, "effect")
+                    fa = _strip_reg(filters.get(db_a))
+                    fb = _strip_reg(filters.get(db_b))
+                    scatter_sql, scatter_params = regulator_scatter_sql(
+                        db_a, col_a, fa, db_b, col_b, fb, method, reg, pair_idx
+                    )
+                    merged = await asyncio.to_thread(
+                        vdb.query, scatter_sql, **scatter_params
+                    )
+                    logger.debug(
+                        "perturbation scatter %s/%s reg=%r rows=%d",
+                        db_a,
+                        db_b,
+                        reg,
+                        len(merged),
+                    )
+                except Exception:
+                    logger.exception("Scatter fetch failed for %s/%s", db_a, db_b)
+                    _count_scatter()
+                    return ui.span()
+
+                if merged.empty:
+                    _count_scatter()
+                    return ui.span()
+
+                col_preference = result.get("col_preference", "effect")
+                la = display_names.get(db_a, db_a)
+                lb = display_names.get(db_b, db_b)
+
+                val_a = merged["_val_a"].copy()
+                val_b = merged["_val_b"].copy()
+                if col_preference == "log10pval" and method != "spearman":
+                    val_a, axis_label_a = _apply_log10p_transform(
+                        val_a, db_a, col_a, la
+                    )
+                    val_b, axis_label_b = _apply_log10p_transform(
+                        val_b, db_b, col_b, lb
+                    )
+                elif col_preference == "log10pval" and method == "spearman":
+                    # Spearman returns ranks; -log10 transform does not apply.
+                    axis_label_a = f"{la}: rank by p-value"
+                    axis_label_b = f"{lb}: rank by p-value"
+                else:
+                    axis_label_a = f"{la}: {col_a}"
+                    axis_label_b = f"{lb}: {col_b}"
+
+                r = val_a.corr(val_b)
+
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Scatter(
+                        x=val_a,
+                        y=val_b,
+                        mode="markers",
+                        marker=dict(size=4, opacity=0.6, color="#4A90D9"),
+                        text=merged["target_symbol"],
+                        hovertemplate="%{text}<extra></extra>",
+                        showlegend=False,
+                    )
+                )
+                fig.add_annotation(
+                    text=f"r={r:.3f}",
+                    xref="paper",
+                    yref="paper",
+                    x=0.98,
+                    y=0.98,
+                    xanchor="right",
+                    yanchor="top",
+                    showarrow=False,
+                    font=dict(size=12),
+                )
+                fig.update_layout(
+                    title=dict(text=f"{la}<br>vs<br>{lb}", x=0.5, xanchor="center"),
+                    xaxis_title=axis_label_a,
+                    yaxis_title=axis_label_b,
+                    margin=dict(l=50, r=20, t=100, b=50),
+                    width=400,
+                    height=400,
+                )
                 _count_scatter()
-                return ui.span()
-
-            col_map = result["col_map"]
-            method = result["method"]
-            filters = result["filters"]
-
-            def _strip_reg(f: dict | None) -> dict | None:
-                if not f:
-                    return f
-                stripped = {k: v for k, v in f.items() if k != "regulator_locus_tag"}
-                return stripped or None
-
-            try:
-                col_a = col_map.get(db_a) or get_measurement_column(db_a, "effect")
-                col_b = col_map.get(db_b) or get_measurement_column(db_b, "effect")
-                fa = _strip_reg(filters.get(db_a))
-                fb = _strip_reg(filters.get(db_b))
-                scatter_sql, scatter_params = regulator_scatter_sql(
-                    db_a, col_a, fa, db_b, col_b, fb, method, reg, pair_idx
+                return ui.div(
+                    ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False)),
+                    style="flex: 0 0 auto;",
                 )
-                merged = await asyncio.to_thread(
-                    vdb.query, scatter_sql, **scatter_params
-                )
-                logger.debug(
-                    "scatter %s/%s reg=%r rows=%d", db_a, db_b, reg, len(merged)
-                )
-            except Exception:
-                logger.exception("Scatter fetch failed for %s/%s", db_a, db_b)
-                _count_scatter()
-                return ui.span()
-
-            if merged.empty:
-                _count_scatter()
-                return ui.span()
-
-            col_preference = result.get("col_preference", "effect")
-            la = display_names.get(db_a, db_a)
-            lb = display_names.get(db_b, db_b)
-
-            val_a = merged["_val_a"].copy()
-            val_b = merged["_val_b"].copy()
-            if col_preference == "log10pval" and method != "spearman":
-                val_a, axis_label_a = _apply_log10p_transform(val_a, db_a, col_a, la)
-                val_b, axis_label_b = _apply_log10p_transform(val_b, db_b, col_b, lb)
-            elif col_preference == "log10pval" and method == "spearman":
-                # Spearman query returns ranks (1 = most significant); the
-                # -log10 transform does not apply to rank integers.
-                axis_label_a = f"{la}: rank by p-value"
-                axis_label_b = f"{lb}: rank by p-value"
-            else:
-                axis_label_a = f"{la}: {col_a}"
-                axis_label_b = f"{lb}: {col_b}"
-
-            r = val_a.corr(val_b)
-
-            fig = go.Figure()
-            fig.add_trace(
-                go.Scatter(
-                    x=val_a,
-                    y=val_b,
-                    mode="markers",
-                    marker=dict(size=4, opacity=0.6, color="#4A90D9"),
-                    text=merged["target_symbol"],
-                    hovertemplate="%{text}<extra></extra>",
-                    showlegend=False,
-                )
-            )
-            fig.add_annotation(
-                text=f"r={r:.3f}",
-                xref="paper",
-                yref="paper",
-                x=0.98,
-                y=0.98,
-                xanchor="right",
-                yanchor="top",
-                showarrow=False,
-                font=dict(size=12),
-            )
-            fig.update_layout(
-                title=dict(text=f"{la}<br>vs<br>{lb}", x=0.5, xanchor="center"),
-                xaxis_title=axis_label_a,
-                yaxis_title=axis_label_b,
-                margin=dict(l=50, r=20, t=100, b=50),
-                width=400,
-                height=400,
-            )
-            _count_scatter()
-            return ui.div(
-                ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False)),
-                style="flex: 0 0 auto;",
-            )
 
     for _pair_idx, (_db_a, _db_b) in enumerate(_all_possible_pairs, start=1):
         _make_scatter_render(_db_a, _db_b, _pair_idx)

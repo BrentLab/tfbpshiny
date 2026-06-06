@@ -293,20 +293,30 @@ def modal_section(*cards: ui.Tag) -> ui.Tag:
 
 def matrix_cell_button(id: str, label: str, *, tooltip: str | None = None) -> ui.Tag:
     """
-    Full-width, borderless Shiny action button that fills a matrix table cell.
+    Full-width, borderless button that fills a matrix table cell.
+
+    Emits a plain ``<button>`` that calls ``Shiny.setInputValue`` with
+    ``{priority: "event"}`` on click instead of using
+    ``ui.input_action_button``.  This avoids reactive loops when the button is
+    rendered inside a ``render.ui`` output: Shiny action buttons re-register on
+    every render and trigger their reactive listeners, whereas plain buttons
+    only fire when the user physically clicks them.
 
     CSS: ``.matrix-cell-button``
 
-    :param id: Shiny input ID for the button (e.g. ``"diag_harbison"``).
+    :param id: Shiny input ID written by ``Shiny.setInputValue`` on click.
     :param label: Text displayed inside the button.
-    :param tooltip: When provided, sets the native ``title`` attribute so browsers
-        show a hover tooltip.
+    :param tooltip: When provided, sets the native ``title`` attribute so
+        browsers show a hover tooltip.
 
     """
-    attrs: dict[str, str] = {"class": "matrix-cell-button"}
+    attrs: dict[str, str | None] = {
+        "class": "matrix-cell-button",
+        "onclick": f"Shiny.setInputValue('{id}', Math.random(), {{priority: 'event'}})",
+    }
     if tooltip is not None:
         attrs["title"] = tooltip
-    return ui.input_action_button(id, label, **attrs)
+    return ui.tags.button(label, **attrs)
 
 
 def matrix_header_cell(label: str, *, row: bool = False) -> ui.Tag:

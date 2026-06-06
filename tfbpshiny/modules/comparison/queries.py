@@ -196,9 +196,12 @@ def topn_responsive_ratio(
     """
     Compute the top-N-by-binding responsive ratio for one (binding, perturbation) pair.
 
-    Ranks binding targets per binding sample (PARTITION BY binding_sample_id),
-    keeps the top ``top_n``, then joins to perturbation data and applies the
-    effect/pvalue thresholds to determine responsiveness dynamically.
+    Computes the intersection of targets present in both datasets first, then
+    ranks only the shared targets per binding sample (PARTITION BY
+    binding_sample_id) and keeps the top ``top_n``.  This ensures that the
+    top-N slots are not consumed by binding targets that have no corresponding
+    perturbation measurement.  Responsiveness is evaluated dynamically using
+    the effect/pvalue thresholds from ``_responsive_expr``.
 
     :param vdb: VirtualDB instance.
     :param binding_view: View name for binding data.
@@ -271,24 +274,6 @@ def topn_responsive_ratio(
     WITH binding AS (
         {binding_cte_body}
     ),
-    binding_ranked AS (
-        SELECT
-            binding_sample_id,
-            regulator_locus_tag,
-            target_locus_tag,
-            {rank_col},
-            RANK() OVER (
-                PARTITION BY binding_sample_id
-                ORDER BY {rank_col} {rank_dir}
-            ) AS rnk
-        FROM binding
-        WHERE regulator_locus_tag != target_locus_tag
-    ),
-    top_n_binding AS (
-        SELECT binding_sample_id, regulator_locus_tag, target_locus_tag
-        FROM binding_ranked
-        WHERE rnk <= ${top_n_key}
-    ),
     perturbation AS (
         SELECT
             CAST(p.sample_id AS VARCHAR) AS perturbation_sample_id,
@@ -297,6 +282,34 @@ def topn_responsive_ratio(
             {responsive_expr} AS is_responsive
         FROM {perturbation_view} p
         {pert_filter_where}
+    ),
+    intersecting_targets AS (
+        SELECT DISTINCT b.regulator_locus_tag, b.target_locus_tag
+        FROM binding b
+        INNER JOIN perturbation pert
+            ON  b.regulator_locus_tag = pert.regulator_locus_tag
+            AND b.target_locus_tag    = pert.target_locus_tag
+    ),
+    binding_ranked AS (
+        SELECT
+            b.binding_sample_id,
+            b.regulator_locus_tag,
+            b.target_locus_tag,
+            b.{rank_col},
+            RANK() OVER (
+                PARTITION BY b.binding_sample_id
+                ORDER BY b.{rank_col} {rank_dir}
+            ) AS rnk
+        FROM binding b
+        INNER JOIN intersecting_targets it
+            ON  b.regulator_locus_tag = it.regulator_locus_tag
+            AND b.target_locus_tag    = it.target_locus_tag
+        WHERE b.regulator_locus_tag != b.target_locus_tag
+    ),
+    top_n_binding AS (
+        SELECT binding_sample_id, regulator_locus_tag, target_locus_tag
+        FROM binding_ranked
+        WHERE rnk <= ${top_n_key}
     )
     SELECT
         b.binding_sample_id,

@@ -82,7 +82,7 @@ DEFAULT_DATASET_FILTERS: dict[str, dict] = {
         "Experimental condition": {"type": "categorical", "value": ["standard"]},
     },
     "hackett": {
-        "time": {"type": "numeric", "value": [45.0, 45.0]},
+        "time": {"type": "categorical", "value": [45.0]},
     },
 }
 

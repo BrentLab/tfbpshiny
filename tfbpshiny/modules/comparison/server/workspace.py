@@ -10,7 +10,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from labretriever import VirtualDB
 from plotly.io import to_html
-from shiny import reactive, render, req, ui
+from shiny import reactive, render, ui
 from shiny.reactive import extended_task
 from shiny.ui import bind_task_button, input_task_button  # noqa: F401
 
@@ -168,6 +168,11 @@ def comparison_workspace_server(
 
     _last_run_snapshot: reactive.Value[tuple | None] = reactive.value(None)
 
+    # True whenever results are out of date and Execute Analysis must be re-run.
+    # Starts True (no run yet), set True when dataset_filters changes, False
+    # only when a successful analysis result is cached.
+    _results_stale: reactive.Value[bool] = reactive.value(True)
+
     # Per-tab result cache: stores the last successful _run_analysis result for
     # each inner tab so that switching back to a tab shows the previous results
     # without requiring a re-run.
@@ -224,25 +229,48 @@ def comparison_workspace_server(
     # Gate tab
     # ---------------------------------------------------------------------------
 
+    # ---------------------------------------------------------------------------
+    # Staleness: mark results stale when committed dataset filters change
+    # ---------------------------------------------------------------------------
+
     @reactive.effect
-    def _gate_tab() -> None:
-        """Silently block when another top-level tab is active."""
-        if active_tab is not None:
-            req(active_tab() == "Binding/Perturbation Comparisons")
+    def _mark_stale_on_filter_change() -> None:
+        """
+        Mark results stale whenever committed dataset filters change.
+
+        Reads ``dataset_filters`` so this re-fires each time ``_apply_pending``
+        commits a new filter state.  Uses ``reactive.isolate`` to set the flag
+        without creating a circular dependency on ``_results_stale`` itself.
+
+        :trigger dataset_filters: fires whenever Apply Changes is pressed in
+            Select Datasets.
+
+        """
+        dataset_filters()
+        with reactive.isolate():
+            if not _results_stale():
+                logger.debug("_mark_stale_on_filter_change: marking results stale")
+                _results_stale.set(True)
+                _last_run_snapshot.set(None)
+                _tab_results.set({})
 
     # ---------------------------------------------------------------------------
     # Pending button style
     # ---------------------------------------------------------------------------
 
+    @output(suspend_when_hidden=False)
     @render.ui
     def execute_pending_style() -> ui.Tag:
         """
         Dims the Execute button when no changes are pending.
 
         :trigger _snapshot inputs: re-fires on any sidebar change. :trigger
-        _last_run_snapshot: re-fires after Execute.
+        _last_run_snapshot: re-fires after Execute. :trigger _results_stale:
+        re-fires when dataset filters change.
 
         """
+        if _results_stale():
+            return ui.span()
         current = _snapshot_current()
         last = _last_run_snapshot()
         has_pending = (last is None) or (current != last)
@@ -737,6 +765,7 @@ def comparison_workspace_server(
     # Status render
     # ---------------------------------------------------------------------------
 
+    @output(suspend_when_hidden=False)
     @render.ui
     def analysis_status() -> ui.Tag:
         """:trigger _run_analysis.status: re-renders when the task state changes."""
@@ -774,9 +803,11 @@ def comparison_workspace_server(
         tab = result.get("tab", "")
         if not tab:
             return
-        cache = dict(_tab_results())
+        with reactive.isolate():
+            cache = dict(_tab_results())
         cache[tab] = result
         _tab_results.set(cache)
+        _results_stale.set(False)
 
     # ---------------------------------------------------------------------------
     # Helper: table cell style
@@ -834,6 +865,7 @@ def comparison_workspace_server(
     for _p in _all_perturbation:
         _make_cd_col_effect(_p)
 
+    @output(suspend_when_hidden=False)
     @render.ui
     def cd_matrix_container() -> ui.Tag:
         """
@@ -844,6 +876,11 @@ def comparison_workspace_server(
         cd_selected_perturbation: re-renders to move column highlight.
 
         """
+        if _results_stale():
+            return ui.div(
+                {"class": "empty-state"},
+                ui.p("Click Execute Analysis to compute."),
+            )
         result = _tab_results().get("Compare Datasets")
         if result is None:
             return ui.div(
@@ -888,6 +925,7 @@ def comparison_workspace_server(
             selected_perturbation=cd_selected_perturbation(),
         )
 
+    @output(suspend_when_hidden=False)
     @render.ui
     def cd_distribution_container() -> ui.Tag:
         """
@@ -898,6 +936,8 @@ def comparison_workspace_server(
         cd_selected_perturbation: re-renders when a column is selected.
 
         """
+        if _results_stale():
+            return ui.span()
         result = _tab_results().get("Compare Datasets")
         if result is None or result["cd_data"].empty:
             return ui.span()
@@ -969,6 +1009,7 @@ def comparison_workspace_server(
     # Tab 2: Compare Promoter Definitions
     # ===========================================================================
 
+    @output(suspend_when_hidden=False)
     @render.ui
     def cp_promoter_table() -> ui.Tag:
         """
@@ -981,6 +1022,11 @@ def comparison_workspace_server(
         result updates.
 
         """
+        if _results_stale():
+            return ui.div(
+                {"class": "empty-state"},
+                ui.p("Click Execute Analysis to compute."),
+            )
         result = _tab_results().get("Compare Promoter Definitions")
         if result is None:
             return ui.div(
@@ -1118,6 +1164,7 @@ def comparison_workspace_server(
     # Tab 3: Compare Analysis Methods
     # ===========================================================================
 
+    @output(suspend_when_hidden=False)
     @render.ui
     def cm_method_table() -> ui.Tag:
         """
@@ -1129,6 +1176,11 @@ def comparison_workspace_server(
         updates.
 
         """
+        if _results_stale():
+            return ui.div(
+                {"class": "empty-state"},
+                ui.p("Click Execute Analysis to compute."),
+            )
         result = _tab_results().get("Compare Analysis Methods")
         if result is None:
             return ui.div(

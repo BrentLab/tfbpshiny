@@ -544,8 +544,17 @@ def select_datasets_sidebar_server(
                     "object",
                     "category",
                 ):
-                    selected = list(value) if value else []
-                    if selected:
+                    raw = list(value) if value else []
+                    if raw:
+                        # Coerce string selectize values back to the column's
+                        # native numeric type so that = ANY(...) binds correctly
+                        # against DOUBLE/INTEGER columns treated as categorical.
+                        if col.dtype.name in ("float64", "float32"):
+                            selected: list = [float(v) for v in raw]
+                        elif col.dtype.name in ("int64", "int32"):
+                            selected = [int(v) for v in raw]
+                        else:
+                            selected = raw
                         field_filters[field] = {
                             "type": "categorical",
                             "value": selected,
@@ -749,6 +758,11 @@ def select_datasets_sidebar_server(
 
         _committed_toggle.set(_pending_toggle())
         dataset_filters.set(new_filters)
+        logger.debug(
+            "_apply_pending committed: %d datasets active, %d datasets with filters",
+            sum(_pending_toggle().values()),
+            len(new_filters),
+        )
 
     @render.download(
         filename=lambda: "tfbpshiny_export.tar.gz",
@@ -854,7 +868,10 @@ def select_datasets_sidebar_server(
         ``ui.update_switch`` in a separate effect in ``dataset_row_server``.
 
         """
-        active_filter_names: set[str] = set(_pending_filters())
+        pending_toggle = _pending_toggle()
+        active_filter_names: set[str] = {
+            db for db in _pending_filters() if pending_toggle.get(db, False)
+        }
         has_pending = _has_pending_changes()
 
         search_term = ""
@@ -911,15 +928,24 @@ def select_datasets_sidebar_server(
 
         has_active = bool(_active_binding_datasets() or _active_perturbation_datasets())
 
+        banner = (
+            ui.div(
+                {"class": "pending-banner"},
+                "Dataset selection has changed. Click Apply Changes to update.",
+            )
+            if has_pending
+            else ui.span()
+        )
         return ui.div(
             ui.h2("Select datasets for analysis"),
-            ui.div({"class": "dataset-list"}, *section_tags),
+            banner,
             ui.input_action_button(
                 "apply_pending",
-                "Apply",
+                "Apply Changes",
                 class_="btn-apply-pending"
                 + ("" if has_pending else " btn-apply-pending--idle"),
             ),
+            ui.div({"class": "dataset-list"}, *section_tags),
             export_download_button("export_datasets") if has_active else ui.span(),
         )
 
