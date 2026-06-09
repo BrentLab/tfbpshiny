@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import pandas as pd
@@ -22,6 +23,40 @@ DTO_LOG_PSEUDO = 1e-3
 
 #: Default top-N cutoff
 DEFAULT_TOP_N = 25
+
+
+#: Default regulators-per-chunk for the comparison top-N executor. Each chunked
+#: query touches only its regulator slice of the multi-million-row views, which
+#: bounds the DuckDB working set (and thus the connection's retained memory
+#: high-water mark) across a session. Overridable via the
+#: ``COMPARISON_REGULATORS_PER_CHUNK`` environment variable; set it to ``0`` to
+#: disable chunking (whole-pair execution).
+_DEFAULT_REGULATORS_PER_CHUNK = 400
+
+
+def _comparison_regulators_per_chunk() -> int | None:
+    """
+    Number of regulators to process per chunk in :func:`topn_all_pairs_sql`.
+
+    Read from the ``COMPARISON_REGULATORS_PER_CHUNK`` environment variable at
+    call time (so it can be set after import); defaults to
+    :data:`_DEFAULT_REGULATORS_PER_CHUNK` when unset or invalid. A positive value
+    subdivides each pair into regulator batches of that size to bound peak (and
+    retained) memory at the cost of more, smaller queries. Set the env var to
+    ``0`` (or a negative value) to disable chunking and run each pair whole.
+
+    :returns: Positive batch size, or ``None`` for whole-pair execution.
+    :rtype: int | None
+
+    """
+    raw = os.environ.get("COMPARISON_REGULATORS_PER_CHUNK")
+    if raw is None or raw == "":
+        return _DEFAULT_REGULATORS_PER_CHUNK
+    try:
+        n = int(raw)
+    except ValueError:
+        return _DEFAULT_REGULATORS_PER_CHUNK
+    return n if n > 0 else None
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +131,9 @@ _HARBISON_DEDUP_CTE = """
         target_locus_tag,
         MIN(pvalue) AS pvalue
     FROM harbison
-    WHERE condition = 'YPD'
+    WHERE sample_id IN (
+        SELECT sample_id FROM harbison_meta WHERE condition = 'YPD'
+    )
     GROUP BY sample_id, regulator_locus_tag, target_locus_tag
 """
 
@@ -131,6 +168,35 @@ def _build_filter_where(
             clauses.append(f'"{field}" = $bool_{p}')
             params[f"bool_{p}"] = bool(val)
     return _build_where(clauses)
+
+
+def _meta_sample_filter(
+    view: str,
+    filters: dict[str, Any] | None,
+    params: dict[str, Any],
+    prefix: str,
+) -> str:
+    """
+    Build a bare ``sample_id IN (meta subquery)`` predicate resolving filters via
+    metadata.
+
+    Dataset filters target metadata columns that need not be carried on the data
+    view. The filter resolves to a ``sample_id`` set against ``{view}_meta`` so the
+    data-view scan only needs its projected columns plus a ``sample_id`` membership
+    test. Returns a bare clause (no leading ``WHERE``) for composition with
+    :func:`_build_where`; empty string when there are no filters.
+
+    :param view: Data view name; its meta view is ``{view}_meta``.
+    :param filters: Filter spec for the dataset, or ``None``.
+    :param params: Dict populated in-place with bound parameter values.
+    :param prefix: Namespace prefix for parameter names.
+    :returns: ``"sample_id IN (...)"`` clause, or ``""``.
+
+    """
+    inner = _build_filter_where(filters, params, prefix)
+    if not inner:
+        return ""
+    return f"sample_id IN (SELECT sample_id FROM {view}_meta {inner})"
 
 
 def _responsive_expr(
@@ -190,6 +256,7 @@ def topn_responsive_ratio(
     rank_asc: bool = True,
     target_blacklist: tuple[str, ...] = (),
     binding_dedup_cte: str = "",
+    regulator_subset: tuple[str, ...] = (),
     param_prefix: str = "p",
     sql_only: bool = False,
 ) -> pd.DataFrame | tuple[str, dict]:
@@ -218,6 +285,10 @@ def topn_responsive_ratio(
     :param target_blacklist: Locus tags to exclude from binding targets.
     :param binding_dedup_cte: Optional CTE body SQL to replace the default
         binding SELECT (used for Harbison dedup).
+    :param regulator_subset: If non-empty, restrict both the binding and
+        perturbation CTEs to these ``regulator_locus_tag`` values. Used to
+        compute one regulator batch at a time so peak memory stays bounded; the
+        per-regulator results are independent, so batching is lossless.
     :param param_prefix: Namespace prefix for SQL parameters to avoid collisions.
     :param sql_only: If ``True`` return ``(sql, params)`` instead of executing.
 
@@ -225,16 +296,26 @@ def topn_responsive_ratio(
     params: dict[str, Any] = {}
     rank_dir = "ASC" if rank_asc else "DESC"
 
+    # Optional regulator-batch restriction (applied to both CTEs).
+    reg_in_clause = ""
+    if regulator_subset:
+        reg_ph = ", ".join(
+            f"$reg_{param_prefix}_{i}" for i in range(len(regulator_subset))
+        )
+        for i, reg in enumerate(regulator_subset):
+            params[f"reg_{param_prefix}_{i}"] = reg
+        reg_in_clause = f"regulator_locus_tag IN ({reg_ph})"
+
     # binding CTE
     if binding_dedup_cte:
         binding_cte_body = binding_dedup_cte
     else:
-        b_filter_where = _build_filter_where(
-            binding_filters, params, prefix=f"{param_prefix}_b"
+        b_sample_filter = _meta_sample_filter(
+            binding_view, binding_filters, params, prefix=f"{param_prefix}_b"
         )
         blacklist_clauses = []
-        if b_filter_where:
-            blacklist_clauses.append(b_filter_where.lstrip("WHERE "))
+        if b_sample_filter:
+            blacklist_clauses.append(b_sample_filter)
         if target_blacklist:
             ph = ", ".join(
                 f"$bl_{param_prefix}_{i}" for i in range(len(target_blacklist))
@@ -253,6 +334,13 @@ def topn_responsive_ratio(
         {binding_extra}
         """
 
+    # Restrict the binding CTE (normal or dedup) to the regulator batch, if any.
+    if reg_in_clause:
+        binding_cte_body = (
+            f"SELECT * FROM ({binding_cte_body}) AS _binding_batch"
+            f" WHERE {reg_in_clause}"
+        )
+
     # perturbation responsive expression
     responsive_expr = _responsive_expr(
         perturbation_view,
@@ -262,10 +350,17 @@ def topn_responsive_ratio(
         params,
     )
 
-    # perturbation CTE
-    pert_filter_where = _build_filter_where(
-        perturbation_filters, params, prefix=f"{param_prefix}_p"
+    # perturbation CTE: filter resolves to a sample_id set via the meta view.
+    # The perturbation table is aliased ``p``, so qualify the membership test.
+    pert_sample_filter = _meta_sample_filter(
+        perturbation_view, perturbation_filters, params, prefix=f"{param_prefix}_p"
     )
+    pert_clauses: list[str] = []
+    if pert_sample_filter:
+        pert_clauses.append(f"p.{pert_sample_filter}")
+    if reg_in_clause:
+        pert_clauses.append(f"p.{reg_in_clause}")
+    pert_filter_where = f"WHERE {' AND '.join(pert_clauses)}" if pert_clauses else ""
 
     top_n_key = f"{param_prefix}_top_n"
     params[top_n_key] = top_n
@@ -386,8 +481,7 @@ METHOD_BASE_LABEL_MAP: dict[str, str] = {
     "chec_m2025_peaks": "2025 ChEC-seq",
     "rossi": "2021 ChIP-exo",
     "rossi_mindel": "2021 ChIP-exo",
-    "rossi_peaks_kang": "2021 ChIP-exo",
-    "rossi_peaks_mindel": "2021 ChIP-exo",
+    "rossi_peaks": "2021 ChIP-exo",
 }
 
 #: Human-readable label for each scoring variant in the Method Comparison tab.
@@ -396,14 +490,13 @@ SCORING_VARIANT_MAP: dict[str, str] = {
     "chec_m2025_peaks": "Original Peaks",
     "rossi": "Re-quantified (Kang)",
     "rossi_mindel": "Re-quantified (Mindel)",
-    "rossi_peaks_kang": "Original Peaks (Kang)",
-    "rossi_peaks_mindel": "Original Peaks (Mindel)",
+    "rossi_peaks": "Original Peaks",
 }
 
 #: Maps each primary binding dataset to the peaks variants produced by the
 #: original authors' peak-calling pipeline.
 PEAKS_VARIANT_MAP: dict[str, list[str]] = {
-    "rossi": ["rossi_peaks_kang", "rossi_peaks_mindel"],
+    "rossi": ["rossi_peaks"],
     "chec_m2025": ["chec_m2025_peaks"],
 }
 
@@ -413,8 +506,6 @@ SCORING_VARIANT_ORDER: list[str] = [
     "Re-quantified (Kang)",
     "Re-quantified (Mindel)",
     "Original Peaks",
-    "Original Peaks (Kang)",
-    "Original Peaks (Mindel)",
 ]
 
 #: Color palette for scoring variants in the Method Comparison tab.
@@ -423,8 +514,6 @@ SCORING_VARIANT_COLORS: dict[str, str] = {
     "Re-quantified (Kang)": "#4DBBD5",
     "Re-quantified (Mindel)": "#00A087",
     "Original Peaks": "#E64B35",
-    "Original Peaks (Kang)": "#E64B35",
-    "Original Peaks (Mindel)": "#F39B7F",
 }
 
 PERTURBATION_LABEL_MAP: dict[str, str] = {
@@ -485,14 +574,9 @@ BINDING_CONFIGS: dict[str, dict] = {
         rank_col="peak_score",
         rank_asc=False,
     ),
-    "rossi_peaks_kang": dict(
+    "rossi_peaks": dict(
         binding_sample_col="sample_id",
-        rank_col="score",
-        rank_asc=False,
-    ),
-    "rossi_peaks_mindel": dict(
-        binding_sample_col="sample_id",
-        rank_col="score",
+        rank_col="peak_score",
         rank_asc=False,
     ),
 }
@@ -508,6 +592,29 @@ PERTURBATION_CONFIGS: dict[str, dict] = {
 }
 
 
+def _binding_regulators(
+    vdb: VirtualDB, binding_view: str, binding_filters: dict[str, Any] | None
+) -> list[str]:
+    """
+    Return the sorted distinct regulator locus tags for a binding dataset.
+
+    Resolved from the small ``{binding_view}_meta`` view (post-filter), so it is
+    cheap. Used to subdivide a pair into regulator batches for chunked execution.
+
+    :param vdb: VirtualDB instance.
+    :param binding_view: Binding dataset name.
+    :param binding_filters: Active filter spec for the binding dataset.
+    :returns: Sorted list of distinct regulator locus tags.
+    :rtype: list[str]
+
+    """
+    params: dict[str, Any] = {}
+    where = _build_filter_where(binding_filters, params, prefix="rl")
+    sql = f"SELECT DISTINCT regulator_locus_tag FROM {binding_view}_meta {where}"
+    df = vdb.query(sql, **params)
+    return sorted(t for t in df["regulator_locus_tag"].dropna().tolist())
+
+
 def topn_all_pairs_sql(
     vdb: VirtualDB,
     pairs: list[tuple[str, str]],
@@ -516,14 +623,17 @@ def topn_all_pairs_sql(
     preset: dict[str, tuple[float, float]],
 ) -> pd.DataFrame:
     """
-    Compute top-N responsive ratio for all (binding, perturbation) pairs in one query.
+    Compute the top-N responsive-ratio summary for all (binding, perturbation) pairs.
 
-    Builds a UNION ALL of per-pair subqueries and executes as a single
-    ``vdb.query()`` call. Each pair is prefixed with ``bp{i}_`` to prevent
-    parameter name collisions.
+    Executes **one pair at a time** (never a single UNION ALL across pairs) and,
+    when ``COMPARISON_REGULATORS_PER_CHUNK`` is set, subdivides each pair into
+    regulator batches. Each query's intermediates are released before the next
+    runs, so peak memory stays bounded by a single pair/batch rather than the
+    whole grid. The small per-(sample, regulator) summary rows are accumulated in
+    Python; this is the same shape the matrix and box-plot distributions consume.
 
-    Responsiveness thresholds are looked up per perturbation dataset from ``preset``.
-    Use ``"*"`` as a fallback key for datasets not explicitly listed.
+    Responsiveness thresholds are looked up per perturbation dataset from
+    ``preset`` (``"*"`` is the fallback key).
 
     :param vdb: VirtualDB instance.
     :param pairs: List of ``(binding_db, perturbation_db)`` tuples.
@@ -538,10 +648,10 @@ def topn_all_pairs_sql(
     if not pairs:
         return pd.DataFrame()
 
-    parts: list[str] = []
-    all_params: dict[str, Any] = {}
+    chunk = _comparison_regulators_per_chunk()
+    frames: list[pd.DataFrame] = []
 
-    for i, (b_db, p_db) in enumerate(pairs):
+    for b_db, p_db in pairs:
         b_cfg = BINDING_CONFIGS.get(b_db)
         p_cfg = PERTURBATION_CONFIGS.get(p_db)
         if b_cfg is None or p_cfg is None:
@@ -549,27 +659,42 @@ def topn_all_pairs_sql(
         effect_threshold, pvalue_threshold = preset.get(
             p_db, preset.get("*", (0.0, 0.05))
         )
-        pair_sql, pair_params = topn_responsive_ratio(
-            vdb=vdb,
-            binding_view=b_db,
-            perturbation_view=p_db,
-            top_n=top_n,
-            effect_threshold=effect_threshold,
-            pvalue_threshold=pvalue_threshold,
-            binding_filters=filters.get(b_db),
-            perturbation_filters=filters.get(p_db),
-            param_prefix=f"bp{i}",
-            sql_only=True,
-            **b_cfg,
-            **p_cfg,
-        )
-        assert isinstance(pair_sql, str) and isinstance(pair_params, dict)
-        all_params.update(pair_params)
+
+        # Regulator batches for this pair: one empty batch (= whole pair) when
+        # chunking is disabled, otherwise size-``chunk`` slices of the binding
+        # dataset's regulators.
+        if chunk:
+            regulators = _binding_regulators(vdb, b_db, filters.get(b_db))
+            batches: list[tuple[str, ...]] = [
+                tuple(regulators[i : i + chunk])
+                for i in range(0, len(regulators), chunk)
+            ] or [()]
+        else:
+            batches = [()]
+
         pair_key = f"{b_db}__{p_db}"
-        parts.append(f"SELECT *, '{pair_key}' AS pair_key FROM ({pair_sql.strip()})")
+        for batch in batches:
+            pair_sql, pair_params = topn_responsive_ratio(
+                vdb=vdb,
+                binding_view=b_db,
+                perturbation_view=p_db,
+                top_n=top_n,
+                effect_threshold=effect_threshold,
+                pvalue_threshold=pvalue_threshold,
+                binding_filters=filters.get(b_db),
+                perturbation_filters=filters.get(p_db),
+                regulator_subset=batch,
+                param_prefix="bp",
+                sql_only=True,
+                **b_cfg,
+                **p_cfg,
+            )
+            assert isinstance(pair_sql, str) and isinstance(pair_params, dict)
+            df = vdb.query(pair_sql, **pair_params)
+            if not df.empty:
+                df["pair_key"] = pair_key
+                frames.append(df)
 
-    if not parts:
+    if not frames:
         return pd.DataFrame()
-
-    sql = "\nUNION ALL\n".join(parts)
-    return vdb.query(sql, **all_params)
+    return pd.concat(frames, ignore_index=True)

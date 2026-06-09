@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 from logging import Logger
 from typing import Any
 
@@ -30,7 +31,7 @@ from tfbpshiny.modules.comparison.queries import (
     SCORING_VARIANT_ORDER,
     topn_all_pairs_sql,
 )
-from tfbpshiny.utils.perf import reset_render_counts
+from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.topn_matrix import build_topn_matrix_ui
 from tfbpshiny.utils.vdb_init import (
     DEFAULT_RESPONSIVENESS_PRESET,
@@ -136,6 +137,27 @@ def comparison_workspace_server(
 
     session.on_flush(lambda: reset_render_counts(session.id))
 
+    def _timed_render(label: str) -> Any:
+        """
+        Decorator that wraps a ``render`` function in a :func:`perf` timing block.
+
+        Applied beneath ``@render.ui`` so the rendered output id (derived from the
+        function name) is preserved via ``functools.wraps``.
+
+        :param label: perf label for the render, e.g. ``"cd_matrix_container"``.
+
+        """
+
+        def deco(fn: Any) -> Any:
+            @functools.wraps(fn)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                with perf(session.id, "comparison.workspace", label):
+                    return fn(*args, **kwargs)
+
+            return wrapper
+
+        return deco
+
     _available_datasets: frozenset[str] = frozenset(vdb.get_datasets())
     _mindel_dbs: frozenset[str] = (
         frozenset(PROMOTER_VARIANT_PAIRS.values()) & _available_datasets
@@ -166,7 +188,11 @@ def comparison_workspace_server(
     cd_selected_binding: reactive.Value[str | None] = reactive.value(None)
     cd_selected_perturbation: reactive.Value[str | None] = reactive.value(None)
 
-    _last_run_snapshot: reactive.Value[tuple | None] = reactive.value(None)
+    # Snapshot of the sidebar inputs at the last successful Execute, keyed by
+    # inner tab. Per-tab so that switching to an already-run tab (with no input
+    # changes) does not falsely re-activate the Execute button — the single
+    # shared snapshot used to mismatch because it embeds the active tab.
+    _last_run_snapshot: reactive.Value[dict[str, tuple]] = reactive.value({})
 
     # True whenever results are out of date and Execute Analysis must be re-run.
     # Starts True (no run yet), set True when dataset_filters changes, False
@@ -177,6 +203,14 @@ def comparison_workspace_server(
     # each inner tab so that switching back to a tab shows the previous results
     # without requiring a re-run.
     _tab_results: reactive.Value[dict[str, dict]] = reactive.value({})
+
+    # Config-keyed result cache: maps a full sidebar-config key to the computed
+    # _run_analysis result, so re-running an identical configuration (e.g.
+    # toggling a dataset off then on, or revisiting a prior selection) returns
+    # instantly without recomputing. The materialized data never changes at
+    # runtime, so cached results stay valid; capped to bound memory.
+    _config_cache: dict[tuple, dict] = {}
+    _CONFIG_CACHE_MAX = 16
 
     # ---------------------------------------------------------------------------
     # Helper: derive active tab
@@ -193,7 +227,18 @@ def comparison_workspace_server(
     # ---------------------------------------------------------------------------
 
     def _snapshot_current() -> tuple:
-        """Return a hashable representation of all sidebar inputs."""
+        """
+        Return a hashable representation of the *active* subtab's inputs.
+
+        Scoped to the current inner tab (plus the shared ``top_n`` and dataset
+        filters) rather than every subtab's inputs. Shiny retains an input's
+        value after its control is unmounted, so including the other subtabs'
+        inputs made the snapshot change merely by visiting those subtabs — which
+        falsely re-activated the Execute button on returning to an already-run
+        subtab. Comparing only the active subtab's inputs keeps the pending
+        state stable across subtab navigation.
+
+        """
         try:
             filters_repr = repr(
                 sorted((k, repr(v)) for k, v in dataset_filters().items())
@@ -210,20 +255,27 @@ def comparison_workspace_server(
             except Exception:
                 return None
 
-        return (
-            _inner_tab(),
-            input.top_n(),
-            _safe(input.cd_binding_method),
-            _safe(input.cd_promoter_set),
-            _safe(input.cd_included_binding),
-            _safe(input.cd_included_perturbation),
-            _safe(input.cp_included_binding),
-            _safe(input.cp_included_perturbation),
-            _safe(input.cp_included_promoter_sets),
-            _safe(input.cm_binding_dataset),
-            _safe(input.cm_included_perturbation),
-            filters_repr,
-        )
+        tab = _inner_tab()
+        base: tuple = (tab, input.top_n(), filters_repr)
+        if tab == "Compare Datasets":
+            return base + (
+                _safe(input.cd_binding_method),
+                _safe(input.cd_promoter_set),
+                _safe(input.cd_included_binding),
+                _safe(input.cd_included_perturbation),
+            )
+        if tab == "Compare Promoter Definitions":
+            return base + (
+                _safe(input.cp_included_binding),
+                _safe(input.cp_included_perturbation),
+                _safe(input.cp_included_promoter_sets),
+            )
+        if tab == "Compare Analysis Methods":
+            return base + (
+                _safe(input.cm_binding_dataset),
+                _safe(input.cm_included_perturbation),
+            )
+        return base
 
     # ---------------------------------------------------------------------------
     # Gate tab
@@ -251,7 +303,7 @@ def comparison_workspace_server(
             if not _results_stale():
                 logger.debug("_mark_stale_on_filter_change: marking results stale")
                 _results_stale.set(True)
-                _last_run_snapshot.set(None)
+                _last_run_snapshot.set({})
                 _tab_results.set({})
 
     # ---------------------------------------------------------------------------
@@ -272,7 +324,7 @@ def comparison_workspace_server(
         if _results_stale():
             return ui.span()
         current = _snapshot_current()
-        last = _last_run_snapshot()
+        last = _last_run_snapshot().get(_inner_tab())
         has_pending = (last is None) or (current != last)
         if has_pending:
             return ui.span()
@@ -447,6 +499,27 @@ def comparison_workspace_server(
             ``cp_included_promoter_sets``, ``cm_topn_data``, ``cm_binding_db``.
 
         """
+        # Return a cached result when this exact configuration was already
+        # computed (data is immutable at runtime, so the cache never goes stale).
+        cache_key = (
+            tab,
+            top_n,
+            repr(sorted((k, repr(v)) for k, v in filters.items())),
+            repr(sorted((k, repr(v)) for k, v in preset.items())),
+            cd_method,
+            cd_promoter_set,
+            tuple(cd_included_binding),
+            tuple(cd_included_perturbation),
+            tuple(cp_included_binding),
+            tuple(cp_included_perturbation),
+            tuple(cp_included_promoter_sets),
+            cm_binding_db,
+            tuple(cm_included_perturbation),
+        )
+        cached = _config_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         result: dict[str, Any] = {
             "tab": tab,
             "cd_data": pd.DataFrame(),
@@ -506,9 +579,15 @@ def comparison_workspace_server(
 
             if cd_pairs:
                 try:
-                    raw = await asyncio.to_thread(
-                        topn_all_pairs_sql, vdb, cd_pairs, filters, top_n, preset
-                    )
+                    with perf(
+                        session.id,
+                        "comparison.workspace",
+                        "cd_topn_all_pairs_sql",
+                        kind="data",
+                    ):
+                        raw = await asyncio.to_thread(
+                            topn_all_pairs_sql, vdb, cd_pairs, filters, top_n, preset
+                        )
                 except Exception as exc:
                     logger.error("cd topn_all_pairs_sql failed: %s", exc, exc_info=True)
                     raw = pd.DataFrame()
@@ -569,9 +648,15 @@ def comparison_workspace_server(
             ]
             if cp_pairs:
                 try:
-                    raw = await asyncio.to_thread(
-                        topn_all_pairs_sql, vdb, cp_pairs, filters, top_n, preset
-                    )
+                    with perf(
+                        session.id,
+                        "comparison.workspace",
+                        "cp_topn_all_pairs_sql",
+                        kind="data",
+                    ):
+                        raw = await asyncio.to_thread(
+                            topn_all_pairs_sql, vdb, cp_pairs, filters, top_n, preset
+                        )
                 except Exception as exc:
                     logger.error("cp topn_all_pairs_sql failed: %s", exc, exc_info=True)
                     raw = pd.DataFrame()
@@ -648,9 +733,15 @@ def comparison_workspace_server(
             ]
             if cm_pairs:
                 try:
-                    raw = await asyncio.to_thread(
-                        topn_all_pairs_sql, vdb, cm_pairs, filters, top_n, preset
-                    )
+                    with perf(
+                        session.id,
+                        "comparison.workspace",
+                        "cm_topn_all_pairs_sql",
+                        kind="data",
+                    ):
+                        raw = await asyncio.to_thread(
+                            topn_all_pairs_sql, vdb, cm_pairs, filters, top_n, preset
+                        )
                 except Exception as exc:
                     logger.error("cm topn_all_pairs_sql failed: %s", exc, exc_info=True)
                     raw = pd.DataFrame()
@@ -682,6 +773,10 @@ def comparison_workspace_server(
                     if cm_rows_:
                         result["cm_topn_data"] = pd.concat(cm_rows_, ignore_index=True)
 
+        _config_cache[cache_key] = result
+        if len(_config_cache) > _CONFIG_CACHE_MAX:
+            # Evict the oldest entry (dicts preserve insertion order).
+            _config_cache.pop(next(iter(_config_cache)))
         return result
 
     # ---------------------------------------------------------------------------
@@ -759,7 +854,7 @@ def comparison_workspace_server(
             cm_binding_db,
             cm_included_perturbation,
         )
-        _last_run_snapshot.set(_snapshot_current())
+        _last_run_snapshot.set({**_last_run_snapshot(), tab: _snapshot_current()})
 
     # ---------------------------------------------------------------------------
     # Status render
@@ -867,6 +962,7 @@ def comparison_workspace_server(
 
     @output(suspend_when_hidden=False)
     @render.ui
+    @_timed_render("cd_matrix_container")
     def cd_matrix_container() -> ui.Tag:
         """
         Binding × perturbation matrix with median % responsive in each cell.
@@ -923,10 +1019,12 @@ def comparison_workspace_server(
             display_names=display_names,
             selected_binding=cd_selected_binding(),
             selected_perturbation=cd_selected_perturbation(),
+            ns=session.ns,
         )
 
     @output(suspend_when_hidden=False)
     @render.ui
+    @_timed_render("cd_distribution_container")
     def cd_distribution_container() -> ui.Tag:
         """
         One box plot per pair in the selected row or column.
@@ -936,6 +1034,13 @@ def comparison_workspace_server(
         cd_selected_perturbation: re-renders when a column is selected.
 
         """
+        # Unmount the box-plot figures when the Comparisons tab is not active so
+        # they do not stay resident in the DOM (see binding pair_box_container).
+        if (
+            active_tab is not None
+            and active_tab() != "Binding/Perturbation Comparisons"
+        ):
+            return ui.span()
         if _results_stale():
             return ui.span()
         result = _tab_results().get("Compare Datasets")
@@ -1011,6 +1116,7 @@ def comparison_workspace_server(
 
     @output(suspend_when_hidden=False)
     @render.ui
+    @_timed_render("cp_promoter_table")
     def cp_promoter_table() -> ui.Tag:
         """
         Promoter comparison tables, one per perturbation source.
@@ -1166,6 +1272,7 @@ def comparison_workspace_server(
 
     @output(suspend_when_hidden=False)
     @render.ui
+    @_timed_render("cm_method_table")
     def cm_method_table() -> ui.Tag:
         """
         Method comparison tables, one per perturbation source.

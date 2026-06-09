@@ -210,9 +210,12 @@ def binding_workspace_server(
             }
 
         try:
-            combined = await asyncio.to_thread(
-                corr_all_pairs_sql, vdb, pairs, col_map, filters, method
-            )
+            with perf(
+                session.id, "binding.workspace", "corr_all_pairs_sql", kind="data"
+            ):
+                combined = await asyncio.to_thread(
+                    corr_all_pairs_sql, vdb, pairs, col_map, filters, method
+                )
         except Exception as exc:
             logger.error("corr_all_pairs_sql failed: %s", exc, exc_info=True)
             combined = pd.DataFrame(columns=empty_cols + ["pair_key"])
@@ -348,9 +351,12 @@ def binding_workspace_server(
     @reactive.effect
     def _init_selected_pairs() -> None:
         """
-        Seed ``pending_pairs`` and ``committed_pairs`` with the first active pair when
-        the task succeeds and nothing is currently selected, and prune stale pairs that
-        are no longer in the result.
+        Prune stale pairs from ``pending_pairs`` and ``committed_pairs`` when the task
+        succeeds.
+
+        No default pair is seeded: the matrix selection is the single source of
+        truth, so the distribution and scatter stay empty until the user clicks a
+        matrix cell (and re-runs Execute Analysis to commit the selection).
 
         :trigger _run_analysis.status: fires when the task transitions to success.
 
@@ -365,9 +371,9 @@ def binding_workspace_server(
         valid_pending = [p for p in cur_pending if p in pairs_set]
         valid_committed = [p for p in cur_committed if p in pairs_set]
         if valid_pending != cur_pending:
-            pending_pairs.set(valid_pending if valid_pending else pairs[:1])
+            pending_pairs.set(valid_pending)
         if valid_committed != cur_committed:
-            committed_pairs.set(valid_committed if valid_committed else pairs[:1])
+            committed_pairs.set(valid_committed)
 
     @reactive.effect
     def _reset_scatter_epoch() -> None:
@@ -590,6 +596,7 @@ def binding_workspace_server(
                 corr_data=result["corr_data"],
                 display_names=display_names,
                 selected_pairs=set(pending_pairs()),
+                ns=session.ns,
             )
 
     # --- Cell click factory — pre-register one toggle effect per possible pair -
@@ -660,6 +667,11 @@ def binding_workspace_server(
         :trigger _run_analysis.status: re-renders on task completion.
 
         """
+        # Unmount the plotly figures when the Binding tab is not active so they
+        # do not stay resident in the DOM (large figures across all tabs freeze
+        # the browser). They re-render when the tab becomes active again.
+        if active_tab is not None and active_tab() != "Binding":
+            return ui.span()
         with perf(session.id, "binding.workspace", "pair_box_container"):
             if _run_analysis.status() != "success":
                 return ui.span()
@@ -962,6 +974,10 @@ def binding_workspace_server(
         selected_pair: re-renders when the selected pair changes.
 
         """
+        # Unmount the scatter figures when the Binding tab is not active so they
+        # do not stay resident in the DOM (see pair_box_container).
+        if active_tab is not None and active_tab() != "Binding":
+            return ui.span()
         if _run_analysis.status() != "success":
             return ui.span()
 
@@ -971,12 +987,19 @@ def binding_workspace_server(
             return ui.span()
 
         # Filter to pairs where both datasets appear in the committed selection.
+        # With no selection the scatter stays empty (the matrix is the single
+        # source of truth) rather than defaulting to every active pair.
         sel = committed_pairs()
-        if sel:
-            sel_dbs: set[str] = {db for p in sel for db in p}
-            visible = [p for p in pairs if set(p) <= sel_dbs]
-        else:
-            visible = pairs
+        if not sel:
+            return ui.div(
+                {"class": "empty-state"},
+                ui.p(
+                    "Click a cell in the Correlation Matrix and run Execute "
+                    "Analysis to view gene-level scatter plots."
+                ),
+            )
+        sel_dbs: set[str] = {db for p in sel for db in p}
+        visible = [p for p in pairs if set(p) <= sel_dbs]
 
         if not visible:
             return ui.span()

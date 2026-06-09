@@ -569,8 +569,7 @@ GROUP BY b.binding_sample_id, b.regulator_locus_tag, pert.perturbation_sample_id
 | `chec_m2025_peaks` | `peak_score` | False | `sample_id` | No | No |
 | `rossi` | `enrichment` | False | `sample_id` | No | No |
 | `rossi_mindel` | `enrichment` | False | `sample_id` | No | No |
-| `rossi_peaks_kang` | `score` | False | `sample_id` | No | No |
-| `rossi_peaks_mindel` | `score` | False | `sample_id` | No | No |
+| `rossi_peaks` | `peak_score` | False | `sample_id` | No | No |
 
 **Per-dataset responsiveness (default "Standard" preset):**
 

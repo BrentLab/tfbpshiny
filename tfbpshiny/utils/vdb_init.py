@@ -305,6 +305,18 @@ def initialize_data(
         time.monotonic() - t,
     )
 
+    # Materialize the analysis data views into RAM so per-query parquet scans
+    # (the dominant Comparison cost, especially on slow disk) hit memory instead.
+    # Imported locally to keep the module import graph flat.
+    from tfbpshiny.utils.vdb_materialize import materialize_comparison_views
+
+    t = time.monotonic()
+    materialize_comparison_views(vdb)
+    logger.debug(
+        "initialize_data: materialize_comparison_views completed in %.3fs",
+        time.monotonic() - t,
+    )
+
     logger.debug("initialize_data: total %.3fs", time.monotonic() - _t0)
     return vdb, AppDatasets(condition_cols=condition_cols, upstream_cols=upstream_cols)
 

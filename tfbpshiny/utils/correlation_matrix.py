@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pandas as pd
 from shiny import ui
 
@@ -21,6 +23,7 @@ def build_correlation_matrix_ui(
     corr_data: dict[tuple[str, str], pd.DataFrame],
     display_names: dict[str, str],
     selected_pairs: set[tuple[str, str]],
+    ns: Callable[[str], str] = lambda s: s,
 ) -> ui.Tag:
     """
     Build the upper-triangle-only correlation matrix table tag.
@@ -56,6 +59,11 @@ def build_correlation_matrix_ui(
         ``"correlation"`` column containing per-regulator values.
     :param display_names: Mapping from ``db_name`` to human-readable label.
     :param selected_pairs: Set of canonical pairs currently selected.
+    :param ns: Namespace function (the module ``session.ns``) applied to every
+        cell button id. The cell ``onclick`` writes ``Shiny.setInputValue`` with
+        a literal id that is not auto-namespaced, so it must be the module-scoped
+        id for the click effect (``input[bare_id]``) to receive it. Defaults to
+        identity for standalone (non-module) use.
     :returns: ``ui.Tag`` ready to embed directly in a ``render.ui`` output.
 
     """
@@ -105,7 +113,7 @@ def build_correlation_matrix_ui(
                 cells.append(
                     matrix_cell(
                         "interactive",
-                        matrix_cell_button(btn_id, label),
+                        matrix_cell_button(ns(btn_id), label),
                         active=(pair in selected_pairs),
                     )
                 )

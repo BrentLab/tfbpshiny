@@ -413,7 +413,7 @@ def select_datasets_workspace_server(
                         matrix_cell(
                             "diagonal",
                             matrix_cell_button(
-                                f"diag_{db_row}",
+                                session.ns(f"diag_{db_row}"),
                                 f"{info.get('regulators', 0):,} regulators / "
                                 f"{info.get('samples', 0):,} samples",
                             ),
@@ -444,7 +444,7 @@ def select_datasets_workspace_server(
                         matrix_cell(
                             "interactive",
                             matrix_cell_button(
-                                offdiag_btn_id,
+                                session.ns(offdiag_btn_id),
                                 f"{info.get('common_regulators', 0):,} "
                                 "common regulators",
                                 tooltip=tooltip_text,

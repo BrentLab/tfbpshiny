@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pandas as pd
 from shiny import ui
 
@@ -20,6 +22,7 @@ def build_topn_matrix_ui(
     display_names: dict[str, str],
     selected_binding: str | None,
     selected_perturbation: str | None,
+    ns: Callable[[str], str] = lambda s: s,
 ) -> ui.Tag:
     """
     Build a rectangular binding × perturbation matrix table tag.
@@ -51,6 +54,11 @@ def build_topn_matrix_ui(
     :param selected_binding: Currently selected binding db_name, or ``None``.
     :param selected_perturbation: Currently selected perturbation db_name, or
         ``None``.
+    :param ns: Namespace function (the module ``session.ns``) applied to every
+        button id. The button ``onclick`` writes ``Shiny.setInputValue`` with a
+        literal id that is not auto-namespaced, so it must be the module-scoped
+        id for the click effects (``input[bare_id]``) to receive it. Defaults to
+        identity for standalone (non-module) use.
     :returns: ``ui.Tag`` ready to embed directly in a ``render.ui`` output.
 
     """
@@ -65,7 +73,7 @@ def build_topn_matrix_ui(
             ui.tags.th(
                 {"class": "matrix-col-header"},
                 matrix_cell_button(
-                    f"topncol_{p_db}",
+                    ns(f"topncol_{p_db}"),
                     label,
                     tooltip="Click to view distributions for this perturbation dataset",
                 ),
@@ -88,7 +96,7 @@ def build_topn_matrix_ui(
                 + (" matrix-cell-active" if row_active else "")
             },
             matrix_cell_button(
-                f"topnrow_{b_db}",
+                ns(f"topnrow_{b_db}"),
                 display_names.get(b_db, b_db),
                 tooltip="Click to view distributions for this binding dataset",
             ),
@@ -105,7 +113,7 @@ def build_topn_matrix_ui(
             cells.append(
                 matrix_cell(
                     "interactive",
-                    matrix_cell_button(f"topncell_{b_db}__{p_db}", label),
+                    matrix_cell_button(ns(f"topncell_{b_db}__{p_db}"), label),
                     active=cell_active,
                 )
             )

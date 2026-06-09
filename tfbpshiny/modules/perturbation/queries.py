@@ -113,7 +113,7 @@ def perturbation_data_query(
 
     """
     params: dict[str, Any] = {}
-    where_clause = _build_where(filters, params) if filters else ""
+    where_clause = _meta_sample_where(db_name, filters, params) if filters else ""
     sql = (
         f"SELECT regulator_locus_tag, target_locus_tag, target_symbol, sample_id, {col} "
         f"FROM {db_name}{where_clause}"
@@ -155,6 +155,35 @@ def _build_where(
             clauses.append(f'"{field}" = $bool_{p}')
             params[f"bool_{p}"] = bool(val)
     return f" WHERE {' AND '.join(clauses)}" if clauses else ""
+
+
+def _meta_sample_where(
+    db_name: str,
+    filters: dict[str, Any] | None,
+    params: dict[str, Any],
+    prefix: str = "",
+) -> str:
+    """
+    Build a ``WHERE sample_id IN (meta subquery)`` clause and populate ``params``.
+
+    Dataset filters target metadata columns. Rather than predicating the wide
+    data view (``{db_name}``) directly, the filter resolves to a ``sample_id``
+    set against the small ``{db_name}_meta`` view, so the data-view scan only
+    needs the projected columns and a ``sample_id`` membership test.
+
+    :param db_name: Data view name; its meta view is ``{db_name}_meta``.
+    :param filters: Filter spec dict (column -> {type, value}), or ``None``.
+    :param params: Dict to populate with parameterized values.
+    :param prefix: Namespace prefix to avoid collisions across datasets.
+    :return: WHERE clause string (empty string if no filters).
+
+    """
+    if not filters:
+        return ""
+    inner = _build_where(filters, params, prefix)
+    if not inner:
+        return ""
+    return f" WHERE sample_id IN (SELECT sample_id FROM {db_name}_meta{inner})"
 
 
 def corr_pair_sql(
@@ -214,24 +243,23 @@ def corr_all_pairs_sql(
         ``regulator_locus_tag``, ``correlation``, and ``pair_key`` (``"{db_a}__{db_b}"``).
 
     """
+    empty_cols = [
+        "db_a",
+        "db_a_id",
+        "db_b",
+        "db_b_id",
+        "regulator_locus_tag",
+        "correlation",
+        "pair_key",
+    ]
     if not pairs:
-        return pd.DataFrame(
-            columns=[
-                "db_a",
-                "db_a_id",
-                "db_b",
-                "db_b_id",
-                "regulator_locus_tag",
-                "correlation",
-                "pair_key",
-            ]
-        )
+        return pd.DataFrame(columns=empty_cols)
 
-    parts: list[str] = []
-    all_params: dict[str, Any] = {}
-
-    for i, (db_a, db_b) in enumerate(pairs):
-        prefix = f"p{i}_"
+    # Execute one pair at a time (not a single UNION ALL across pairs) so each
+    # pair's join intermediates are released before the next runs, bounding peak
+    # memory. The small per-(regulator, sample) correlation rows accumulate here.
+    frames: list[pd.DataFrame] = []
+    for db_a, db_b in pairs:
         pair_sql, pair_params = _corr_pair_sql_impl(
             vdb,
             perturbation_data_query,
@@ -242,16 +270,18 @@ def corr_all_pairs_sql(
             col_map[db_b],
             filters.get(db_b),
             method,
-            prefix=prefix,
+            prefix="p",
             sql_only=True,
         )
         assert isinstance(pair_sql, str) and isinstance(pair_params, dict)
-        all_params.update(pair_params)
-        pair_key = f"{db_a}__{db_b}"
-        parts.append(f"SELECT *, '{pair_key}' AS pair_key FROM ({pair_sql.strip()})")
+        df = vdb.query(pair_sql, **pair_params)
+        if not df.empty:
+            df["pair_key"] = f"{db_a}__{db_b}"
+            frames.append(df)
 
-    sql = "\nUNION ALL\n".join(parts)
-    return vdb.query(sql, **all_params)
+    if not frames:
+        return pd.DataFrame(columns=empty_cols)
+    return pd.concat(frames, ignore_index=True)
 
 
 def regulator_scatter_sql(

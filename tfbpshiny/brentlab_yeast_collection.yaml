@@ -114,32 +114,17 @@ repositories:
           field: regulator_locus_tag
         Regulator symbol:
           field: regulator_symbol
-      yep_filtered_peaks_yiming:
+      yep_filtered_peaks_combined:
         tags:
           data_type: binding
           assay: ChIPexo
-          display_name: "2021 ChIP-exo Peaks (Rossi, Kang)"
+          display_name: "2021 ChIP-exo Peaks"
         description: >
-          ChIP-exo data called against the Kang promoter annotations.
-          Same underlying data as rossi, re-quantified against Kang
-          promoter boundaries.
-        db_name: rossi_peaks_kang
-        sample_id:
-          field: sample_id
-        Regulator locus tag:
-          field: regulator_locus_tag
-        Regulator symbol:
-          field: regulator_symbol
-      yep_filtered_peaks_mindel:
-        tags:
-          data_type: binding
-          assay: ChIPexo
-          display_name: "2021 ChIP-exo Peaks (Rossi, Mindel)"
-        description: >
-          ChIP-exo data called against the Mindel promoter annotations.
-          Same underlying data as rossi, re-quantified against Mindel
-          promoter boundaries.
-        db_name: rossi_peaks_mindel
+          ChIP-exo data quantified by the original authors' using ChExMix.
+          High quality peaks annotated to the nearest ORF. Mean peak score
+          is taken both within (multiple peaks within 500bp of the ORF in a
+          replicate) and across replicates
+        db_name: rossi_peaks
         sample_id:
           field: sample_id
         Regulator locus tag:
