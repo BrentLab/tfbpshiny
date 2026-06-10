@@ -169,9 +169,12 @@ def select_datasets_sidebar_server(
         True when the pending state differs from the committed state.
 
         :trigger: ``_pending_toggle``, ``_pending_filters``,
-            ``_committed_toggle``, ``dataset_filters``.
+            ``_committed_toggle``, ``dataset_filters``,
+            ``pending_regulator_pair``.
 
         """
+        if pending_regulator_pair is not None and pending_regulator_pair() is not None:
+            return True
         return (
             _pending_toggle() != _committed_toggle()
             or _pending_filters() != dataset_filters()
@@ -637,14 +640,19 @@ def select_datasets_sidebar_server(
                         else:
                             current.pop(ds, None)
             else:
-                # regulator field was cleared — remove from all datasets
-                for ds in all_db_names:
-                    ds_filters = dict(current.get(ds, {}))
-                    ds_filters.pop("regulator_locus_tag", None)
-                    if ds_filters:
-                        current[ds] = ds_filters
-                    else:
-                        current.pop(ds, None)
+                # regulator field was cleared in the modal — remove from all datasets,
+                # but only if the existing filter was set via the modal selectize.
+                # A pairwise filter (from_pair_db) is committed via Apply Changes and
+                # must not be wiped by opening an unrelated dataset's filter modal.
+                existing_reg = current.get(db_name, {}).get("regulator_locus_tag", {})
+                if not (existing_reg and existing_reg.get("from_pair_db")):
+                    for ds in all_db_names:
+                        ds_filters = dict(current.get(ds, {}))
+                        ds_filters.pop("regulator_locus_tag", None)
+                        if ds_filters:
+                            current[ds] = ds_filters
+                        else:
+                            current.pop(ds, None)
 
             # apply each common filter according to its own apply_to_all flag
             for f, spec in common_filters.items():
@@ -723,8 +731,8 @@ def select_datasets_sidebar_server(
         merged into the filter state before committing. The pending pair is then
         cleared.
 
-        :trigger input.apply_pending: fires when the user clicks the Apply button     in
-        the sidebar.
+        :trigger input.apply_pending: fires when the user clicks the Apply button in the
+        sidebar.
 
         """
         new_filters = dict(_pending_filters())
@@ -748,6 +756,10 @@ def select_datasets_sidebar_server(
                         new_filters[db_name] = ds_filters
                 pending_regulator_pair.set(None)
 
+        # Keep _pending_filters in sync with what we are about to commit so
+        # that _has_pending_changes() returns False immediately after this call
+        # and the Apply button deactivates.
+        _pending_filters.set(new_filters)
         _committed_toggle.set(_pending_toggle())
         dataset_filters.set(new_filters)
         logger.debug(

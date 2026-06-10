@@ -308,6 +308,30 @@
     text-align: left;
 }
 
+/* --- Progressive-loading placeholders for comparison cells/tables -------- */
+.cd-cell-loading {
+    display: block;
+    width: 100%;
+    padding: 10px 8px;
+    text-align: center;
+    color: #A0AEC0;
+    font-size: var(--font-size-label);
+    animation: cd-pulse 1.4s ease-in-out infinite;
+}
+
+.cp-table-loading,
+.cm-table-loading {
+    padding: 12px 16px;
+    color: #A0AEC0;
+    font-size: var(--font-size-label);
+    animation: cd-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes cd-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+}
+
 /* --- Pending-changes banner in binding/perturbation sidebars ------------- */
 .pending-banner {
     background: #fff3cd;

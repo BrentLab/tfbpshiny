@@ -15,7 +15,7 @@ from tfbpshiny.modules.binding.queries import _corr_pair_sql_impl
 # neglog10p_col: precomputed -log10(pval) column (already negated).
 # TODO: this information should be moved to virtualdb config.
 DATASET_COLUMNS: dict[str, tuple[str, str, str, str]] = {
-    "degron": ("log2FoldChange", "pvalue", "", ""),
+    "degron": ("log2FoldChange", "padj", "", ""),
     "hughes_overexpression": ("mean_norm_log2fc", "", "", ""),
     "hughes_knockout": ("mean_norm_log2fc", "", "", ""),
     "kemmeren": ("Madj", "pval", "", ""),

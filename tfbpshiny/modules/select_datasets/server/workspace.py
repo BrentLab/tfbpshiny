@@ -52,6 +52,30 @@ def select_datasets_workspace_server(
         for db_name in vdb.get_datasets()
     }
 
+    # Build a db_name -> DOI URL map from the config and datacards.
+    # Two db_names may share a repo (e.g. chec_m2025 and degron both come from
+    # BrentLab/mahendrawada_2025), so they share the same DOI.
+    _doi_map: dict[str, str] = {}
+    for _repo_id, _repo_cfg in vdb.config.repositories.items():
+        if not _repo_cfg.dataset:
+            continue
+        for _ds_cfg in _repo_cfg.dataset.values():
+            _db = getattr(_ds_cfg, "db_name", None)
+            if not _db:
+                continue
+            _dc = vdb.datacards.get(_repo_id)
+            if _dc:
+                _doi = _dc.dataset_card.doi
+                if _doi:
+                    _doi_map[_db] = _doi
+
+    def _row_label(db_name: str) -> str | ui.Tag:
+        name = display_names.get(db_name, db_name)
+        doi = _doi_map.get(db_name)
+        if doi:
+            return ui.tags.a(name, href=doi, target="_blank")
+        return name
+
     # Canonical dataset ordering from vdb — used for button IDs and cross_dataset keys
     # so that all lookups are consistent regardless of active-list ordering.
     all_dbs: list[str] = list(vdb.get_datasets())
@@ -398,7 +422,7 @@ def select_datasets_workspace_server(
         # --- body rows ---
         body_rows: list[ui.Tag] = []
         for row_i, db_row in enumerate(active):
-            cells: list[ui.Tag] = [matrix_row_label(display_names.get(db_row, db_row))]
+            cells: list[ui.Tag] = [matrix_row_label(_row_label(db_row))]
 
             for col_i, db_col in enumerate(active):
                 if col_i < row_i:

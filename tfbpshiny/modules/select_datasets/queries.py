@@ -190,7 +190,8 @@ def matrix_diagonal_query(
     Return ``(sql, params)`` for counting distinct regulators and samples for every
     active dataset in a single UNION ALL query.
 
-    Result columns: ``db_name`` (str), ``n_regulators`` (int), ``n_samples`` (int).
+    Result columns: ``db_name`` (str), ``n_regulators`` (int, distinct),
+    ``n_samples`` (int, total row count).
 
     :param active: Ordered list of active dataset names.
     :param filters: Active filter dict keyed by dataset name.
@@ -206,7 +207,7 @@ def matrix_diagonal_query(
         parts.append(
             f"SELECT '{db_name}' AS db_name,"
             f" COUNT(DISTINCT regulator_locus_tag) AS n_regulators,"
-            f" COUNT(DISTINCT sample_id) AS n_samples"
+            f" COUNT(*) AS n_samples"
             f" FROM {db_name}_meta{where}"
         )
     sql = "\nUNION ALL\n".join(parts)

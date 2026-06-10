@@ -341,13 +341,13 @@ def matrix_header_cell(label: str, *, row: bool = False) -> ui.Tag:
     )
 
 
-def matrix_row_label(label: str) -> ui.Tag:
+def matrix_row_label(label: str | ui.Tag) -> ui.Tag:
     """
     Row label cell (``<td>``) showing the dataset name at the start of each row.
 
     CSS: ``.matrix-row-label``
 
-    :param label: Dataset display name.
+    :param label: Dataset display name or a tag (e.g. an anchor link).
 
     """
     return ui.tags.td({"class": "matrix-row-label"}, label)

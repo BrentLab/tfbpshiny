@@ -17,7 +17,7 @@ from tfbpshiny.modules.binding.server import binding_server
 from tfbpshiny.modules.binding.ui import binding_ui
 from tfbpshiny.modules.comparison.server import comparison_server
 from tfbpshiny.modules.comparison.ui import comparison_ui
-from tfbpshiny.modules.home.ui import home_ui
+from tfbpshiny.modules.home.ui import HOME_CARD_NAV_TARGETS, home_ui
 from tfbpshiny.modules.perturbation.server import perturbation_server
 from tfbpshiny.modules.perturbation.ui import perturbation_ui
 from tfbpshiny.modules.select_datasets.server import select_datasets_server
@@ -101,6 +101,17 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     @reactive.calc
     def _active_tab() -> str:
         return input.main_nav()
+
+    # Navigate to the target tab when a home-page card title link is clicked.
+    for _link_id, _target in HOME_CARD_NAV_TARGETS.items():
+
+        def _make_nav_effect(link_id: str, target: str) -> None:
+            @reactive.effect
+            @reactive.event(getattr(input, link_id))
+            def _nav_to_tab() -> None:
+                ui.update_navset("main_nav", selected=target)
+
+        _make_nav_effect(_link_id, _target)
 
     # Fires exactly once when init succeeds; registers all module servers.
     @reactive.effect

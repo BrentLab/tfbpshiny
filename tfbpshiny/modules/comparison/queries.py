@@ -431,26 +431,35 @@ def topn_responsive_ratio(
 
 # Promoter-set-aware constants -----------------------------------------------
 
-#: Maps every binding db_name to its base label (Mindel suffix stripped).
-#: Primary and Mindel variants of the same dataset share the same base label.
+#: Maps every binding db_name to its base label (promoter-set suffix stripped).
+#: All promoter variants of the same dataset share the same base label.
 BINDING_BASE_LABEL_MAP: dict[str, str] = {
     "callingcards": "2026 Calling Cards",
     "callingcards_mindel": "2026 Calling Cards",
     "harbison": "2004 ChIP-chip",
     "rossi": "2021 ChIP-exo",
     "rossi_mindel": "2021 ChIP-exo",
+    "rossi_500bp": "2021 ChIP-exo",
+    "rossi_intergenic": "2021 ChIP-exo",
     "chec_m2025": "2025 ChEC-seq",
     "chec_m2025_mindel": "2025 ChEC-seq",
+    "chec_m2025_500bp": "2025 ChEC-seq",
+    "chec_m2025_intergenic": "2025 ChEC-seq",
 }
 
-#: Maps every binding db_name to its promoter-set label ("Kang" or "Mindel").
+#: Maps every binding db_name to its promoter-set label.
 PROMOTER_SET_MAP: dict[str, str] = {
-    db: (
-        "Mindel"
-        if db in ("callingcards_mindel", "rossi_mindel", "chec_m2025_mindel")
-        else "Kang"
-    )
-    for db in BINDING_BASE_LABEL_MAP
+    "callingcards": "Kang",
+    "callingcards_mindel": "Mindel",
+    "harbison": "Kang",
+    "rossi": "Kang",
+    "rossi_mindel": "Mindel",
+    "rossi_500bp": "500bp",
+    "rossi_intergenic": "Intergenic",
+    "chec_m2025": "Kang",
+    "chec_m2025_mindel": "Mindel",
+    "chec_m2025_500bp": "500bp",
+    "chec_m2025_intergenic": "Intergenic",
 }
 
 BINDING_LABEL_MAP: dict[str, str] = {
@@ -461,13 +470,19 @@ BINDING_LABEL_MAP: dict[str, str] = {
     "chec_m2025_mindel": "2025 ChEC-seq (Mindel)",
     "rossi_mindel": "2021 ChIP-exo (Mindel)",
     "callingcards_mindel": "2026 Calling Cards (Mindel)",
+    "rossi_500bp": "2021 ChIP-exo (500bp)",
+    "chec_m2025_500bp": "2025 ChEC-seq (500bp)",
+    "rossi_intergenic": "2021 ChIP-exo (Intergenic)",
+    "chec_m2025_intergenic": "2025 ChEC-seq (Intergenic)",
 }
 
-#: Maps primary binding db_name to its Mindel-promoter variant db_name.
-PROMOTER_VARIANT_PAIRS: dict[str, str] = {
-    "rossi": "rossi_mindel",
-    "chec_m2025": "chec_m2025_mindel",
-    "callingcards": "callingcards_mindel",
+#: Maps primary binding db_name to an ordered list of its promoter-set variants,
+#: in the same order as the promoter set selector choices: Kang, Mindel, 500bp, Intergenic.
+#: The primary db_name itself is not included here; it represents the Kang variant.
+PROMOTER_VARIANT_PAIRS: dict[str, list[str]] = {
+    "rossi": ["rossi_mindel", "rossi_500bp", "rossi_intergenic"],
+    "chec_m2025": ["chec_m2025_mindel", "chec_m2025_500bp", "chec_m2025_intergenic"],
+    "callingcards": ["callingcards_mindel"],
 }
 
 # ---------------------------------------------------------------------------
@@ -478,18 +493,28 @@ PROMOTER_VARIANT_PAIRS: dict[str, str] = {
 #: base label; all scoring variants of the same dataset share the same label.
 METHOD_BASE_LABEL_MAP: dict[str, str] = {
     "chec_m2025": "2025 ChEC-seq",
+    "chec_m2025_mindel": "2025 ChEC-seq",
+    "chec_m2025_500bp": "2025 ChEC-seq",
+    "chec_m2025_intergenic": "2025 ChEC-seq",
     "chec_m2025_peaks": "2025 ChEC-seq",
     "rossi": "2021 ChIP-exo",
     "rossi_mindel": "2021 ChIP-exo",
+    "rossi_500bp": "2021 ChIP-exo",
+    "rossi_intergenic": "2021 ChIP-exo",
     "rossi_peaks": "2021 ChIP-exo",
 }
 
 #: Human-readable label for each scoring variant in the Method Comparison tab.
 SCORING_VARIANT_MAP: dict[str, str] = {
-    "chec_m2025": "Re-quantified",
+    "chec_m2025": "Promoter Enrichment (Kang)",
+    "chec_m2025_mindel": "Promoter Enrichment (Mindel)",
+    "chec_m2025_500bp": "Promoter Enrichment (500bp)",
+    "chec_m2025_intergenic": "Promoter Enrichment (Intergenic)",
     "chec_m2025_peaks": "Original Peaks",
-    "rossi": "Re-quantified (Kang)",
-    "rossi_mindel": "Re-quantified (Mindel)",
+    "rossi": "Promoter Enrichment (Kang)",
+    "rossi_mindel": "Promoter Enrichment (Mindel)",
+    "rossi_500bp": "Promoter Enrichment (500bp)",
+    "rossi_intergenic": "Promoter Enrichment (Intergenic)",
     "rossi_peaks": "Original Peaks",
 }
 
@@ -502,17 +527,19 @@ PEAKS_VARIANT_MAP: dict[str, list[str]] = {
 
 #: Display order for scoring variants within a subplot.
 SCORING_VARIANT_ORDER: list[str] = [
-    "Re-quantified",
-    "Re-quantified (Kang)",
-    "Re-quantified (Mindel)",
+    "Promoter Enrichment (Kang)",
+    "Promoter Enrichment (Mindel)",
+    "Promoter Enrichment (500bp)",
+    "Promoter Enrichment (Intergenic)",
     "Original Peaks",
 ]
 
 #: Color palette for scoring variants in the Method Comparison tab.
 SCORING_VARIANT_COLORS: dict[str, str] = {
-    "Re-quantified": "#4DBBD5",
-    "Re-quantified (Kang)": "#4DBBD5",
-    "Re-quantified (Mindel)": "#00A087",
+    "Promoter Enrichment (Kang)": "#4DBBD5",
+    "Promoter Enrichment (Mindel)": "#00A087",
+    "Promoter Enrichment (500bp)": "#7B4F9E",
+    "Promoter Enrichment (Intergenic)": "#F39B7F",
     "Original Peaks": "#E64B35",
 }
 
@@ -564,7 +591,27 @@ BINDING_CONFIGS: dict[str, dict] = {
         rank_col="enrichment",
         rank_asc=False,
     ),
+    "rossi_500bp": dict(
+        binding_sample_col="sample_id",
+        rank_col="enrichment",
+        rank_asc=False,
+    ),
+    "rossi_intergenic": dict(
+        binding_sample_col="sample_id",
+        rank_col="enrichment",
+        rank_asc=False,
+    ),
     "chec_m2025_mindel": dict(
+        binding_sample_col="sample_id",
+        rank_col="enrichment",
+        rank_asc=False,
+    ),
+    "chec_m2025_500bp": dict(
+        binding_sample_col="sample_id",
+        rank_col="enrichment",
+        rank_asc=False,
+    ),
+    "chec_m2025_intergenic": dict(
         binding_sample_col="sample_id",
         rank_col="enrichment",
         rank_asc=False,

@@ -75,6 +75,7 @@ def perturbation_ui() -> ui.Tag:
                 "regulator. Use the dropdown to change the active regulator."
             ),
         ),
+        ui.output_ui("hackett_pvalue_warning"),
         ui.output_ui("analysis_status"),
         ui.navset_tab(
             ui.nav_panel(

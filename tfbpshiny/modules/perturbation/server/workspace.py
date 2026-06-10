@@ -248,6 +248,11 @@ def perturbation_workspace_server(
             )
             filters = dataset_filters()
 
+            # Hackett has no p-value column; exclude it from pairs when any
+            # p-value variant is selected.
+            if preference in ("pvalue", "log10pval"):
+                pairs = [p for p in pairs if "hackett" not in p]
+
             col_map = {
                 db: get_measurement_column(db, preference)
                 for pair in pairs
@@ -375,6 +380,38 @@ def perturbation_workspace_server(
             _scatter_expected.set(_visible_scatter_count(result["pairs"], sel))
 
     # --- Status render ----------------------------------------------------------
+
+    @render.ui
+    def hackett_pvalue_warning() -> ui.Tag:
+        """
+        Red banner shown when a p-value column is selected and Hackett is active.
+
+        Hackett has no p-value column, so it is automatically excluded from the
+        analysis when ``col_preference`` is ``"pvalue"`` or ``"log10pval"``.
+
+        :trigger input.col_preference: re-renders when the column selection changes.
+        :trigger active_perturbation_datasets: re-renders when the dataset set changes.
+
+        """
+        pref = input.col_preference()
+        if pref not in ("pvalue", "log10pval"):
+            return ui.span()
+        datasets = active_perturbation_datasets()
+        if "hackett" not in datasets:
+            return ui.span()
+        return ui.div(
+            {
+                "style": (
+                    "background: #FFF5F5; border: 1px solid #FC8181; "
+                    "border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; "
+                    "color: #C53030; font-size: 0.875rem;"
+                )
+            },
+            ui.strong("Note:"),
+            " The 2020 Overexpression (Hackett) dataset does not have a p-value"
+            " column and is excluded from this analysis when a p-value score is"
+            " selected.",
+        )
 
     @render.ui
     def analysis_status() -> ui.Tag:
