@@ -6,7 +6,7 @@ import sys
 
 from shiny import run_app
 
-from configure_logger import LogLevel, configure_logger
+from tfbpshiny.configure_logger import LogLevel, configure_logger
 
 _DEFAULT_VIRTUALDB_CONFIG = str(
     __import__("pathlib").Path(__file__).parent / "brentlab_yeast_collection.yaml"

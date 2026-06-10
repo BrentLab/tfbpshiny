@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 from shiny import App, reactive, render, ui
 from shiny.reactive import extended_task
 
-from configure_logger import configure_logger
 from tfbpshiny.components import github_badge
+from tfbpshiny.configure_logger import configure_logger
 from tfbpshiny.modules.binding.server import binding_server
 from tfbpshiny.modules.binding.ui import binding_ui
 from tfbpshiny.modules.comparison.server import comparison_server
