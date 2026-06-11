@@ -150,7 +150,7 @@ def comparison_ui() -> ui.Tag:
                     ui.tags.dt("Promoter Set 4 (Intergenic)"),
                     ui.tags.dd(
                         "Promoter regions defined as the full intergenic region"
-                        " upstream of the 5' end of each feature. Approximately 1410"
+                        " upstream of the 5' end of each feature. 1410"
                         " of 6040 features are divergently transcribed."
                     ),
                 ),
