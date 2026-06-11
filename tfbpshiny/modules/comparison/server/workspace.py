@@ -67,8 +67,8 @@ _METHODS_ELIGIBLE: frozenset[str] = frozenset(PEAKS_VARIANT_MAP)
 _PROMOTER_SET_ALIAS: dict[str, str] = {
     "Kang": "Promoter Set 1 (Kang)",
     "Mindel": "Promoter Set 2 (Mindel)",
-    "500bp": "500bp upstream",
-    "Intergenic": "Intergenic",
+    "500bp": "Promoter Set 3 (500bp)",
+    "Intergenic": "Promoter Set 4 (Intergenic)",
 }
 
 # Definitions sourced from brentlab_yeast_collection.yaml genome_resources.region_sets.

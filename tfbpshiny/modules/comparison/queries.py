@@ -436,6 +436,8 @@ def topn_responsive_ratio(
 BINDING_BASE_LABEL_MAP: dict[str, str] = {
     "callingcards": "2026 Calling Cards",
     "callingcards_mindel": "2026 Calling Cards",
+    "callingcards_500bp": "2026 Calling Cards",
+    "callingcards_intergenic": "2026 Calling Cards",
     "harbison": "2004 ChIP-chip",
     "rossi": "2021 ChIP-exo",
     "rossi_mindel": "2021 ChIP-exo",
@@ -451,6 +453,8 @@ BINDING_BASE_LABEL_MAP: dict[str, str] = {
 PROMOTER_SET_MAP: dict[str, str] = {
     "callingcards": "Kang",
     "callingcards_mindel": "Mindel",
+    "callingcards_500bp": "500bp",
+    "callingcards_intergenic": "Intergenic",
     "harbison": "Kang",
     "rossi": "Kang",
     "rossi_mindel": "Mindel",
@@ -474,6 +478,8 @@ BINDING_LABEL_MAP: dict[str, str] = {
     "chec_m2025_500bp": "2025 ChEC-seq (500bp)",
     "rossi_intergenic": "2021 ChIP-exo (Intergenic)",
     "chec_m2025_intergenic": "2025 ChEC-seq (Intergenic)",
+    "callingcards_500bp": "2026 Calling Cards (500bp)",
+    "callingcards_intergenic": "2026 Calling Cards (Intergenic)",
 }
 
 #: Maps primary binding db_name to an ordered list of its promoter-set variants,
@@ -482,7 +488,11 @@ BINDING_LABEL_MAP: dict[str, str] = {
 PROMOTER_VARIANT_PAIRS: dict[str, list[str]] = {
     "rossi": ["rossi_mindel", "rossi_500bp", "rossi_intergenic"],
     "chec_m2025": ["chec_m2025_mindel", "chec_m2025_500bp", "chec_m2025_intergenic"],
-    "callingcards": ["callingcards_mindel"],
+    "callingcards": [
+        "callingcards_mindel",
+        "callingcards_500bp",
+        "callingcards_intergenic",
+    ],
 }
 
 # ---------------------------------------------------------------------------
@@ -565,6 +575,18 @@ BINDING_CONFIGS: dict[str, dict] = {
         target_blacklist=CC_TARGET_BLACKLIST,
     ),
     "callingcards_mindel": dict(
+        binding_sample_col="sample_id",
+        rank_col="poisson_pval",
+        rank_asc=True,
+        target_blacklist=CC_TARGET_BLACKLIST,
+    ),
+    "callingcards_500bp": dict(
+        binding_sample_col="sample_id",
+        rank_col="poisson_pval",
+        rank_asc=True,
+        target_blacklist=CC_TARGET_BLACKLIST,
+    ),
+    "callingcards_intergenic": dict(
         binding_sample_col="sample_id",
         rank_col="poisson_pval",
         rank_asc=True,

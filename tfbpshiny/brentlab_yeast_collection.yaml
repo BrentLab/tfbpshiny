@@ -59,6 +59,32 @@ repositories:
           over the Mindel promoters.
         sample_id:
           field: combined_id
+      annotated_feature_reprocess_start_codon_500bp_analysis:
+        tags:
+          data_type: binding
+          assay: CallingCards
+          display_name: "2026 Calling Cards (500bp)"
+        db_name: callingcards_500bp
+        description: >-
+          Data generated with calling cards, a method that inserts transposons
+          near TF binding sites, from cells growing on synthetic complete media
+          at room temperature with galactose as the sole carbon source. Quantified
+          over the regions 500bp upstream of the targets' start codons.
+        sample_id:
+          field: combined_id
+      annotated_feature_reprocess_intergenic_analysis:
+        tags:
+          data_type: binding
+          assay: CallingCards
+          display_name: "2026 Calling Cards (intergenic)"
+        db_name: callingcards_intergenic
+        description: >-
+          Data generated with calling cards, a method that inserts transposons
+          near TF binding sites, from cells growing on synthetic complete media
+          at room temperature with galactose as the sole carbon source. Quantified
+          over the intergenic regions upstream of the 5' side of the targets.
+        sample_id:
+          field: combined_id
 
   BrentLab/harbison_2004:
     dataset:

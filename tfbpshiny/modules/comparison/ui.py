@@ -141,13 +141,13 @@ def comparison_ui() -> ui.Tag:
                         " in the SGD annotations). If no TSS is defined, the start"
                         " codon is used."
                     ),
-                    ui.tags.dt("500bp upstream"),
+                    ui.tags.dt("Promoter Set 3 (500bp)"),
                     ui.tags.dd(
                         "Promoter regions defined as exactly 500 bp upstream of the"
                         " start codon. No truncation or extension; all promoters are"
                         " the same length."
                     ),
-                    ui.tags.dt("Intergenic"),
+                    ui.tags.dt("Promoter Set 4 (Intergenic)"),
                     ui.tags.dd(
                         "Promoter regions defined as the full intergenic region"
                         " upstream of the 5' end of each feature. Approximately 1410"

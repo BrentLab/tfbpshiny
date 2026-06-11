@@ -37,6 +37,7 @@ def run_shiny(args: argparse.Namespace) -> None:
     os.environ["TFBPSHINY_LOG_LEVEL"] = str(log_level.value)
     os.environ["TFBPSHINY_LOG_HANDLER"] = args.log_handler
     os.environ["VIRTUALDB_CONFIG"] = args.virtualdb_config
+    os.environ["TFBPSHINY_MATERIALIZE"] = "0" if args.no_materialize else "1"
 
     kwargs: dict[str, object] = {"port": args.port, "host": args.host}
     if args.debug:
@@ -153,6 +154,16 @@ def make_parser() -> argparse.ArgumentParser:
     )
     shiny_parser.add_argument(
         "--host", type=str, default="127.0.0.1", help="Host to bind the Shiny app."
+    )
+    shiny_parser.add_argument(
+        "--no-materialize",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable in-memory materialization of dataset views at startup. "
+            "Reduces startup memory at the cost of slower query performance. "
+            "Equivalent to setting TFBPSHINY_MATERIALIZE=0."
+        ),
     )
     shiny_parser.set_defaults(func=run_shiny)
 

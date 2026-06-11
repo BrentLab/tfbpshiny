@@ -113,7 +113,7 @@ ResponsivenessPreset = dict[str, tuple[float, float]]
 DEFAULT_RESPONSIVENESS_PRESETS: dict[str, ResponsivenessPreset] = {
     "Stringent": {
         "*": (1.0, 0.05),
-        "degron": (1.3, 0.1),  # |log2FoldChange| > 1.3 and padj < 0.1
+        "degron": (0.38, 0.1),  # |fold change| > log2(1.3) and padj < 0.1
         "hackett": (0.0, 1.0),  # |log2_shrunken_timecourses| > 0 (no pvalue col)
         "kemmeren": (0.77, 0.05),  # |Madj| > log2(1.7) and pval < 0.05
         "hu_reimand": (0.0, 0.05),  # pval < 0.05 (no effect threshold)
