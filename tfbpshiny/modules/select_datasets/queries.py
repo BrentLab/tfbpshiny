@@ -190,7 +190,8 @@ def matrix_diagonal_query(
     Return ``(sql, params)`` for counting distinct regulators and samples for every
     active dataset in a single UNION ALL query.
 
-    Result columns: ``db_name`` (str), ``n_regulators`` (int), ``n_samples`` (int).
+    Result columns: ``db_name`` (str), ``n_regulators`` (int, distinct),
+    ``n_samples`` (int, total row count).
 
     :param active: Ordered list of active dataset names.
     :param filters: Active filter dict keyed by dataset name.
@@ -206,7 +207,7 @@ def matrix_diagonal_query(
         parts.append(
             f"SELECT '{db_name}' AS db_name,"
             f" COUNT(DISTINCT regulator_locus_tag) AS n_regulators,"
-            f" COUNT(DISTINCT sample_id) AS n_samples"
+            f" COUNT(*) AS n_samples"
             f" FROM {db_name}_meta{where}"
         )
     sql = "\nUNION ALL\n".join(parts)
@@ -317,30 +318,8 @@ def regulator_intersection_query(
     return sql, params
 
 
-def full_data_query(
-    db_name: str, filters: dict[str, Any] | None = None
-) -> tuple[str, dict[str, Any]]:
-    """
-    Return ``(sql, params)`` for querying the dataset's full data view with optional
-    filters.
-
-    The full data view (``{db_name}``) includes all genomic data columns joined with
-    metadata columns.
-
-    :param db_name: Dataset name (e.g. ``'harbison'``).
-    :param filters: Active filters for this dataset — same structure as
-        :func:`metadata_query`.
-    :return: ``(sql_string, params_dict)`` ready for ``vdb.query(sql, **params)``.
-
-    """
-    params: dict[str, Any] = {}
-    where = _build_where(filters, params)
-    return f"SELECT * FROM {db_name}{where}", params
-
-
 __all__ = [
     "metadata_query",
-    "full_data_query",
     "matrix_diagonal_query",
     "matrix_cross_dataset_query",
     "sample_count_query",

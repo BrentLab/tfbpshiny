@@ -1,6 +1,8 @@
 # shiny
 **/rsconnect-*
 tfbpshiny_log/
+notebooks/
+tfbpshiny_hf_cache/
 
 # www/
 **/www/*.js

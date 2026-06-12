@@ -2,13 +2,25 @@
 
 from shiny import ui
 
+# Maps card link id -> nav panel title string used in main_nav.
+HOME_CARD_NAV_TARGETS: dict[str, str] = {
+    "home_nav_selection": "Dataset selection",
+    "home_nav_binding": "Binding",
+    "home_nav_perturbation": "Perturbation",
+    "home_nav_comparison": "Binding/Perturbation Comparisons",
+}
 
-def _feature_card(title: str, description: str, img_src: str | None = None) -> ui.Tag:
+
+def _feature_card(
+    title: str, description: str, link_id: str | None = None, img_src: str | None = None
+) -> ui.Tag:
     """
     Feature card for the home page grid using Bootstrap card classes.
 
     :param title: Card heading.
     :param description: Short description text below the title.
+    :param link_id: Optional input id for an ``action_link`` wrapping the title.
+        When provided, clicking the title navigates to the corresponding tab.
     :param img_src: Optional path to an image shown at the left of the card body.
 
     """
@@ -23,9 +35,14 @@ def _feature_card(title: str, description: str, img_src: str | None = None) -> u
                 }
             )
         )
+    title_tag: ui.Tag = (
+        ui.input_action_link(link_id, title, class_="fw-bold fs-5 mb-1 d-block")
+        if link_id is not None
+        else ui.div({"class": "fw-bold fs-5 mb-1"}, title)
+    )
     body_children += [
         ui.div(
-            ui.div({"class": "fw-bold fs-5 mb-1"}, title),
+            title_tag,
             ui.div(description),
         )
     ]
@@ -68,21 +85,25 @@ def home_ui() -> ui.Tag:
                 "Dataset selection",
                 "Begin here to choose and filter the datasets you want to "
                 "analyse, then navigate to the other tabs to explore the results.",
+                link_id="home_nav_selection",
             ),
             _feature_card(
                 "Binding",
                 "Compare TF binding targets in the selected binding datasets.",
+                link_id="home_nav_binding",
                 img_src="binding.png",
             ),
             _feature_card(
                 "Perturbation",
                 "Compare transcriptional responses to TF perturbations in "
                 "the selected perturbation datasets.",
+                link_id="home_nav_perturbation",
                 img_src="perturbation.png",
             ),
             _feature_card(
                 "Comparison",
                 "Compare selected binding datasets to selected perturbation datasets.",
+                link_id="home_nav_comparison",
             ),
         ),
     )

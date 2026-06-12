@@ -5,262 +5,50 @@ data from the [Brent Lab yeast collection](https://huggingface.co/collections/Br
 
 ---
 
-## Quick start (pip install)
+## Resource Requirements
 
-Install from GitHub into a virtual environment:
+This app requires the following minimum resources to run:
 
-```bash
-python -m venv tfbpshiny-env
-source tfbpshiny-env/bin/activate  # Windows: tfbpshiny-env\Scripts\activate
-pip install git+https://github.com/BrentLab/tfbpshiny@dev
-```
+- 4GB storage on disk
+- 8GB RAM (10GB or more is recommended for better performance)
 
-Run the app:
+## Quick start
 
-```bash
-python -m tfbpshiny shiny
-```
-
-Options:
+If you wish to keep the app separated from your local environment, you should first
+create a virtual environment. You can do this with `venv`. `cd` to the directory
+where you want the virtual environment to be created, and run:
 
 ```bash
-python -m tfbpshiny --log-level INFO shiny --port 8010 --host 127.0.0.1
+python -m venv tfbpshiny_env
+source tfbpshiny_env/bin/activate
 ```
 
----
-
-## Production deployment
-
-### Prerequisites
-
-- An AWS account with permissions to create EC2 instances, IAM roles,
-  and security groups
-- [Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.0
-- An EC2 key pair already created in `us-east-2` (or your target region)
-- DNS A records for `tfbindingandperturbation.com`,
-  `www.tfbindingandperturbation.com`,
-  and `shinytraefik.tfbindingandperturbation.com` pointed at the
-  instance's public IP
-
-### 1. Provision the EC2 instance
+### Install
 
 ```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars — set key_name and adjust instance_type / root_volume_gb
-# if needed
-terraform init
-terraform apply
+python -m pip install tfbpshiny
 ```
 
-Note the `public_ip` output and update your DNS records to point at it.
+### Run the app:
 
-### 2. Prepare the environment file
-
-The app requires a single `.env` file that is **not** stored in the repository.
-Create it locally and copy it to the instance:
-
-#### .env
+This will download the necessary datasets from huggingface into a cache directory
+that is created in your current working directory. By default, it is called
+`./tfbpshiny_hf_cache`. When you run the app again, if you launch it from the same
+location it will verify that the cache is up to date, and use it, without
+re-downloading. You can also specify a custom cache directory with `--cache-dir`.
 
 ```bash
-DOCKER_ENV=true
-HF_TOKEN=<your_huggingface_token>       # optional; only for private HF datasets
-VIRTUALDB_CONFIG=/path/to/config.yaml   # optional; defaults to bundled config
-TRAEFIK_DASHBOARD_PASSWORD_HASH=myusername:$$2y$$05$$...  # see below
+python -m tfbpshiny launch
 ```
 
-To generate the bcrypt hash for the Traefik dashboard:
+To install the latest development version from GitHub, use:
 
 ```bash
-docker run --rm httpd:alpine htpasswd -nbB myusername mypassword
+python -m pip install git+https://github.com/BrentLab/tfbpshiny@dev
 ```
 
-This prints something like:
-
-```
-myusername:$2y$05$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ123456
-```
-
-Copy the full output into `.env`, but **escape every `$` as `$$`** so Docker
-Compose does not interpret them as variable references:
-
-```bash
-TRAEFIK_DASHBOARD_PASSWORD_HASH=myusername:$$2y$$05$$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ123456
-```
-
-Copy the env file to the instance:
-
-```bash
-scp .env ec2-user@<public_ip>:/opt/tfbpshiny/
-```
-
-### 3. Build and start the stack
-
-```bash
-ssh ec2-user@<public_ip>
-cd /opt/tfbpshiny
-docker compose -f production.yml up -d --build
-```
-
-**First deploy only** — fix `/hf-cache` volume ownership so the non-root `appuser`
-can write HuggingFace downloads to the named volume:
-
-```bash
-docker compose -f production.yml run --rm --user root shinyapp chown appuser /hf-cache
-docker compose -f production.yml up -d
-```
-
-Traefik will automatically obtain a Let's Encrypt TLS certificate on first start.
-
-### HuggingFace cache
-
-The shinyapp container sets `HF_HOME=/hf-cache` and mounts a named Docker volume
-there. HuggingFace model data is downloaded once and persists across container
-rebuilds — no re-download on `docker compose up --build`. The volume ownership fix
-above is only needed once; the volume retains correct permissions across rebuilds.
-
-### Logs
-
-Application and Traefik logs are sent to AWS CloudWatch Logs under the log group
-`/tfbpshiny/production` in `us-east-2`.
-
----
-
-## shinyapps.io deployment
-
-This section describes how to deploy the app to
-[shinyapps.io](https://www.shinyapps.io) as an alternative to the EC2/Docker
-stack above. The two deployments are independent and can run in parallel.
-
-### Prerequisites
-
-- `rsconnect-python` installed: `pip install rsconnect-python`
-- A HuggingFace token if any datasets are private
-
-### 1. Download the HuggingFace data locally
-
-The parquet files must be bundled with the deployment so the app never hits the
-network on startup. Run the `initialize` command once, pointing at a directory
-inside the project:
-
-```bash
-HF_TOKEN=<your_token> python -m tfbpshiny --cache-dir ./hf_cache initialize
-```
-
-**NOTE**: do call this hf_cache as it is already in the `.gitignore`
-
-This downloads all dataset parquet files into `hf_cache/` (~1.2 GB) and
-verifies every view is readable. The directory is created relative to the
-project root and will be included in the rsconnect upload bundle automatically.
-
-Re-run this command any time the upstream datasets are updated.
-
-### 2. Entry point
-
-`shinyapps_entry.py` in the project root is the shinyapps.io entry point. It
-sets `HF_CACHE_DIR` to the bundled `hf_cache/` directory before importing the
-Shiny app object, so no CLI flag is needed at runtime. No changes are required
-— the file is already in the repository.
-
-### 3. Set environment variables in the dashboard
-
-In the shinyapps.io application dashboard under **Settings > Environment**,
-add:
-
-| Variable | Value |
-|---|---|
-| `HF_TOKEN` | your HuggingFace token (if datasets are private) |
-
-Do not add `HF_CACHE_DIR` here — `shinyapps_entry.py` sets it from a path
-relative to the bundle, which is more reliable than a hardcoded absolute path.
-
-### 4. Deploy
-
-**note**: Go to your shinyapps.io account, drop down the user menu, and go
-to `Tokens`. If you click "show", and the python tab, it gives you this cmd with
-the `name`,  `account`, `token` and `secret` filled in. Run `rsconnect add`
-once to store credentials under a nickname; subsequent deploys use `--name`.
-
-Generate a `requirements.txt` from the Poetry lockfile before deploying (rsconnect
-requires it; it is gitignored because it is a generated artifact):
-
-```bash
-poetry export --without-hashes --without dev -f requirements.txt -o requirements.txt
-```
-
-**NOTE**: the above must be done before uploading after any change to dependencies in
-`pyproject.toml`.
-
-Make sure the local cache is up to date with the HuggingFace datasets, then deploy with rsconnect:
-
-```bash
-poetry run python -m tfbpshiny --cache-dir ./hf_cache initialize
-```
-
-Then deploy with rsconnect:
-
-```bash
-rsconnect add \
-    --account <your-shinyapps-account> \
-    --name <nickname> \
-    --token <token> \
-    --secret <secret>
-
-CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
-    --name <nickname> \
-    --entrypoint shinyapps_entry:app \
-    --title "TF Binding and Perturbation" \
-    --exclude "terraform" \
-    --exclude "compose" \
-    --exclude "tests" \
-    --exclude "docs" \
-    --exclude "tmp" \
-    --exclude "data" \
-    --exclude ".github" \
-    --exclude ".vscode" \
-    --exclude ".mypy_cache" \
-    --exclude ".pytest_cache" \
-    --exclude ".claude" \
-    --exclude ".venv" \
-    --exclude "mkdocs.yml" \
-    --exclude "mkdocs_requirements.txt" \
-    --exclude "production.yml" \
-    --exclude "*.log"
-```
-
-rsconnect does not read `.gitignore`; it bundles everything it finds unless told
-otherwise. The `--exclude` flags above strip deployment-irrelevant directories.
-`hf_cache/` is intentionally not excluded — it is the bundled dataset cache and
-must travel with the app. The first deploy uploads ~1.2 GB; set
-`CONNECT_REQUEST_TIMEOUT` (seconds) high enough to cover the upload — 3600 (one
-hour) is safe.
-
-### Updating the data
-
-When upstream datasets change, re-run step 1 and redeploy:
-
-```bash
-HF_TOKEN=<your_token> python -m tfbpshiny --cache-dir ./hf_cache initialize
-CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
-    --name <nickname> \
-    --entrypoint shinyapps_entry:app \
-    --exclude "terraform" \
-    --exclude "compose" \
-    --exclude "tests" \
-    --exclude "docs" \
-    --exclude "tmp" \
-    --exclude "data" \
-    --exclude ".github" \
-    --exclude ".vscode" \
-    --exclude ".mypy_cache" \
-    --exclude ".pytest_cache" \
-    --exclude ".claude" \
-    --exclude ".venv" \
-    --exclude "mkdocs.yml" \
-    --exclude "mkdocs_requirements.txt" \
-    --exclude "production.yml" \
-    --exclude "*.log"
-```
+For production deployment (EC2/Docker) and shinyapps.io deployment instructions,
+see [docs/development.md](docs/development.md).
 
 ---
 
@@ -317,7 +105,7 @@ VIRTUALDB_CONFIG=/path/to/custom_config.yaml
 ### Running the app
 
 ```bash
-poetry run python -m tfbpshiny --log-level DEBUG shiny \
+poetry run python -m tfbpshiny --log-level DEBUG launch \
     --port 8010 --host 127.0.0.1 --debug
 ```
 
