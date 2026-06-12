@@ -46,7 +46,6 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Literal
 
-import faicons as fa
 from shiny import ui
 
 # ---------------------------------------------------------------------------
@@ -293,20 +292,30 @@ def modal_section(*cards: ui.Tag) -> ui.Tag:
 
 def matrix_cell_button(id: str, label: str, *, tooltip: str | None = None) -> ui.Tag:
     """
-    Full-width, borderless Shiny action button that fills a matrix table cell.
+    Full-width, borderless button that fills a matrix table cell.
+
+    Emits a plain ``<button>`` that calls ``Shiny.setInputValue`` with
+    ``{priority: "event"}`` on click instead of using
+    ``ui.input_action_button``.  This avoids reactive loops when the button is
+    rendered inside a ``render.ui`` output: Shiny action buttons re-register on
+    every render and trigger their reactive listeners, whereas plain buttons
+    only fire when the user physically clicks them.
 
     CSS: ``.matrix-cell-button``
 
-    :param id: Shiny input ID for the button (e.g. ``"diag_harbison"``).
+    :param id: Shiny input ID written by ``Shiny.setInputValue`` on click.
     :param label: Text displayed inside the button.
-    :param tooltip: When provided, sets the native ``title`` attribute so browsers
-        show a hover tooltip.
+    :param tooltip: When provided, sets the native ``title`` attribute so
+        browsers show a hover tooltip.
 
     """
-    attrs: dict[str, str] = {"class": "matrix-cell-button"}
+    attrs: dict[str, str | None] = {
+        "class": "matrix-cell-button",
+        "onclick": f"Shiny.setInputValue('{id}', Math.random(), {{priority: 'event'}})",
+    }
     if tooltip is not None:
         attrs["title"] = tooltip
-    return ui.input_action_button(id, label, **attrs)
+    return ui.tags.button(label, **attrs)
 
 
 def matrix_header_cell(label: str, *, row: bool = False) -> ui.Tag:
@@ -332,13 +341,13 @@ def matrix_header_cell(label: str, *, row: bool = False) -> ui.Tag:
     )
 
 
-def matrix_row_label(label: str) -> ui.Tag:
+def matrix_row_label(label: str | ui.Tag) -> ui.Tag:
     """
     Row label cell (``<td>``) showing the dataset name at the start of each row.
 
     CSS: ``.matrix-row-label``
 
-    :param label: Dataset display name.
+    :param label: Dataset display name or a tag (e.g. an anchor link).
 
     """
     return ui.tags.td({"class": "matrix-row-label"}, label)
@@ -369,7 +378,8 @@ def matrix_cell(
     :param kind: One of ``"empty"``, ``"diagonal"``, or ``"interactive"``.
     :param button: A ``matrix_cell_button`` element. Required for ``"diagonal"``
         and ``"interactive"``; ignored for ``"empty"``.
-    :param active: Marks the committed regulator filter pair.
+    :param active: Marks the selected item (e.g. committed regulator filter pair
+        or currently selected correlation pair).
     :param pending: Marks a queued regulator filter pair not yet committed.
 
     """
@@ -444,23 +454,6 @@ def matrix_table(header_row: ui.Tag, *body_rows: ui.Tag) -> ui.Tag:
     )
 
 
-def export_download_button(id: str) -> ui.Tag:
-    """
-    Full-width download button for exporting selected datasets as a tarball.
-
-    CSS: ``.btn-export-datasets``
-
-    :param id: Shiny download ID (paired with a ``@render.download`` handler).
-
-    """
-    return ui.download_button(
-        id,
-        "Export Selected Datasets",
-        icon=fa.icon_svg("download", width="14px", height="14px"),
-        class_="btn-export-datasets",
-    )
-
-
 __all__ = [
     # tooltips
     "tooltip",
@@ -485,6 +478,4 @@ __all__ = [
     "matrix_cell",
     "matrix_table",
     "pending_regulator_banner",
-    # export
-    "export_download_button",
 ]

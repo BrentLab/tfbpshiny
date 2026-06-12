@@ -25,8 +25,22 @@ def binding_ui() -> ui.Tag:
             ui.input_radio_buttons(
                 "col_preference",
                 label=None,
-                choices={"effect": "Effect", "pvalue": "P-value"},
-                selected="effect",
+                choices={
+                    "log10pval": ui.tooltip(
+                        ui.span("-log10(p-value)"),
+                        "Negative log10 of the p-value. "
+                        "Values below 1e-10 are capped at 10.",
+                    ),
+                    "effect": ui.tooltip(
+                        ui.span("Effect"),
+                        "Raw effect size (e.g. enrichment score).",
+                    ),
+                    "pvalue": ui.tooltip(
+                        ui.span("P-value"),
+                        "Raw p-value. Smaller is more significant.",
+                    ),
+                },
+                selected="log10pval",
                 inline=True,
             ),
             sidebar_label("Correlation"),
@@ -34,7 +48,7 @@ def binding_ui() -> ui.Tag:
                 "corr_type",
                 label=None,
                 choices={"pearson": "Pearson", "spearman": "Spearman"},
-                selected="pearson",
+                selected="spearman",
                 inline=True,
             ),
             id="binding_sidebar",
@@ -50,27 +64,36 @@ def binding_ui() -> ui.Tag:
                 "regulators."
             ),
             ui.p(
-                "The Distributions tab shows one box plot per dataset pair. "
-                "Each point represents the correlation for a single regulator. "
-                "Click a point to select that regulator and highlight it across "
-                "all plots."
+                "The Correlation Matrix tab shows median correlation for each "
+                "dataset pair. Click a cell to select that pair."
             ),
             ui.p(
-                "The Scatter tab shows per-target binding scores for the selected "
-                "regulator in each pair. Use the dropdown to change the active "
+                "The Pair Distribution tab shows the per-regulator correlation "
+                "distribution for the selected pair. Click a point to select a "
+                "regulator."
+            ),
+            ui.p(
+                "The Gene Scatter tab shows per-target binding scores for the "
+                "selected regulator. Use the dropdown to change the active "
                 "regulator."
             ),
         ),
         ui.output_ui("analysis_status"),
         ui.navset_tab(
             ui.nav_panel(
-                "Distributions",
-                ui.output_ui("box_plot_container"),
+                "Correlation Matrix",
+                ui.output_ui("corr_matrix_container"),
             ),
             ui.nav_panel(
-                "Scatter",
+                "Pair Distribution",
+                ui.output_ui("regulator_selector_box"),
+                ui.output_ui("pair_box_status"),
+                ui.output_ui("pair_box_container"),
+            ),
+            ui.nav_panel(
+                "Gene Scatter",
+                ui.output_ui("regulator_selector_scatter"),
                 ui.output_ui("scatter_status"),
-                ui.output_ui("regulator_selector"),
                 ui.output_ui("scatter_container"),
             ),
             id="binding_view_tabs",

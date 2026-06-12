@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import io
 from logging import Logger
 from typing import Any
 
@@ -12,13 +10,7 @@ from labretriever import ColumnMeta, VirtualDB
 from shiny import reactive, render, ui
 from shiny.types import SilentException
 
-from tfbpshiny.components import export_download_button
-from tfbpshiny.modules.select_datasets.export import (
-    ExportDataset,
-    build_export_tarball,
-)
 from tfbpshiny.modules.select_datasets.queries import (
-    full_data_query,
     metadata_query,
 )
 from tfbpshiny.modules.select_datasets.server.dataset_row import (
@@ -93,8 +85,8 @@ def select_datasets_sidebar_server(
 
     # dataset_dict: {db_name: {"data_type": "binding"|"perturbation",
     #                           "display_name": str, "assay": str, ...}}
-    # Kept as a lookup map for display_name (used in export_datasets and
-    # passed to dataset_row_server for the filter-modal title). The two
+    # Kept as a lookup map for display_name (passed to dataset_row_server
+    # for the filter-modal title). The two
     # sorted lists below are derived views that provide rendering order and
     # the active-dataset calcs. They also carry description so it is
     # fetched once at startup rather than on every render.
@@ -177,9 +169,12 @@ def select_datasets_sidebar_server(
         True when the pending state differs from the committed state.
 
         :trigger: ``_pending_toggle``, ``_pending_filters``,
-            ``_committed_toggle``, ``dataset_filters``.
+            ``_committed_toggle``, ``dataset_filters``,
+            ``pending_regulator_pair``.
 
         """
+        if pending_regulator_pair is not None and pending_regulator_pair() is not None:
+            return True
         return (
             _pending_toggle() != _committed_toggle()
             or _pending_filters() != dataset_filters()
@@ -544,8 +539,17 @@ def select_datasets_sidebar_server(
                     "object",
                     "category",
                 ):
-                    selected = list(value) if value else []
-                    if selected:
+                    raw = list(value) if value else []
+                    if raw:
+                        # Coerce string selectize values back to the column's
+                        # native numeric type so that = ANY(...) binds correctly
+                        # against DOUBLE/INTEGER columns treated as categorical.
+                        if col.dtype.name in ("float64", "float32"):
+                            selected: list = [float(v) for v in raw]
+                        elif col.dtype.name in ("int64", "int32"):
+                            selected = [int(v) for v in raw]
+                        else:
+                            selected = raw
                         field_filters[field] = {
                             "type": "categorical",
                             "value": selected,
@@ -636,14 +640,19 @@ def select_datasets_sidebar_server(
                         else:
                             current.pop(ds, None)
             else:
-                # regulator field was cleared — remove from all datasets
-                for ds in all_db_names:
-                    ds_filters = dict(current.get(ds, {}))
-                    ds_filters.pop("regulator_locus_tag", None)
-                    if ds_filters:
-                        current[ds] = ds_filters
-                    else:
-                        current.pop(ds, None)
+                # regulator field was cleared in the modal — remove from all datasets,
+                # but only if the existing filter was set via the modal selectize.
+                # A pairwise filter (from_pair_db) is committed via Apply Changes and
+                # must not be wiped by opening an unrelated dataset's filter modal.
+                existing_reg = current.get(db_name, {}).get("regulator_locus_tag", {})
+                if not (existing_reg and existing_reg.get("from_pair_db")):
+                    for ds in all_db_names:
+                        ds_filters = dict(current.get(ds, {}))
+                        ds_filters.pop("regulator_locus_tag", None)
+                        if ds_filters:
+                            current[ds] = ds_filters
+                        else:
+                            current.pop(ds, None)
 
             # apply each common filter according to its own apply_to_all flag
             for f, spec in common_filters.items():
@@ -722,8 +731,8 @@ def select_datasets_sidebar_server(
         merged into the filter state before committing. The pending pair is then
         cleared.
 
-        :trigger input.apply_pending: fires when the user clicks the Apply button     in
-        the sidebar.
+        :trigger input.apply_pending: fires when the user clicks the Apply button in the
+        sidebar.
 
         """
         new_filters = dict(_pending_filters())
@@ -747,97 +756,17 @@ def select_datasets_sidebar_server(
                         new_filters[db_name] = ds_filters
                 pending_regulator_pair.set(None)
 
+        # Keep _pending_filters in sync with what we are about to commit so
+        # that _has_pending_changes() returns False immediately after this call
+        # and the Apply button deactivates.
+        _pending_filters.set(new_filters)
         _committed_toggle.set(_pending_toggle())
         dataset_filters.set(new_filters)
-
-    @render.download(
-        filename=lambda: "tfbpshiny_export.tar.gz",
-        media_type="application/gzip",
-    )
-    async def export_datasets():
-        """
-        Build and stream a .tar.gz archive of all active datasets.
-
-        The tarball is built in a worker thread via ``asyncio.to_thread`` so
-        the Shiny event loop stays responsive.  A ``ui.Progress`` bar shows
-        live per-dataset progress via an ``asyncio.Queue`` bridged from the
-        worker thread with ``call_soon_threadsafe``.
-
-        :trigger: ``input.export_datasets`` — fires when the user clicks the
-            Export Selected Datasets download button.
-
-        """
-        all_active = _active_binding_datasets() + _active_perturbation_datasets()
-        if not all_active:
-            return
-
-        filters = dataset_filters()
-        n = len(all_active)
-
-        # Build ExportDataset specs (SQL + params, not DataFrames)
-        export_list: list[ExportDataset] = []
-        for db_name in all_active:
-            ds_filters = filters.get(db_name)
-            display_name = dataset_dict[db_name].get("display_name", db_name)
-
-            meta_sql, meta_params = metadata_query(db_name, ds_filters)
-            data_sql, data_params = full_data_query(db_name, ds_filters)
-            description = vdb.get_dataset_description(db_name)
-
-            export_list.append(
-                ExportDataset(
-                    display_name=display_name,
-                    metadata_sql=meta_sql,
-                    metadata_params=meta_params,
-                    data_sql=data_sql,
-                    data_params=data_params,
-                    description=description,
-                )
-            )
-
-        # asyncio.Queue bridged from the worker thread for live progress.
-        # A None sentinel signals that the build is complete.
-        progress_q: asyncio.Queue[str | None] = asyncio.Queue()
-        loop = asyncio.get_running_loop()
-
-        def _on_dataset_done(name: str) -> None:
-            loop.call_soon_threadsafe(progress_q.put_nowait, name)
-
-        def _build_and_signal() -> io.BytesIO:
-            try:
-                return build_export_tarball(export_list, vdb, _on_dataset_done)
-            finally:
-                loop.call_soon_threadsafe(progress_q.put_nowait, None)
-
-        with ui.Progress(min=0, max=n, session=session) as progress:
-            progress.set(0, message="Preparing export...")
-
-            build_task = asyncio.create_task(asyncio.to_thread(_build_and_signal))
-
-            # Consume progress items until the sentinel arrives
-            done = 0
-            while True:
-                name = await progress_q.get()
-                if name is None:
-                    break
-                done += 1
-                progress.set(
-                    done,
-                    message=f"Packaged {name}",
-                    detail=f"{done} of {n}",
-                )
-
-            try:
-                buf = await build_task
-            except Exception:
-                logger.exception("Export tarball build failed")
-                return
-
-            progress.set(n, message="Download ready")
-
-        # Yield chunks from the in-memory buffer
-        while chunk := buf.read(65536):
-            yield chunk
+        logger.debug(
+            "_apply_pending committed: %d datasets active, %d datasets with filters",
+            sum(_pending_toggle().values()),
+            len(new_filters),
+        )
 
     @render.ui
     def sidebar_content() -> ui.Tag:
@@ -854,7 +783,10 @@ def select_datasets_sidebar_server(
         ``ui.update_switch`` in a separate effect in ``dataset_row_server``.
 
         """
-        active_filter_names: set[str] = set(_pending_filters())
+        pending_toggle = _pending_toggle()
+        active_filter_names: set[str] = {
+            db for db in _pending_filters() if pending_toggle.get(db, False)
+        }
         has_pending = _has_pending_changes()
 
         search_term = ""
@@ -909,18 +841,24 @@ def select_datasets_sidebar_server(
                 )
             )
 
-        has_active = bool(_active_binding_datasets() or _active_perturbation_datasets())
-
+        banner = (
+            ui.div(
+                {"class": "pending-banner"},
+                "Dataset selection has changed. Click Apply Changes to update.",
+            )
+            if has_pending
+            else ui.span()
+        )
         return ui.div(
             ui.h2("Select datasets for analysis"),
-            ui.div({"class": "dataset-list"}, *section_tags),
+            banner,
             ui.input_action_button(
                 "apply_pending",
-                "Apply",
+                "Apply Changes",
                 class_="btn-apply-pending"
                 + ("" if has_pending else " btn-apply-pending--idle"),
             ),
-            export_download_button("export_datasets") if has_active else ui.span(),
+            ui.div({"class": "dataset-list"}, *section_tags),
         )
 
     return _active_binding_datasets, _active_perturbation_datasets, dataset_filters
