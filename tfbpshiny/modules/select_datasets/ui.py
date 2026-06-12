@@ -77,7 +77,7 @@ def _filter_control(
         choices = sorted(
             raw, key=lambda x: float(x) if override_level_dtype == "numeric" else x
         )
-        selected = saved_spec["value"] if saved_spec else []
+        selected = [str(v) for v in saved_spec["value"]] if saved_spec else []
         return ui.div(
             {"class": "card"},
             ui.div(
@@ -474,7 +474,7 @@ def dataset_filter_modal_ui(
         body,
         title=title,
         size="xl",
-        easy_close=False,
+        easy_close=True,
         footer=ui.div(
             ui.input_action_button(
                 ns("modal_reset_filters"),
@@ -483,7 +483,7 @@ def dataset_filter_modal_ui(
             ),
             ui.input_action_button(
                 ns("modal_apply_filters"),
-                "Apply Filters",
+                "Queue Filters",
                 class_="btn btn-sm btn-primary",
             ),
         ),

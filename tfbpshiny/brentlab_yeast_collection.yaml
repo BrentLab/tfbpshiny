@@ -4,12 +4,23 @@ repositories:
       region_sets:
         Kang:
           description: >-
-            Yiming et al. (2001) promoter annotations. 700 bp upstream of each
-            ORF start site.
+            700 bp upstream of each start codon, truncated if there exists a feature
+            within 700 bp of the ORF.
         Mindel:
           description: >-
-            Miura & Bhaskara (Mindel) promoter annotations. Boundaries derived
-            from nucleosome-free region calls.
+            Promoter regions defined from the start codon to at least 700 bp upstream
+            of the TSS defined by Park et al., 2014; Pelechano et al., 2013;
+            Policastro et al., 2020 (provided in the SGD annotations). If no TSS is
+            defined, then the start codon is used.
+        start_codon_500bp:
+          description: >-
+            Promoter regions defined as 500bp upstream of the start codon. There is
+            no truncation or extension. All promoters are exactly 500bp long.
+        intergenic:
+          description:
+            Promoter regions defined as the intergenic region upstream of the 5' end
+            of a given feature. Note that out of 6040 features, 1410 are divergently
+            transcribed
 
   BrentLab/callingcards:
     Regulator locus tag:
@@ -46,6 +57,32 @@ repositories:
           near TF binding sites, from cells growing on synthetic complete media
           at room temperature with galactose as the sole carbon source. Quantified
           over the Mindel promoters.
+        sample_id:
+          field: combined_id
+      annotated_feature_reprocess_start_codon_500bp_analysis:
+        tags:
+          data_type: binding
+          assay: CallingCards
+          display_name: "2026 Calling Cards (500bp)"
+        db_name: callingcards_500bp
+        description: >-
+          Data generated with calling cards, a method that inserts transposons
+          near TF binding sites, from cells growing on synthetic complete media
+          at room temperature with galactose as the sole carbon source. Quantified
+          over the regions 500bp upstream of the targets' start codons.
+        sample_id:
+          field: combined_id
+      annotated_feature_reprocess_intergenic_analysis:
+        tags:
+          data_type: binding
+          assay: CallingCards
+          display_name: "2026 Calling Cards (intergenic)"
+        db_name: callingcards_intergenic
+        description: >-
+          Data generated with calling cards, a method that inserts transposons
+          near TF binding sites, from cells growing on synthetic complete media
+          at room temperature with galactose as the sole carbon source. Quantified
+          over the intergenic regions upstream of the 5' side of the targets.
         sample_id:
           field: combined_id
 
@@ -114,32 +151,48 @@ repositories:
           field: regulator_locus_tag
         Regulator symbol:
           field: regulator_symbol
-      yep_filtered_peaks_yiming:
+      rossi_2021_af_combined_start_codon_500bp:
         tags:
           data_type: binding
           assay: ChIPexo
-          display_name: "2021 ChIP-exo Peaks (Rossi, Kang)"
-        description: >
-          ChIP-exo data called against the Kang promoter annotations.
-          Same underlying data as rossi, re-quantified against Kang
-          promoter boundaries.
-        db_name: rossi_peaks_kang
+          display_name: "2021 ChIP-exo (Rossi, 500bp)"
+        description: >-
+          ChIP-exo data with binding scores and significance statistic called
+          using the promoters defined as 500bp upstream of a given target.
+        db_name: rossi_500bp
         sample_id:
           field: sample_id
         Regulator locus tag:
           field: regulator_locus_tag
         Regulator symbol:
           field: regulator_symbol
-      yep_filtered_peaks_mindel:
+      rossi_2021_af_combined_intergenic:
         tags:
           data_type: binding
           assay: ChIPexo
-          display_name: "2021 ChIP-exo Peaks (Rossi, Mindel)"
-        description: >
-          ChIP-exo data called against the Mindel promoter annotations.
-          Same underlying data as rossi, re-quantified against Mindel
-          promoter boundaries.
-        db_name: rossi_peaks_mindel
+          display_name: "2021 ChIP-exo (Rossi, intergenic)"
+        description: >-
+          ChIP-exo data with binding scores and significance statistic called
+          using the promoters defined as the full intergenic region upstream of a
+          given target's start codon.
+        db_name: rossi_intergenic
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+      yep_filtered_peaks_combined:
+        tags:
+          data_type: binding
+          assay: ChIPexo
+          display_name: "2021 ChIP-exo Peaks"
+        description: >-
+          ChIP-exo data quantified by the original authors' using ChExMix.
+          High quality peaks annotated to the nearest ORF. Mean peak score
+          is taken both within (multiple peaks within 500bp of the ORF in a
+          replicate) and across replicates
+        db_name: rossi_peaks
         sample_id:
           field: sample_id
         Regulator locus tag:
@@ -201,6 +254,42 @@ repositories:
           Same underlying data as chec_m2025, re-quantified against Mindel
           promoter boundaries.
         db_name: chec_m2025_mindel
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+        Experimental condition:
+          field: condition
+      chec_mahendrawada_m2025_af_combined_start_codon_500bp:
+        tags:
+          data_type: binding
+          assay: ChEC-seq
+          display_name: "2025 ChEC-seq (Mahendrawada, 500bp)"
+        description: >-
+          ChEC-seq data with binding scores and significance statistic called
+          using the promoters defined as the full 500bp regions upstream of the
+          start codon
+        db_name: chec_m2025_500bp
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+        Experimental condition:
+          field: condition
+      chec_mahendrawada_m2025_af_combined_intergenic:
+        tags:
+          data_type: binding
+          assay: ChEC-seq
+          display_name: "2025 ChEC-seq (Mahendrawada, intergenic)"
+        description: >-
+          ChEC-seq data with binding scores and significance statistic called
+          using the promoters defined as the full intergenic regions upstream of the
+          start codon.
+        db_name: chec_m2025_intergenic
         sample_id:
           field: sample_id
         Regulator locus tag:

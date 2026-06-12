@@ -11,13 +11,13 @@ from dotenv import load_dotenv
 from shiny import App, reactive, render, ui
 from shiny.reactive import extended_task
 
-from configure_logger import configure_logger
 from tfbpshiny.components import github_badge
+from tfbpshiny.configure_logger import configure_logger
 from tfbpshiny.modules.binding.server import binding_server
 from tfbpshiny.modules.binding.ui import binding_ui
 from tfbpshiny.modules.comparison.server import comparison_server
 from tfbpshiny.modules.comparison.ui import comparison_ui
-from tfbpshiny.modules.home.ui import home_ui
+from tfbpshiny.modules.home.ui import HOME_CARD_NAV_TARGETS, home_ui
 from tfbpshiny.modules.perturbation.server import perturbation_server
 from tfbpshiny.modules.perturbation.ui import perturbation_ui
 from tfbpshiny.modules.select_datasets.server import select_datasets_server
@@ -72,12 +72,21 @@ app_ui = ui.page_navbar(
     ui.nav_panel("Dataset selection", ui.output_ui("selection_status"), _selection_ui),
     ui.nav_panel("Binding", ui.output_ui("binding_status"), _binding_ui),
     ui.nav_panel("Perturbation", ui.output_ui("perturbation_status"), _perturbation_ui),
-    ui.nav_panel("Comparison", ui.output_ui("comparison_status"), _comparison_ui),
+    ui.nav_panel(
+        "Binding/Perturbation Comparisons",
+        ui.output_ui("comparison_status"),
+        _comparison_ui,
+    ),
     ui.nav_spacer(),
     ui.nav_control(github_badge()),
     title="TF Binding & Perturbation Explorer",
     id="main_nav",
-    fillable=["Dataset selection", "Binding", "Perturbation", "Comparison"],
+    fillable=[
+        "Dataset selection",
+        "Binding",
+        "Perturbation",
+        "Binding/Perturbation Comparisons",
+    ],
     navbar_options=ui.navbar_options(bg="#722F37", theme="dark"),
     header=ui.tags.head(
         ui.tags.script(src="plotly-3.5.0.min.js"),
@@ -92,6 +101,17 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     @reactive.calc
     def _active_tab() -> str:
         return input.main_nav()
+
+    # Navigate to the target tab when a home-page card title link is clicked.
+    for _link_id, _target in HOME_CARD_NAV_TARGETS.items():
+
+        def _make_nav_effect(link_id: str, target: str) -> None:
+            @reactive.effect
+            @reactive.event(getattr(input, link_id))
+            def _nav_to_tab() -> None:
+                ui.update_navset("main_nav", selected=target)
+
+        _make_nav_effect(_link_id, _target)
 
     # Fires exactly once when init succeeds; registers all module servers.
     @reactive.effect
@@ -157,15 +177,9 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     _init_task.invoke(virtualdb_config, hf_token)
 
     _preparing_ui = ui.div(
-        {
-            "style": "display:flex; align-items:center; justify-content:center;"
-            " padding: 2rem; color:#888; text-align:center;"
-        },
-        ui.p(
-            "Preparing datasets. "
-            "This typically takes less than 5 seconds. "
-            "Thank you for your patience..."
-        ),
+        {"class": "pending-banner"},
+        "Datasets loading. This typically takes less than 5 seconds. "
+        "Thank you for your patience.",
     )
 
     def _status_panel(ready_content: ui.Tag | None = None) -> ui.Tag:

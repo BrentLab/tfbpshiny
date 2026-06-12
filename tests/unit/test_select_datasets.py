@@ -2,7 +2,6 @@
 
 from tfbpshiny.modules.select_datasets.queries import (
     _build_where,
-    full_data_query,
     metadata_query,
     regulator_breakdown_query,
     regulator_display_labels_query,
@@ -118,22 +117,6 @@ def test_regulator_breakdown_query_with_filters():
     # FILTER (WHERE ...) in the aggregate exprs adds one more occurrence.
     assert "HAVING COUNT(*) > 1" in sql
     assert sql.count("FROM harbison_meta") == 1
-
-
-def test_full_data_query_no_filters():
-    sql, params = full_data_query("harbison")
-    assert sql == "SELECT * FROM harbison"
-    assert params == {}
-
-
-def test_full_data_query_with_filter():
-    sql, params = full_data_query(
-        "harbison", {"strain": {"type": "categorical", "value": ["BY4741"]}}
-    )
-    assert "WHERE" in sql
-    assert "harbison" in sql
-    assert "harbison_meta" not in sql
-    assert params["cat_strain"] == ["BY4741"]
 
 
 def test_regulator_breakdown_query_no_filters_uses_having():

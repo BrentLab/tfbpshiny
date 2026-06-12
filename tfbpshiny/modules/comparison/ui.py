@@ -5,18 +5,14 @@ from __future__ import annotations
 from shiny import module, ui
 
 from tfbpshiny.components import sidebar_label
-from tfbpshiny.modules.comparison.queries import (
-    DEFAULT_EFFECT_THRESHOLD,
-    DEFAULT_PVALUE_THRESHOLD,
-    DEFAULT_TOP_N,
-)
+from tfbpshiny.modules.comparison.queries import DEFAULT_TOP_N
 
 
 @module.ui
 def comparison_ui() -> ui.Tag:
     return ui.layout_sidebar(
         ui.sidebar(
-            ui.h2("Comparison"),
+            ui.h2("Comparisons"),
             ui.output_ui("execute_pending_style"),
             ui.input_task_button(
                 "execute_analysis",
@@ -24,78 +20,167 @@ def comparison_ui() -> ui.Tag:
                 label_busy="Running...",
                 type="danger",
             ),
-            sidebar_label("Binding Datasets"),
-            ui.output_ui("binding_selection"),
-            sidebar_label("Perturbation Datasets"),
-            ui.output_ui("perturbation_selection"),
-            sidebar_label("Promoter Sets"),
-            ui.input_checkbox_group(
-                "included_promoter_sets",
-                label=None,
-                choices={"Kang": "Kang", "Mindel": "Mindel"},
-                selected=["Kang", "Mindel"],
-            ),
+            sidebar_label("Top N"),
             ui.input_numeric(
                 "top_n",
-                "Top N",
+                label=None,
                 value=DEFAULT_TOP_N,
                 min=1,
                 max=500,
                 step=5,
             ),
-            sidebar_label("Responsive threshold"),
-            ui.input_slider(
-                "effect_threshold",
-                "Min |effect|",
-                min=0.0,
-                max=5.0,
-                value=DEFAULT_EFFECT_THRESHOLD,
-                step=0.1,
+            sidebar_label("Responsiveness"),
+            ui.input_radio_buttons(
+                "responsiveness_preset",
+                label=None,
+                choices={
+                    "Relaxed": ui.tooltip(
+                        ui.span("Relaxed"),
+                        "Applies a uniform pvalue < 0.05 threshold. Hover over"
+                        " perturbation column headers in Compare Datasets for"
+                        " per-dataset details.",
+                        placement="right",
+                    ),
+                    "Stringent": ui.tooltip(
+                        ui.span("Stringent"),
+                        "Uses the original authors' thresholds for each dataset."
+                        " Hover over perturbation column headers in Compare"
+                        " Datasets for per-dataset details.",
+                        placement="right",
+                    ),
+                },
+                selected="Relaxed",
+                inline=True,
             ),
-            ui.input_slider(
-                "pvalue_threshold",
-                "Max p-value",
-                min=0.001,
-                max=1.0,
-                value=DEFAULT_PVALUE_THRESHOLD,
-                step=0.001,
-            ),
+            ui.output_ui("tab_specific_controls"),
             id="comparison_sidebar",
             width=320,
             open="open",
         ),
-        ui.h1("Comparison"),
+        ui.h1("Binding/Perturbation Comparisons"),
         ui.div(
             {"class": "sidebar-text"},
             ui.p(
-                "Select datasets, promoter sets, and thresholds in the sidebar, "
-                "then click Execute Analysis to compute."
+                "Compare selected binding and perturbation datasets. All comparisons"
+                " are faceted by perturbation source; values are median"
+                " percent-responsive across regulators."
             ),
-            ui.p(
-                "Distributions shows the fraction of top-N binding targets that "
-                "are transcriptionally responsive, grouped by promoter set. "
-                "Each box plot is split by Kang and Mindel promoter annotations."
+            ui.tags.ul(
+                ui.tags.li(
+                    ui.strong("Compare Datasets:"),
+                    " binding vs. perturbation matrix. Each cell shows the median"
+                    " percent of top-N binding targets that are transcriptionally"
+                    " responsive. Responsive targets are defined by the authors'"
+                    " original thresholds. Click row/column headers to view"
+                    " distributions.",
+                ),
+                ui.tags.li(
+                    ui.strong("Compare Promoter Definitions:"),
+                    " side-by-side tables comparing promoter enrichment scores across"
+                    " promoter sets. Rows are binding datasets; columns are promoter"
+                    " set definitions.",
+                ),
+                ui.tags.li(
+                    ui.strong("Compare Analysis Methods:"),
+                    " side-by-side tables comparing promoter enrichment vs. original"
+                    " peaks scoring for ChIP-exo and ChEC-seq datasets. Rows are"
+                    " scoring variants.",
+                ),
             ),
-            ui.p(
-                "Tables shows a summary of median percent-responsive for Kang vs "
-                "Mindel promoter annotations, one table per binding dataset with a "
-                "Mindel variant."
+            ui.tags.details(
+                ui.tags.summary(ui.h4("Binding Methods", style="display:inline;")),
+                ui.p(
+                    ui.strong("Promoter Enrichment"),
+                    " sums the binding signal for a given regulator over a predefined"
+                    " promoter region and compares it to a control set of untagged"
+                    " random insertions.",
+                ),
+                ui.p(
+                    ui.strong("Original Peaks"),
+                    " (Rossi 2021 and Mahendrawada 2025 only) uses the peak-calling"
+                    " approach from the original publications. For Rossi 2021, filtered"
+                    " high-quality peaks are available at ",
+                    ui.tags.a(
+                        "yeastepigenome.org",
+                        href="https://yeastepigenome.org",
+                        target="_blank",
+                    ),
+                    "; each peak is annotated to the closest ORF within 500 bp, and"
+                    " replicates are combined by taking the median score. For"
+                    " Mahendrawada 2025, the peak score from the original publication"
+                    " is used.",
+                ),
+            ),
+            ui.tags.details(
+                ui.tags.summary(
+                    ui.h4("Promoter Set Definitions", style="display:inline;")
+                ),
+                ui.tags.dl(
+                    ui.tags.dt(
+                        ui.tags.a(
+                            "Promoter Set 1 (Kang)",
+                            href="https://doi.org/10.1101/gr.259655.119",
+                            target="_blank",
+                        )
+                    ),
+                    ui.tags.dd(
+                        "700 bp upstream of each start codon, truncated if there"
+                        " exists a feature within 700 bp of the ORF."
+                    ),
+                    ui.tags.dt(
+                        ui.tags.a(
+                            "Promoter Set 2 (Mindel)",
+                            href="https://doi.org/10.1101/2025.10.12.681120",
+                            target="_blank",
+                        )
+                    ),
+                    ui.tags.dd(
+                        "Promoter regions defined from the start codon to at least"
+                        " 700 bp upstream of the TSS defined by Park et al., 2014;"
+                        " Pelechano et al., 2013; Policastro et al., 2020 (provided"
+                        " in the SGD annotations). If no TSS is defined, the start"
+                        " codon is used."
+                    ),
+                    ui.tags.dt("Promoter Set 3 (500bp)"),
+                    ui.tags.dd(
+                        "Promoter regions defined as exactly 500 bp upstream of the"
+                        " start codon. No truncation or extension; all promoters are"
+                        " the same length."
+                    ),
+                    ui.tags.dt("Promoter Set 4 (Intergenic)"),
+                    ui.tags.dd(
+                        "Promoter regions defined as the full intergenic region"
+                        " upstream of the 5' end of each feature. 1410"
+                        " of 6040 features are divergently transcribed."
+                    ),
+                ),
             ),
         ),
         ui.output_ui("analysis_status"),
         ui.navset_tab(
+            # ------------------------------------------------------------------
+            # Tab 1: Compare Datasets
+            # ------------------------------------------------------------------
             ui.nav_panel(
-                "Distributions",
-                ui.output_ui("facet_by_selector"),
-                ui.output_ui("topn_plot"),
+                "Compare Datasets",
+                ui.output_ui("cd_matrix_container"),
+                ui.output_ui("cd_distribution_container"),
             ),
-            ui.nav_panel("Tables", ui.output_ui("promoter_comparison")),
+            # ------------------------------------------------------------------
+            # Tab 2: Compare Promoter Definitions
+            # ------------------------------------------------------------------
             ui.nav_panel(
-                "Method Comparison",
-                ui.output_ui("method_facet_by_selector"),
-                ui.output_ui("method_comparison"),
+                "Compare Promoter Definitions",
+                ui.output_ui("cp_promoter_table"),
             ),
-            id="comparison_view_tabs",
+            # ------------------------------------------------------------------
+            # Tab 3: Compare Analysis Methods
+            # ------------------------------------------------------------------
+            ui.nav_panel(
+                "Compare Analysis Methods",
+                ui.output_ui("cm_method_table"),
+            ),
+            id="comparison_inner_tabs",
         ),
     )
 

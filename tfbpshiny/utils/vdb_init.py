@@ -59,7 +59,6 @@ PRIMARY_DATASETS: frozenset[str] = frozenset(
 # — datasets with no preset conditions are listed here but not in the filter dict.
 DEFAULT_ACTIVE_DATASETS: frozenset[str] = frozenset(
     {
-        "harbison",
         "rossi",
         "chec_m2025",
         "hackett",
@@ -83,7 +82,7 @@ DEFAULT_DATASET_FILTERS: dict[str, dict] = {
         "Experimental condition": {"type": "categorical", "value": ["standard"]},
     },
     "hackett": {
-        "time": {"type": "numeric", "value": [45.0, 45.0]},
+        "time": {"type": "categorical", "value": [45.0]},
     },
 }
 
@@ -97,6 +96,82 @@ FIELD_TYPE_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
     ("hackett", "time"): ("categorical", "numeric"),
     ("", "temperature_celsius"): ("categorical", "string"),
 }
+
+# Type alias for one responsiveness preset used by the Comparison module.
+# Keys are db_names; use "*" as a fallback for datasets not explicitly listed.
+# Values are (effect_threshold, pvalue_threshold) tuples.
+ResponsivenessPreset = dict[str, tuple[float, float]]
+
+# Named presets for per-dataset responsiveness definitions in the Comparison module.
+# Add or modify entries here to tune what counts as a "responsive" target.
+# Columns used per dataset are defined in perturbation/queries.py::DATASET_COLUMNS.
+# NOTE: degron uses the "pvalue" column (raw DESeq2 p-value), NOT padj. If padj
+# is preferred, add "padj" to DATASET_COLUMNS["degron"] and update the comment.
+
+# provide two options: author settings (more stringent) and relaxed thresholds
+# (chose reasonable, with result)
+DEFAULT_RESPONSIVENESS_PRESETS: dict[str, ResponsivenessPreset] = {
+    "Stringent": {
+        "*": (1.0, 0.05),
+        "degron": (0.38, 0.1),  # |fold change| > log2(1.3) and padj < 0.1
+        "hackett": (0.0, 1.0),  # |log2_shrunken_timecourses| > 0 (no pvalue col)
+        "kemmeren": (0.77, 0.05),  # |Madj| > log2(1.7) and pval < 0.05
+        "hu_reimand": (0.0, 0.05),  # pval < 0.05 (no effect threshold)
+        # Hughes effect is mean_norm_log2fc (no pvalue col); original authors used
+        # a z-score threshold ~1.58 which returns very few DE genes; lowered here.
+        "hughes_overexpression": (1.0, 1.0),
+        "hughes_knockout": (1.0, 1.0),
+    },
+    "Relaxed": {
+        "*": (0.0, 0.05),
+        "hackett": (0.0, 1.0),  # |log2_shrunken_timecourses| > 0 (no pvalue col)
+    },
+}
+
+
+def get_responsiveness_label(preset_name: str, p_db: str) -> str:
+    """
+    Generate a human-readable threshold description from the preset and column tables.
+
+    Derives the label directly from :data:`DEFAULT_RESPONSIVENESS_PRESETS` and the
+    ``DATASET_COLUMNS`` mapping in ``perturbation/queries.py``, so there is a single
+    source of truth for threshold values.
+
+    :param preset_name: Active preset name (key in
+        :data:`DEFAULT_RESPONSIVENESS_PRESETS`).
+    :param p_db: Perturbation dataset db_name.
+    :returns: Threshold description string, or empty string if preset unknown.
+    :rtype: str
+
+    """
+    from tfbpshiny.modules.perturbation.queries import DATASET_COLUMNS
+
+    preset = DEFAULT_RESPONSIVENESS_PRESETS.get(preset_name)
+    if preset is None:
+        return ""
+
+    thresholds = preset.get(p_db, preset.get("*", (0.0, 0.05)))
+    effect_thresh, pval_thresh = thresholds
+
+    cols = DATASET_COLUMNS.get(
+        p_db, DATASET_COLUMNS.get("*", ("effect", "pvalue", "", ""))
+    )
+    effect_col = cols[0] if cols[0] else "effect"
+    pval_col = cols[1] if len(cols) > 1 else ""
+
+    parts: list[str] = []
+    parts.append(f"|{effect_col}| > {effect_thresh}")
+    if pval_col and pval_thresh < 1.0:
+        parts.append(f"{pval_col} < {pval_thresh}")
+    else:
+        parts.append("no p-value threshold")
+
+    return ", ".join(parts)
+
+
+# The default preset shown in the Comparison module sidebar.
+# Must be a key in DEFAULT_RESPONSIVENESS_PRESETS.
+DEFAULT_RESPONSIVENESS_PRESET: str = "Relaxed"
 
 
 _REGULATOR_DISPLAY_NAME_TABLE = "regulator_display_names"
@@ -289,6 +364,18 @@ def initialize_data(
         time.monotonic() - t,
     )
 
+    # Materialize the analysis data views into RAM so per-query parquet scans
+    # (the dominant Comparison cost, especially on slow disk) hit memory instead.
+    # Imported locally to keep the module import graph flat.
+    from tfbpshiny.utils.vdb_materialize import materialize_comparison_views
+
+    t = time.monotonic()
+    materialize_comparison_views(vdb)
+    logger.debug(
+        "initialize_data: materialize_comparison_views completed in %.3fs",
+        time.monotonic() - t,
+    )
+
     logger.debug("initialize_data: total %.3fs", time.monotonic() - _t0)
     return vdb, AppDatasets(condition_cols=condition_cols, upstream_cols=upstream_cols)
 
@@ -299,6 +386,10 @@ __all__ = [
     "PRIMARY_DATASETS",
     "DEFAULT_ACTIVE_DATASETS",
     "DEFAULT_DATASET_FILTERS",
+    "ResponsivenessPreset",
+    "DEFAULT_RESPONSIVENESS_PRESETS",
+    "DEFAULT_RESPONSIVENESS_PRESET",
+    "get_responsiveness_label",
     "AppDatasets",
     "check_local_cache",
     "get_regulator_display_name",

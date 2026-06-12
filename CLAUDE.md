@@ -160,7 +160,7 @@ Use the `vdb` instance to access data sources. Refer to the labretriever docs or
 poetry install
 
 # Run the application (development)
-poetry run python -m tfbpshiny --log-level DEBUG shiny \
+poetry run python -m tfbpshiny --log-level DEBUG launch \
     --port 8010 --host 127.0.0.1 --debug
 
 # Code quality

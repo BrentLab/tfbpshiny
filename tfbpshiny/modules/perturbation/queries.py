@@ -9,45 +9,88 @@ from labretriever import VirtualDB
 
 from tfbpshiny.modules.binding.queries import _corr_pair_sql_impl
 
-# Map of db_name -> (effect_col, pvalue_col).
-# pvalue_col is empty string for datasets that have no pvalue column.
+# Map of db_name -> (effect_col, pvalue_col, log10p_col, neglog10p_col).
+# Empty string means the column does not exist in that dataset.
+# log10p_col: precomputed log10(pval) column (positive, not yet negated).
+# neglog10p_col: precomputed -log10(pval) column (already negated).
 # TODO: this information should be moved to virtualdb config.
-DATASET_COLUMNS: dict[str, tuple[str, str]] = {
-    "degron": ("log2FoldChange", "pvalue"),
-    "hughes_overexpression": ("mean_norm_log2fc", ""),
-    "hughes_knockout": ("mean_norm_log2fc", ""),
-    "kemmeren": ("Madj", "pval"),
-    "hackett": ("log2_shrunken_timecourses", ""),
-    "hu_reimand": ("effect", "pval"),
+DATASET_COLUMNS: dict[str, tuple[str, str, str, str]] = {
+    "degron": ("log2FoldChange", "padj", "", ""),
+    "hughes_overexpression": ("mean_norm_log2fc", "", "", ""),
+    "hughes_knockout": ("mean_norm_log2fc", "", "", ""),
+    "kemmeren": ("Madj", "pval", "", ""),
+    "hackett": ("log2_shrunken_timecourses", "", "", ""),
+    "hu_reimand": ("effect", "pval", "", ""),
 }
+
+#: P-values below this floor are capped before -log10 is applied.
+LOG10P_FLOOR = 1e-10
 
 
 def get_measurement_column(
-    db_name: str, which_measurement_field: Literal["effect", "pvalue"]
+    db_name: str, which_measurement_field: Literal["effect", "pvalue", "log10pval"]
 ) -> str:
     """
     Return the column to use for a dataset given the user's preference.
 
-    If ``which_measurement_field`` is ``"pvalue"`` but the dataset has no pvalue
-    column, falls back to the effect column.
+    For ``"log10pval"``, returns the most direct available column:
+    ``neglog10p_col`` > ``log10p_col`` > ``pvalue_col``. Falls back to the
+    effect column when no p-value variant exists.
+
+    For ``"pvalue"``, returns ``pvalue_col`` when non-empty, else ``effect_col``.
 
     :param db_name: Dataset name (key in ``DATASET_COLUMNS``).
-    :param which_measurement_field: ``"effect"`` or ``"pvalue"``.
+    :param which_measurement_field: ``"effect"``, ``"pvalue"``, or ``"log10pval"``.
     :return: Column name to use in queries.
 
     :raises ValueError: If ``which_measurement_field`` is invalid.
     :raises KeyError: If ``db_name`` is not in ``DATASET_COLUMNS``.
 
     """
-    if which_measurement_field not in ("effect", "pvalue"):
+    if which_measurement_field not in ("effect", "pvalue", "log10pval"):
         raise ValueError(f"Invalid measurement field: {which_measurement_field}")
     try:
-        effect_col, pvalue_col = DATASET_COLUMNS[db_name]
+        effect_col, pvalue_col, log10p_col, neglog10p_col = DATASET_COLUMNS[db_name]
     except KeyError as exc:
         raise KeyError(f"Unknown dataset name: {db_name}") from exc
-    if which_measurement_field == "pvalue" and pvalue_col:
-        return pvalue_col
+    if which_measurement_field == "log10pval":
+        return neglog10p_col or log10p_col or pvalue_col or effect_col
+    if which_measurement_field == "pvalue":
+        return pvalue_col or effect_col
     return effect_col
+
+
+def get_log10p_source(
+    db_name: str,
+) -> Literal["neglog10p", "log10p", "pval", "none"]:
+    """
+    Return which source column provides the -log10(pval) value for a dataset.
+
+    The caller uses this to determine what Python-side transform is needed after
+    the query returns:
+
+    - ``"neglog10p"``: column is already ``-log10(pval)`` — apply upper cap only.
+    - ``"log10p"``: negate the column, then apply upper cap.
+    - ``"pval"``: apply ``-log10(clip(lower=LOG10P_FLOOR))``.
+    - ``"none"``: no p-value variant exists; -log10(pval) is unavailable.
+
+    :param db_name: Dataset name (key in ``DATASET_COLUMNS``).
+    :return: Source indicator string.
+
+    :raises KeyError: If ``db_name`` is not in ``DATASET_COLUMNS``.
+
+    """
+    try:
+        _, pvalue_col, log10p_col, neglog10p_col = DATASET_COLUMNS[db_name]
+    except KeyError as exc:
+        raise KeyError(f"Unknown dataset name: {db_name}") from exc
+    if neglog10p_col:
+        return "neglog10p"
+    if log10p_col:
+        return "log10p"
+    if pvalue_col:
+        return "pval"
+    return "none"
 
 
 def perturbation_data_query(
@@ -70,7 +113,7 @@ def perturbation_data_query(
 
     """
     params: dict[str, Any] = {}
-    where_clause = _build_where(filters, params) if filters else ""
+    where_clause = _meta_sample_where(db_name, filters, params) if filters else ""
     sql = (
         f"SELECT regulator_locus_tag, target_locus_tag, target_symbol, sample_id, {col} "
         f"FROM {db_name}{where_clause}"
@@ -112,6 +155,35 @@ def _build_where(
             clauses.append(f'"{field}" = $bool_{p}')
             params[f"bool_{p}"] = bool(val)
     return f" WHERE {' AND '.join(clauses)}" if clauses else ""
+
+
+def _meta_sample_where(
+    db_name: str,
+    filters: dict[str, Any] | None,
+    params: dict[str, Any],
+    prefix: str = "",
+) -> str:
+    """
+    Build a ``WHERE sample_id IN (meta subquery)`` clause and populate ``params``.
+
+    Dataset filters target metadata columns. Rather than predicating the wide
+    data view (``{db_name}``) directly, the filter resolves to a ``sample_id``
+    set against the small ``{db_name}_meta`` view, so the data-view scan only
+    needs the projected columns and a ``sample_id`` membership test.
+
+    :param db_name: Data view name; its meta view is ``{db_name}_meta``.
+    :param filters: Filter spec dict (column -> {type, value}), or ``None``.
+    :param params: Dict to populate with parameterized values.
+    :param prefix: Namespace prefix to avoid collisions across datasets.
+    :return: WHERE clause string (empty string if no filters).
+
+    """
+    if not filters:
+        return ""
+    inner = _build_where(filters, params, prefix)
+    if not inner:
+        return ""
+    return f" WHERE sample_id IN (SELECT sample_id FROM {db_name}_meta{inner})"
 
 
 def corr_pair_sql(
@@ -171,24 +243,23 @@ def corr_all_pairs_sql(
         ``regulator_locus_tag``, ``correlation``, and ``pair_key`` (``"{db_a}__{db_b}"``).
 
     """
+    empty_cols = [
+        "db_a",
+        "db_a_id",
+        "db_b",
+        "db_b_id",
+        "regulator_locus_tag",
+        "correlation",
+        "pair_key",
+    ]
     if not pairs:
-        return pd.DataFrame(
-            columns=[
-                "db_a",
-                "db_a_id",
-                "db_b",
-                "db_b_id",
-                "regulator_locus_tag",
-                "correlation",
-                "pair_key",
-            ]
-        )
+        return pd.DataFrame(columns=empty_cols)
 
-    parts: list[str] = []
-    all_params: dict[str, Any] = {}
-
-    for i, (db_a, db_b) in enumerate(pairs):
-        prefix = f"p{i}_"
+    # Execute one pair at a time (not a single UNION ALL across pairs) so each
+    # pair's join intermediates are released before the next runs, bounding peak
+    # memory. The small per-(regulator, sample) correlation rows accumulate here.
+    frames: list[pd.DataFrame] = []
+    for db_a, db_b in pairs:
         pair_sql, pair_params = _corr_pair_sql_impl(
             vdb,
             perturbation_data_query,
@@ -199,16 +270,18 @@ def corr_all_pairs_sql(
             col_map[db_b],
             filters.get(db_b),
             method,
-            prefix=prefix,
+            prefix="p",
             sql_only=True,
         )
         assert isinstance(pair_sql, str) and isinstance(pair_params, dict)
-        all_params.update(pair_params)
-        pair_key = f"{db_a}__{db_b}"
-        parts.append(f"SELECT *, '{pair_key}' AS pair_key FROM ({pair_sql.strip()})")
+        df = vdb.query(pair_sql, **pair_params)
+        if not df.empty:
+            df["pair_key"] = f"{db_a}__{db_b}"
+            frames.append(df)
 
-    sql = "\nUNION ALL\n".join(parts)
-    return vdb.query(sql, **all_params)
+    if not frames:
+        return pd.DataFrame(columns=empty_cols)
+    return pd.concat(frames, ignore_index=True)
 
 
 def regulator_scatter_sql(
@@ -306,7 +379,9 @@ def regulator_scatter_sql(
 
 __all__ = [
     "DATASET_COLUMNS",
+    "LOG10P_FLOOR",
     "get_measurement_column",
+    "get_log10p_source",
     "perturbation_data_query",
     "corr_pair_sql",
     "corr_all_pairs_sql",
