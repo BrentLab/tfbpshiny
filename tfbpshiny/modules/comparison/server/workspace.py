@@ -9,7 +9,6 @@ import duckdb
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.io import to_html
-from plotly.subplots import make_subplots
 from shiny import module, reactive, render, ui
 
 from tfbpshiny.components import sidebar_label
@@ -27,6 +26,7 @@ from tfbpshiny.modules.comparison.queries import (
     SCORING_VARIANT_ORDER,
     fetch_topn_results,
 )
+from tfbpshiny.utils.perf import perf
 from tfbpshiny.utils.topn_matrix import build_topn_matrix_ui
 from tfbpshiny.utils.vdb_init import (
     DEFAULT_RESPONSIVENESS_PRESET,
@@ -106,11 +106,12 @@ def _read_preset_name(input: Any) -> str:
 
 
 def _cell_style(val: float) -> str:
-    pct = max(0.0, min(100.0, val))
-    g = int(200 - pct * 1.5)
+    """HSL green scale: 0% -> white, 100% -> full green."""
+    clamped = max(0.0, min(100.0, val))
+    lightness = 100 - clamped * 0.5
     return (
-        f"padding: 6px 10px; text-align: right;"
-        f" background-color: rgb({int(pct * 2.0)},{g},200);"
+        f"background-color: hsl(120, 60%, {lightness:.0f}%);"
+        " padding: 6px 10px; text-align: right;"
     )
 
 
@@ -155,12 +156,18 @@ def comparison_workspace_server(
         else:
             _reg_labels[tag] = tag
 
-    _all_binding_dbs = conn.execute(
-        "SELECT db_name FROM dataset_registry WHERE data_type = 'binding'"
-    ).df()["db_name"].tolist()
-    _all_perturbation_dbs = conn.execute(
-        "SELECT db_name FROM dataset_registry WHERE data_type = 'perturbation'"
-    ).df()["db_name"].tolist()
+    _all_binding_dbs = (
+        conn.execute("SELECT db_name FROM dataset_registry WHERE data_type = 'binding'")
+        .df()["db_name"]
+        .tolist()
+    )
+    _all_perturbation_dbs = (
+        conn.execute(
+            "SELECT db_name FROM dataset_registry WHERE data_type = 'perturbation'"
+        )
+        .df()["db_name"]
+        .tolist()
+    )
 
     # ---------------------------------------------------------------------------
     # State
@@ -180,18 +187,67 @@ def comparison_workspace_server(
         :trigger: ``input.execute_analysis`` — fires when Execute Analysis is clicked.
 
         """
-        _execute_trigger.set(_execute_trigger() + 1)
+        with reactive.isolate():
+            _execute_trigger.set(_execute_trigger() + 1)
         _results_stale.set(False)
 
     @reactive.effect
-    def _mark_stale_on_filter_change() -> None:
+    def _mark_stale_on_change() -> None:
         """
-        Mark results stale when dataset filters change (Apply Changes was pressed).
+        Mark results stale when datasets, filters, or shared sidebar controls change.
 
         :trigger: ``dataset_filters`` — fires when filters are committed.
+        :trigger: ``active_binding_datasets`` — fires when binding selection changes.
+        :trigger: ``active_perturbation_datasets`` — fires when perturbation
+            selection changes.
+        :trigger: ``input.top_n`` / ``input.responsiveness_preset`` — fires when shared
+            comparison sidebar controls change.
 
         """
         dataset_filters()
+        active_binding_datasets()
+        active_perturbation_datasets()
+        input.top_n()
+        input.responsiveness_preset()
+        with reactive.isolate():
+            if not _results_stale():
+                _results_stale.set(True)
+
+    @reactive.effect
+    @reactive.event(input.cd_binding_method, input.cd_promoter_set, ignore_init=True)
+    def _mark_stale_on_cd_controls() -> None:
+        """
+        Mark results stale when Compare Datasets tab controls change.
+
+        :trigger: ``input.cd_binding_method`` / ``input.cd_promoter_set``.
+
+        """
+        with reactive.isolate():
+            if not _results_stale():
+                _results_stale.set(True)
+
+    @reactive.effect
+    @reactive.event(input.cp_included_promoter_sets, ignore_init=True)
+    def _mark_stale_on_cp_controls() -> None:
+        """
+        Mark results stale when Compare Promoter Definitions tab controls change.
+
+        :trigger: ``input.cp_included_promoter_sets``.
+
+        """
+        with reactive.isolate():
+            if not _results_stale():
+                _results_stale.set(True)
+
+    @reactive.effect
+    @reactive.event(input.cm_binding_dataset, input.cm_promoter_set, ignore_init=True)
+    def _mark_stale_on_cm_controls() -> None:
+        """
+        Mark results stale when Compare Analysis Methods tab controls change.
+
+        :trigger: ``input.cm_binding_dataset`` / ``input.cm_promoter_set``.
+
+        """
         with reactive.isolate():
             if not _results_stale():
                 _results_stale.set(True)
@@ -214,8 +270,9 @@ def comparison_workspace_server(
         """
         Resolve binding db_names for the Compare Datasets tab.
 
-        Maps primary binding datasets to variant db_names based on the selected
-        Binding Method and Promoter Set controls.
+        Maps primary binding datasets to variant db_names based on the selected Binding
+        Method and Promoter Set controls.
+
         """
         try:
             method = str(input.cd_binding_method())
@@ -246,9 +303,10 @@ def comparison_workspace_server(
         """
         All binding db_names (primary + variants) for the Compare Promoter tab.
 
-        Builds the set of all active primary datasets plus all their
-        promoter-set variant db_names, filtered to only the promoter sets the
-        user has checked in the sidebar.
+        Builds the set of all active primary datasets plus all their promoter-set
+        variant db_names, filtered to only the promoter sets the user has checked in the
+        sidebar.
+
         """
         try:
             included_ps = list(input.cp_included_promoter_sets())
@@ -270,8 +328,9 @@ def comparison_workspace_server(
         """
         Binding db_names for the Compare Methods tab (all variants of one dataset).
 
-        Builds enrichment variants (Kang + selected promoter sets) plus the
-        peaks variant if available.
+        Builds enrichment variants (Kang + selected promoter sets) plus the peaks
+        variant if available.
+
         """
         try:
             cm_binding_db = str(input.cm_binding_dataset())
@@ -308,40 +367,45 @@ def comparison_workspace_server(
         """
         TopN data for the Compare Datasets tab.
 
+        Only re-runs when Execute is clicked; all other inputs are read inside
+        ``reactive.isolate()`` so sidebar changes do not trigger automatic updates.
+
         :trigger: ``_execute_trigger`` — re-runs when Execute is clicked.
-        :trigger: ``active_binding_datasets`` — re-runs when binding selection changes.
-        :trigger: ``active_perturbation_datasets`` — re-runs when perturbation changes.
-        :trigger: ``dataset_filters`` — re-runs when filters change.
 
         """
         _execute_trigger()
-        if _results_stale():
-            return pd.DataFrame()
-        b_dbs = _cd_binding_dbs()
-        p_dbs = active_perturbation_datasets()
-        if not b_dbs or not p_dbs:
-            return pd.DataFrame()
-        pairs = [(b, p) for b in b_dbs for p in p_dbs]
-        filters = dataset_filters()
-        n = _read_top_n(input)
-        preset = _read_preset(input)
-        try:
-            raw = fetch_topn_results(conn, pairs, filters, n, preset)
-        except Exception:
-            logger.exception("cd_data fetch failed")
-            return pd.DataFrame()
+        with reactive.isolate():
+            if _results_stale():
+                return pd.DataFrame()
+            b_dbs = _cd_binding_dbs()
+            p_dbs = active_perturbation_datasets()
+            if not b_dbs or not p_dbs:
+                return pd.DataFrame()
+            pairs = [(b, p) for b in b_dbs for p in p_dbs]
+            filters = dataset_filters()
+            n = _read_top_n(input)
+            preset = _read_preset(input)
+        logger.debug("cd_data: %d pairs", len(pairs))
+        with perf(session.id, "comparison.workspace", "_cd_data", kind="data"):
+            try:
+                raw = fetch_topn_results(conn, pairs, filters, n, preset)
+            except Exception:
+                logger.exception("cd_data fetch failed")
+                return pd.DataFrame()
         if raw.empty:
             return pd.DataFrame()
-        raw["binding_db"] = raw["pair_key"].str.split("__").str[0]
-        raw["perturbation_db"] = raw["pair_key"].str.split("__").str[1]
-        raw["binding_label"] = raw["binding_db"].map(
-            lambda k: BINDING_LABEL_MAP.get(k, k)
+        raw["binding_label"] = (
+            raw["binding_db"].map(BINDING_LABEL_MAP).fillna(raw["binding_db"])
         )
-        raw["perturbation_source"] = raw["perturbation_db"].map(
-            lambda k: PERTURBATION_LABEL_MAP.get(k, k)
+        raw["perturbation_source"] = (
+            raw["perturbation_db"]
+            .map(PERTURBATION_LABEL_MAP)
+            .fillna(raw["perturbation_db"])
         )
         raw["regulator_label"] = (
-            raw["regulator_locus_tag"].map(_reg_labels).fillna(raw["regulator_locus_tag"])
+            raw["regulator_locus_tag"]
+            .map(_reg_labels)
+            .fillna(raw["regulator_locus_tag"])
         )
         raw["percent_responsive"] = raw["responsive_ratio"] * 100
         return raw
@@ -351,83 +415,120 @@ def comparison_workspace_server(
         """
         TopN data for the Compare Promoter Definitions tab.
 
+        Only re-runs when Execute is clicked; all other inputs are read inside
+        ``reactive.isolate()`` so sidebar changes do not trigger automatic updates.
+
         :trigger: ``_execute_trigger`` — re-runs when Execute is clicked.
 
         """
         _execute_trigger()
-        if _results_stale():
-            return pd.DataFrame()
-        b_dbs = _cp_binding_dbs()
-        p_dbs = active_perturbation_datasets()
-        if not b_dbs or not p_dbs:
-            return pd.DataFrame()
-        pairs = [(b, p) for b in b_dbs for p in p_dbs]
-        filters = dataset_filters()
-        n = _read_top_n(input)
-        preset = _read_preset(input)
-        try:
-            raw = fetch_topn_results(conn, pairs, filters, n, preset)
-        except Exception:
-            logger.exception("cp_data fetch failed")
-            return pd.DataFrame()
+        with reactive.isolate():
+            if _results_stale():
+                return pd.DataFrame()
+            b_dbs = _cp_binding_dbs()
+            p_dbs = active_perturbation_datasets()
+            if not b_dbs or not p_dbs:
+                return pd.DataFrame()
+            pairs = [(b, p) for b in b_dbs for p in p_dbs]
+            filters = dataset_filters()
+            n = _read_top_n(input)
+            preset = _read_preset(input)
+        logger.debug("cp_data: %d pairs", len(pairs))
+        with perf(session.id, "comparison.workspace", "_cp_data", kind="data"):
+            try:
+                raw = fetch_topn_results(conn, pairs, filters, n, preset)
+            except Exception:
+                logger.exception("cp_data fetch failed")
+                return pd.DataFrame()
         if raw.empty:
             return pd.DataFrame()
-        raw["binding_db"] = raw["pair_key"].str.split("__").str[0]
-        raw["perturbation_db"] = raw["pair_key"].str.split("__").str[1]
-        raw["binding_base_label"] = raw["binding_db"].map(
-            lambda k: BINDING_BASE_LABEL_MAP.get(k, k)
+        raw["binding_base_label"] = (
+            raw["binding_db"].map(BINDING_BASE_LABEL_MAP).fillna(raw["binding_db"])
         )
-        raw["promoter_set"] = raw["binding_db"].map(
-            lambda k: PROMOTER_SET_MAP.get(k, "Kang")
-        )
-        raw["perturbation_source"] = raw["perturbation_db"].map(
-            lambda k: PERTURBATION_LABEL_MAP.get(k, k)
-        )
-        raw["regulator_label"] = (
-            raw["regulator_locus_tag"].map(_reg_labels).fillna(raw["regulator_locus_tag"])
-        )
-        raw["percent_responsive"] = raw["responsive_ratio"] * 100
-        return raw
+        raw["promoter_set"] = raw["binding_db"].map(PROMOTER_SET_MAP).fillna("Kang")
+        return duckdb.execute(
+            """
+            WITH per_reg AS (
+                SELECT
+                    perturbation_db,
+                    binding_base_label,
+                    promoter_set,
+                    regulator_locus_tag,
+                    median(responsive_ratio) * 100 AS med_pct
+                FROM raw
+                GROUP BY perturbation_db, binding_base_label, promoter_set,
+                    regulator_locus_tag
+            )
+            SELECT
+                perturbation_db,
+                binding_base_label,
+                promoter_set,
+                round(median(med_pct), 4) AS val
+            FROM per_reg
+            GROUP BY perturbation_db, binding_base_label, promoter_set
+        """
+        ).df()
 
     @reactive.calc
     def _cm_data() -> pd.DataFrame:
         """
         TopN data for the Compare Analysis Methods tab.
 
+        Only re-runs when Execute is clicked; all other inputs are read inside
+        ``reactive.isolate()`` so sidebar changes do not trigger automatic updates.
+
         :trigger: ``_execute_trigger`` — re-runs when Execute is clicked.
 
         """
         _execute_trigger()
-        if _results_stale():
-            return pd.DataFrame()
-        b_dbs = _cm_binding_dbs()
-        p_dbs = active_perturbation_datasets()
-        if not b_dbs or not p_dbs:
-            return pd.DataFrame()
-        pairs = [(b, p) for b in b_dbs for p in p_dbs]
-        filters = dataset_filters()
-        n = _read_top_n(input)
-        preset = _read_preset(input)
-        try:
-            raw = fetch_topn_results(conn, pairs, filters, n, preset)
-        except Exception:
-            logger.exception("cm_data fetch failed")
-            return pd.DataFrame()
+        with reactive.isolate():
+            if _results_stale():
+                return pd.DataFrame()
+            b_dbs = _cm_binding_dbs()
+            p_dbs = active_perturbation_datasets()
+            if not b_dbs or not p_dbs:
+                return pd.DataFrame()
+            pairs = [(b, p) for b in b_dbs for p in p_dbs]
+            filters = dataset_filters()
+            n = _read_top_n(input)
+            preset = _read_preset(input)
+        logger.debug("cm_data: %d pairs (%s × %s)", len(pairs), b_dbs, p_dbs)
+        with perf(session.id, "comparison.workspace", "_cm_data", kind="data"):
+            try:
+                raw = fetch_topn_results(conn, pairs, filters, n, preset)
+            except Exception:
+                logger.exception("cm_data fetch failed")
+                return pd.DataFrame()
         if raw.empty:
             return pd.DataFrame()
-        raw["binding_db"] = raw["pair_key"].str.split("__").str[0]
-        raw["perturbation_db"] = raw["pair_key"].str.split("__").str[1]
-        raw["scoring_variant"] = raw["binding_db"].map(
-            lambda k: SCORING_VARIANT_MAP.get(k, k)
+        raw["scoring_variant"] = (
+            raw["binding_db"].map(SCORING_VARIANT_MAP).fillna(raw["binding_db"])
         )
-        raw["perturbation_source"] = raw["perturbation_db"].map(
-            lambda k: PERTURBATION_LABEL_MAP.get(k, k)
+        raw["binding_base_label"] = (
+            raw["binding_db"].map(METHOD_BASE_LABEL_MAP).fillna(raw["binding_db"])
         )
-        raw["regulator_label"] = (
-            raw["regulator_locus_tag"].map(_reg_labels).fillna(raw["regulator_locus_tag"])
-        )
-        raw["percent_responsive"] = raw["responsive_ratio"] * 100
-        return raw
+        return duckdb.execute(
+            """
+            WITH per_reg AS (
+                SELECT
+                    perturbation_db,
+                    binding_base_label,
+                    scoring_variant,
+                    regulator_locus_tag,
+                    median(responsive_ratio) * 100 AS med_pct
+                FROM raw
+                GROUP BY perturbation_db, binding_base_label, scoring_variant,
+                    regulator_locus_tag
+            )
+            SELECT
+                perturbation_db,
+                binding_base_label,
+                scoring_variant,
+                round(median(med_pct), 4) AS val
+            FROM per_reg
+            GROUP BY perturbation_db, binding_base_label, scoring_variant
+        """
+        ).df()
 
     # ---------------------------------------------------------------------------
     # Renders
@@ -435,10 +536,18 @@ def comparison_workspace_server(
 
     @render.ui
     def execute_pending_style() -> ui.Tag:
-        """Dims the Execute button when no changes are pending."""
+        """
+        Dims the Execute button when results are current (no pending changes).
+
+        :trigger: ``_results_stale`` — re-renders when staleness state changes.
+
+        """
         if _results_stale():
             return ui.span()
-        return ui.span()
+        btn_id = session.ns("execute_analysis")
+        return ui.tags.style(
+            f"#{btn_id} {{ opacity: 0.35; pointer-events: none; cursor: not-allowed; }}"
+        )
 
     @render.ui
     def tab_specific_controls() -> ui.Tag:
@@ -564,42 +673,56 @@ def comparison_workspace_server(
                 {"class": "empty-state"},
                 ui.p("Click Execute Analysis to compute."),
             )
-        df = _cd_data()
-        b_dbs = _cd_binding_dbs()
-        p_dbs = active_perturbation_datasets()
-        if not b_dbs or not p_dbs:
-            return ui.div(
-                {"class": "empty-state"},
-                ui.p("No datasets selected."),
-            )
-
-        topn_medians: dict[tuple[str, str], float | None] = {}
-        if not df.empty:
-            for (b_db, p_db), grp in df.groupby(["binding_db", "perturbation_db"]):
-                med = grp["percent_responsive"].median()
-                topn_medians[(str(b_db), str(p_db))] = (
-                    float(med) if pd.notna(med) else None
+        with perf(session.id, "comparison.workspace", "cd_matrix_container"):
+            df = _cd_data()
+            b_dbs = _cd_binding_dbs()
+            p_dbs = active_perturbation_datasets()
+            if not b_dbs or not p_dbs:
+                return ui.div(
+                    {"class": "empty-state"},
+                    ui.p("No datasets selected."),
                 )
 
-        preset_name = _read_preset_name(input)
+            topn_medians: dict[tuple[str, str], float | None] = {}
+            if not df.empty:
+                med_df = duckdb.execute(
+                    """
+                    SELECT binding_db, perturbation_db,
+                        median(percent_responsive) AS med
+                    FROM df
+                    GROUP BY binding_db, perturbation_db
+                """
+                ).df()
+                topn_medians = {
+                    (row.binding_db, row.perturbation_db): (
+                        float(row.med) if pd.notna(row.med) else None
+                    )
+                    for row in med_df.itertuples(index=False)
+                }
 
-        def _col_tooltip(p_db: str) -> str:
-            thresh = get_responsiveness_label(preset_name, p_db)
-            return (
-                f"Responsive threshold: {thresh}. "
-                "Click to view distributions for this perturbation dataset."
+            preset_name = _read_preset_name(input)
+
+            def _col_tooltip(p_db: str) -> str:
+                thresh = get_responsiveness_label(preset_name, p_db)
+                return (
+                    f"Responsive threshold: {thresh}. "
+                    "Click to view distributions for this perturbation dataset."
+                )
+
+            return build_topn_matrix_ui(
+                binding_datasets=b_dbs,
+                perturbation_datasets=p_dbs,
+                topn_medians=topn_medians,
+                display_names={
+                    **display_names,
+                    **BINDING_LABEL_MAP,
+                    **PERTURBATION_LABEL_MAP,
+                },
+                selected_binding=cd_selected_binding(),
+                selected_perturbation=cd_selected_perturbation(),
+                ns=session.ns,
+                col_tooltip=_col_tooltip,
             )
-
-        return build_topn_matrix_ui(
-            binding_datasets=b_dbs,
-            perturbation_datasets=p_dbs,
-            topn_medians=topn_medians,
-            display_names={**display_names, **BINDING_LABEL_MAP, **PERTURBATION_LABEL_MAP},
-            selected_binding=cd_selected_binding(),
-            selected_perturbation=cd_selected_perturbation(),
-            ns=session.ns,
-            col_tooltip=_col_tooltip,
-        )
 
     @render.ui
     def cd_distribution_container() -> ui.Tag:
@@ -612,67 +735,68 @@ def comparison_workspace_server(
         """
         if _results_stale():
             return ui.span()
-        df = _cd_data()
-        if df.empty:
-            return ui.span()
+        with perf(session.id, "comparison.workspace", "cd_distribution_container"):
+            df = _cd_data()
+            if df.empty:
+                return ui.span()
 
-        b_sel = cd_selected_binding()
-        p_sel = cd_selected_perturbation()
+            b_sel = cd_selected_binding()
+            p_sel = cd_selected_perturbation()
 
-        if b_sel is None and p_sel is None:
-            return ui.div(
-                {"class": "empty-state"},
-                ui.p(
-                    "Click a row header to view distributions for a binding dataset,"
-                    " or a column header to view distributions for a perturbation"
-                    " dataset."
-                ),
-            )
-
-        if b_sel is not None:
-            sub = df[df["binding_db"] == b_sel]
-            x_col = "perturbation_source"
-        else:
-            sub = df[df["perturbation_db"] == p_sel]
-            x_col = "binding_label"
-
-        if sub.empty:
-            return ui.div(
-                {"class": "empty-state"},
-                ui.p("No data for the selected datasets."),
-            )
-
-        fig = go.Figure()
-        x_vals = sorted(sub[x_col].dropna().unique(), key=lambda v: str(v))
-        for x_val in x_vals:
-            grp = sub[sub[x_col] == x_val]
-            mask = grp["percent_responsive"].notna()
-            fig.add_trace(
-                go.Box(
-                    x=grp.loc[mask, x_col].values,
-                    y=grp.loc[mask, "percent_responsive"].values,
-                    name=str(x_val),
-                    text=grp.loc[mask, "regulator_label"].values,
-                    hovertemplate="%{text}<br>%{y:.1f}%<extra></extra>",
-                    hoveron="points",
-                    boxpoints="all",
-                    jitter=0.4,
-                    pointpos=0,
-                    marker=dict(size=4, opacity=0.5),
-                    line=dict(width=1.5),
-                    showlegend=False,
+            if b_sel is None and p_sel is None:
+                return ui.div(
+                    {"class": "empty-state"},
+                    ui.p(
+                        "Click a row header to view distributions for a binding"
+                        " dataset, or a column header to view distributions for a"
+                        " perturbation dataset."
+                    ),
                 )
+
+            if b_sel is not None:
+                sub = df[df["binding_db"] == b_sel]
+                x_col = "perturbation_source"
+            else:
+                sub = df[df["perturbation_db"] == p_sel]
+                x_col = "binding_label"
+
+            if sub.empty:
+                return ui.div(
+                    {"class": "empty-state"},
+                    ui.p("No data for the selected datasets."),
+                )
+
+            fig = go.Figure()
+            x_vals = sorted(sub[x_col].dropna().unique(), key=lambda v: str(v))
+            for x_val in x_vals:
+                grp = sub[sub[x_col] == x_val]
+                mask = grp["percent_responsive"].notna()
+                fig.add_trace(
+                    go.Box(
+                        x=grp.loc[mask, x_col].values,
+                        y=grp.loc[mask, "percent_responsive"].values,
+                        name=str(x_val),
+                        text=grp.loc[mask, "regulator_label"].values,
+                        hovertemplate="%{text}<br>%{y:.1f}%<extra></extra>",
+                        hoveron="points",
+                        boxpoints="all",
+                        jitter=0.4,
+                        pointpos=0,
+                        marker=dict(size=4, opacity=0.5),
+                        line=dict(width=1.5),
+                        showlegend=False,
+                    )
+                )
+
+            if not fig.data:
+                return ui.span()
+
+            fig.update_yaxes(title_text="% responsive in top N", range=[0, 100])
+            fig.update_layout(margin=dict(l=50, r=20, t=40, b=80))
+            return ui.div(
+                {"style": "margin-top: 1.5rem;"},
+                ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False)),
             )
-
-        if not fig.data:
-            return ui.span()
-
-        fig.update_yaxes(title_text="% responsive in top N", range=[0, 100])
-        fig.update_layout(margin=dict(l=50, r=20, t=40, b=80))
-        return ui.div(
-            {"style": "margin-top: 1.5rem;"},
-            ui.HTML(to_html(fig, include_plotlyjs=False, full_html=False)),
-        )
 
     # ---------------------------------------------------------------------------
     # Tab 2: Compare Promoter Definitions
@@ -691,135 +815,134 @@ def comparison_workspace_server(
                 {"class": "empty-state"},
                 ui.p("Click Execute Analysis to compute."),
             )
-        df = _cp_data()
-        p_dbs = active_perturbation_datasets()
-        if not p_dbs:
-            return ui.div(
-                {"class": "empty-state"},
-                ui.p("No perturbation datasets selected."),
-            )
-        if df.empty:
-            return ui.div(
-                {"class": "empty-state"},
-                ui.p("No data for the selected datasets."),
-            )
-
-        try:
-            included_ps = list(input.cp_included_promoter_sets())
-        except Exception:
-            included_ps = list(_PROMOTER_SET_ALIAS.keys())
-
-        preset_name = _read_preset_name(input)
-        _th_style = "padding: 6px 10px; text-align: right;"
-
-        cards: list[ui.Tag] = []
-        for p_db in p_dbs:
-            p_label = PERTURBATION_LABEL_MAP.get(p_db, p_db)
-            sub_p = df[df["perturbation_db"] == p_db]
-            if sub_p.empty:
-                continue
-
-            thresh_label = get_responsiveness_label(preset_name, p_db)
-            binding_base_labels = [
-                b for b in _BINDING_ORDER
-                if b in sub_p["binding_base_label"].unique()
-            ]
-
-            header_cells = [
-                ui.tags.th(
-                    "Binding Dataset",
-                    style="padding: 6px 10px; text-align: left;",
+        with perf(session.id, "comparison.workspace", "cp_promoter_table"):
+            agg = _cp_data()
+            p_dbs = active_perturbation_datasets()
+            if not p_dbs:
+                return ui.div(
+                    {"class": "empty-state"},
+                    ui.p("No perturbation datasets selected."),
                 )
-            ]
-            for ps in included_ps:
-                header_cells.append(ui.tags.th(ps, style=_th_style))
+            if agg.empty:
+                return ui.div(
+                    {"class": "empty-state"},
+                    ui.p("No data for the selected datasets."),
+                )
 
-            data_rows: list[ui.Tag] = []
-            for base_label in binding_base_labels:
-                sub_b = sub_p[sub_p["binding_base_label"] == base_label]
-                if sub_b.empty:
+            try:
+                included_ps = list(input.cp_included_promoter_sets())
+            except Exception:
+                included_ps = list(_PROMOTER_SET_ALIAS.keys())
+
+            preset_name = _read_preset_name(input)
+            _th_style = "padding: 6px 10px; text-align: right;"
+
+            lookup: dict[tuple[str, str, str], float] = {
+                (row.perturbation_db, row.binding_base_label, row.promoter_set): row.val
+                for row in agg.itertuples(index=False)
+            }
+
+            cards: list[ui.Tag] = []
+            for p_db in p_dbs:
+                p_label = PERTURBATION_LABEL_MAP.get(p_db, p_db)
+                sub_agg = agg[agg["perturbation_db"] == p_db]
+                if sub_agg.empty:
                     continue
-                row_cells = [
-                    ui.tags.td(
-                        base_label,
-                        style="padding: 6px 10px; text-align: left; white-space: nowrap;",
+
+                thresh_label = get_responsiveness_label(preset_name, p_db)
+                binding_base_labels = [
+                    b for b in _BINDING_ORDER if b in set(sub_agg["binding_base_label"])
+                ]
+
+                header_cells = [
+                    ui.tags.th(
+                        "Binding Dataset",
+                        style="padding: 6px 10px; text-align: left;",
                     )
                 ]
                 for ps in included_ps:
-                    sub_ps = sub_b[sub_b["promoter_set"] == ps]
-                    if sub_ps.empty:
-                        row_cells.append(
-                            ui.tags.td("-", style="padding: 6px 10px; text-align: right;")
+                    header_cells.append(ui.tags.th(ps, style=_th_style))
+
+                data_rows: list[ui.Tag] = []
+                for base_label in binding_base_labels:
+                    row_cells = [
+                        ui.tags.td(
+                            base_label,
+                            style=(
+                                "padding: 6px 10px; text-align: left; "
+                                "white-space: nowrap;"
+                            ),
                         )
-                    else:
-                        per_reg = sub_ps.groupby("regulator_locus_tag")[
-                            "percent_responsive"
-                        ].median()
-                        val = float(per_reg.median()) if not per_reg.empty else None
+                    ]
+                    for ps in included_ps:
+                        val = lookup.get((p_db, base_label, ps))
                         if val is not None and pd.notna(val):
                             row_cells.append(
                                 ui.tags.td(f"{val:.1f}%", style=_cell_style(val))
                             )
                         else:
                             row_cells.append(
-                                ui.tags.td("-", style="padding: 6px 10px; text-align: right;")
+                                ui.tags.td(
+                                    "-", style="padding: 6px 10px; text-align: right;"
+                                )
                             )
-                data_rows.append(ui.tags.tr(*row_cells))
+                    data_rows.append(ui.tags.tr(*row_cells))
 
-            if not data_rows:
-                continue
+                if not data_rows:
+                    continue
 
-            cards.append(
-                ui.div(
-                    {
-                        "style": (
-                            "flex: 1 1 0; border: 1px solid #ddd;"
-                            " border-radius: 4px; overflow: hidden;"
-                        )
-                    },
+                cards.append(
                     ui.div(
                         {
                             "style": (
-                                "padding: 6px 10px; font-weight: 600;"
-                                " font-size: 0.9rem; background-color: #f5f5f5;"
-                                " border-bottom: 1px solid #ddd;"
+                                "flex: 1 1 0; border: 1px solid #ddd;"
+                                " border-radius: 4px; overflow: hidden;"
                             )
                         },
-                        ui.tooltip(
-                            ui.span(p_label),
-                            f"Responsive threshold: {thresh_label}",
+                        ui.div(
+                            {
+                                "style": (
+                                    "padding: 6px 10px; font-weight: 600;"
+                                    " font-size: 0.9rem; background-color: #f5f5f5;"
+                                    " border-bottom: 1px solid #ddd;"
+                                )
+                            },
+                            ui.tooltip(
+                                ui.span(p_label),
+                                f"Responsive threshold: {thresh_label}",
+                            ),
                         ),
-                    ),
-                    ui.tags.table(
-                        {
-                            "style": (
-                                "border-collapse: collapse;"
-                                " font-size: 0.9rem; width: 100%;"
-                            )
-                        },
-                        ui.tags.thead(
-                            {"style": "background-color: #f5f5f5;"},
-                            ui.tags.tr(*header_cells),
+                        ui.tags.table(
+                            {
+                                "style": (
+                                    "border-collapse: collapse;"
+                                    " font-size: 0.9rem; width: 100%;"
+                                )
+                            },
+                            ui.tags.thead(
+                                {"style": "background-color: #f5f5f5;"},
+                                ui.tags.tr(*header_cells),
+                            ),
+                            ui.tags.tbody(*data_rows),
                         ),
-                        ui.tags.tbody(*data_rows),
-                    ),
+                    )
                 )
-            )
 
-        if not cards:
+            if not cards:
+                return ui.div(
+                    {"class": "empty-state"},
+                    ui.p("No data for the selected combination."),
+                )
+
             return ui.div(
-                {"class": "empty-state"},
-                ui.p("No data for the selected combination."),
+                {
+                    "style": (
+                        "display: flex; flex-wrap: wrap; gap: 1.5rem; "
+                        "margin-top: 0.5rem;"
+                    )
+                },
+                *cards,
             )
-
-        return ui.div(
-            {
-                "style": (
-                    "display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 0.5rem;"
-                )
-            },
-            *cards,
-        )
 
     # ---------------------------------------------------------------------------
     # Tab 3: Compare Analysis Methods
@@ -838,154 +961,145 @@ def comparison_workspace_server(
                 {"class": "empty-state"},
                 ui.p("Click Execute Analysis to compute."),
             )
-        df = _cm_data()
-        p_dbs = active_perturbation_datasets()
-        if not p_dbs:
-            return ui.div(
-                {"class": "empty-state"},
-                ui.p("No perturbation datasets selected."),
-            )
-        if df.empty:
-            return ui.div(
-                {"class": "empty-state"},
-                ui.p("No data for the selected combination."),
-            )
-
-        preset_name = _read_preset_name(input)
-        _th_style = "padding: 6px 10px; text-align: right;"
-
-        variants_present = [
-            v for v in SCORING_VARIANT_ORDER
-            if v in df["scoring_variant"].unique()
-        ]
-        if not variants_present:
-            return ui.span()
-
-        cards: list[ui.Tag] = []
-        for p_db in p_dbs:
-            p_label = PERTURBATION_LABEL_MAP.get(p_db, p_db)
-            sub_p = df[df["perturbation_db"] == p_db]
-            if sub_p.empty:
-                continue
-
-            thresh_label = get_responsiveness_label(preset_name, p_db)
-            method_base_labels = [
-                b for b in list(dict.fromkeys(METHOD_BASE_LABEL_MAP.values()))
-                if b in sub_p["scoring_variant"].map(
-                    lambda v: METHOD_BASE_LABEL_MAP.get(
-                        sub_p.loc[sub_p["scoring_variant"] == v, "binding_db"].iloc[0]
-                        if not sub_p.loc[sub_p["scoring_variant"] == v].empty
-                        else "", v
-                    )
-                ).unique()
-            ]
-
-            header_cells = [
-                ui.tags.th(
-                    "Scoring Variant",
-                    style="padding: 6px 10px; text-align: left;",
+        with perf(session.id, "comparison.workspace", "cm_method_table"):
+            agg = _cm_data()
+            p_dbs = active_perturbation_datasets()
+            if not p_dbs:
+                return ui.div(
+                    {"class": "empty-state"},
+                    ui.p("No perturbation datasets selected."),
                 )
+            if agg.empty:
+                return ui.div(
+                    {"class": "empty-state"},
+                    ui.p("No data for the selected combination."),
+                )
+
+            preset_name = _read_preset_name(input)
+            _th_style = "padding: 6px 10px; text-align: right;"
+
+            variants_present = [
+                v for v in SCORING_VARIANT_ORDER if v in set(agg["scoring_variant"])
             ]
-            for v in variants_present:
-                color = SCORING_VARIANT_COLORS.get(v, "#888888")
-                header_cells.append(
+            if not variants_present:
+                return ui.span()
+
+            lookup: dict[tuple[str, str, str], float] = {
+                (
+                    row.perturbation_db,
+                    row.binding_base_label,
+                    row.scoring_variant,
+                ): row.val
+                for row in agg.itertuples(index=False)
+            }
+
+            cards: list[ui.Tag] = []
+            for p_db in p_dbs:
+                p_label = PERTURBATION_LABEL_MAP.get(p_db, p_db)
+                sub_agg = agg[agg["perturbation_db"] == p_db]
+                if sub_agg.empty:
+                    continue
+
+                thresh_label = get_responsiveness_label(preset_name, p_db)
+                base_labels_in_data = list(
+                    dict.fromkeys(sub_agg["binding_base_label"].tolist())
+                )
+
+                header_cells = [
                     ui.tags.th(
-                        v,
-                        style=f"{_th_style} color: {color}; font-weight: 600;",
-                    )
-                )
-
-            data_rows_cm: list[ui.Tag] = []
-            # One row per unique binding base label (dataset)
-            base_labels_in_data = list(
-                dict.fromkeys(
-                    METHOD_BASE_LABEL_MAP.get(b_db, b_db)
-                    for b_db in df["binding_db"].unique()
-                    if sub_p[sub_p["binding_db"] == b_db].shape[0] > 0
-                )
-            )
-            for base_label in base_labels_in_data:
-                row_cells = [
-                    ui.tags.td(
-                        base_label,
-                        style="padding: 6px 10px; text-align: left; white-space: nowrap;",
+                        "Scoring Variant",
+                        style="padding: 6px 10px; text-align: left;",
                     )
                 ]
                 for v in variants_present:
-                    sub_v = sub_p[sub_p["scoring_variant"] == v]
-                    if sub_v.empty:
-                        row_cells.append(
-                            ui.tags.td("-", style="padding: 6px 10px; text-align: right;")
+                    color = SCORING_VARIANT_COLORS.get(v, "#888888")
+                    header_cells.append(
+                        ui.tags.th(
+                            v,
+                            style=f"{_th_style} color: {color}; font-weight: 600;",
                         )
-                    else:
-                        per_reg = sub_v.groupby("regulator_locus_tag")[
-                            "percent_responsive"
-                        ].median()
-                        val = float(per_reg.median()) if not per_reg.empty else None
+                    )
+
+                data_rows_cm: list[ui.Tag] = []
+                for base_label in base_labels_in_data:
+                    row_cells = [
+                        ui.tags.td(
+                            base_label,
+                            style=(
+                                "padding: 6px 10px; text-align: left; "
+                                "white-space: nowrap;"
+                            ),
+                        )
+                    ]
+                    for v in variants_present:
+                        val = lookup.get((p_db, base_label, v))
                         if val is not None and pd.notna(val):
                             row_cells.append(
                                 ui.tags.td(f"{val:.1f}%", style=_cell_style(val))
                             )
                         else:
                             row_cells.append(
-                                ui.tags.td("-", style="padding: 6px 10px; text-align: right;")
+                                ui.tags.td(
+                                    "-", style="padding: 6px 10px; text-align: right;"
+                                )
                             )
-                data_rows_cm.append(ui.tags.tr(*row_cells))
+                    data_rows_cm.append(ui.tags.tr(*row_cells))
 
-            if not data_rows_cm:
-                continue
+                if not data_rows_cm:
+                    continue
 
-            cards.append(
-                ui.div(
-                    {
-                        "style": (
-                            "flex: 1 1 0; border: 1px solid #ddd;"
-                            " border-radius: 4px; overflow: hidden;"
-                        )
-                    },
+                cards.append(
                     ui.div(
                         {
                             "style": (
-                                "padding: 6px 10px; font-weight: 600;"
-                                " font-size: 0.9rem; background-color: #f5f5f5;"
-                                " border-bottom: 1px solid #ddd;"
+                                "flex: 1 1 0; border: 1px solid #ddd;"
+                                " border-radius: 4px; overflow: hidden;"
                             )
                         },
-                        ui.tooltip(
-                            ui.span(p_label),
-                            f"Responsive threshold: {thresh_label}",
+                        ui.div(
+                            {
+                                "style": (
+                                    "padding: 6px 10px; font-weight: 600;"
+                                    " font-size: 0.9rem; background-color: #f5f5f5;"
+                                    " border-bottom: 1px solid #ddd;"
+                                )
+                            },
+                            ui.tooltip(
+                                ui.span(p_label),
+                                f"Responsive threshold: {thresh_label}",
+                            ),
                         ),
-                    ),
-                    ui.tags.table(
-                        {
-                            "style": (
-                                "border-collapse: collapse;"
-                                " font-size: 0.9rem; width: 100%;"
-                            )
-                        },
-                        ui.tags.thead(
-                            {"style": "background-color: #f5f5f5;"},
-                            ui.tags.tr(*header_cells),
+                        ui.tags.table(
+                            {
+                                "style": (
+                                    "border-collapse: collapse;"
+                                    " font-size: 0.9rem; width: 100%;"
+                                )
+                            },
+                            ui.tags.thead(
+                                {"style": "background-color: #f5f5f5;"},
+                                ui.tags.tr(*header_cells),
+                            ),
+                            ui.tags.tbody(*data_rows_cm),
                         ),
-                        ui.tags.tbody(*data_rows_cm),
-                    ),
+                    )
                 )
-            )
 
-        if not cards:
+            if not cards:
+                return ui.div(
+                    {"class": "empty-state"},
+                    ui.p("No data for the selected combination."),
+                )
+
             return ui.div(
-                {"class": "empty-state"},
-                ui.p("No data for the selected combination."),
+                {
+                    "style": (
+                        "display: flex; flex-wrap: wrap; gap: 1.5rem; "
+                        "margin-top: 0.5rem;"
+                    )
+                },
+                *cards,
             )
-
-        return ui.div(
-            {
-                "style": (
-                    "display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 0.5rem;"
-                )
-            },
-            *cards,
-        )
 
 
 __all__ = ["comparison_workspace_server"]

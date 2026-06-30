@@ -48,6 +48,42 @@ to cancel it. Only one of these common regulator filters should be pending at on
 so if the user chooses a different pairwise common rgulator intersection, and there 
 is already one selected by not applied, it should be replaced.  
 
+## export datasets
+
+When the user clicks "Export Selected Datasets" on the workspace page, the app does
+**not** query the data itself and bundle the results into the tarball. Instead it builds
+a small "export kit" tarball (`tfbpshiny_export.tar.gz`) that the user runs on their own
+machine to pull the data via `labretriever`. This moves the cost of materializing
+potentially large query results off of the shiny server and onto the user's environment.
+
+The tarball contains, at the top level:
+
+- `brentlab_yeast_collection.yaml` -- a copy of the VirtualDB configuration file
+  (`tfbpshiny/brentlab_yeast_collection.yaml`) that the app itself uses to construct
+  `vdb`. The exported script points `labretriever.VirtualDB` at this file so it resolves
+  the same HuggingFace repos/configs as the running app.
+- `fetch_data.py` -- a generated python script with one block per dataset that was
+  active (selected and, if filtered, passing those filters) at the moment the user
+  clicked export. Each block embeds the SQL statement(s) and bound parameters for that
+  dataset -- the same `metadata_query`/`full_data_query` SQL the app would have run
+  itself, built from the current `dataset_filters` and the active binding/perturbation
+  dataset lists. At runtime the script does, per dataset:
+  `VirtualDB("brentlab_yeast_collection.yaml").query(sql, **params)` for both the
+  metadata query and the full-data query, then writes each result to disk.
+- `requirements.txt` -- top-level dependencies required to run `fetch_data.py` (at
+  minimum `labretriever`).
+- `README.md` -- top-level instructions for the user: create a virtual environment with
+  `venv`, install `requirements.txt` with `pip`, then run `fetch_data.py` from inside the
+  extracted tarball directory.
+
+Running `fetch_data.py` reproduces the same output layout the export previously wrote
+directly into the tarball: one subdirectory per dataset (sanitized display name), each
+containing `metadata.csv`, `annotated_features.csv`, and, when a description is
+available, a per-dataset `README.md` describing the dataset's contents. The directory
+structure the user ends up with on disk is unchanged from the current export format --
+only how it gets there (querying locally via the script instead of on the server at
+export time) has changed.
+
 ## impact on other pages
 
 The selected datasets determines what datasets, and what samples within each dataset,

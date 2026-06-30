@@ -12,11 +12,12 @@ def perturbation_ui() -> ui.Tag:
     return ui.layout_sidebar(
         ui.sidebar(
             ui.h2("Perturbation"),
+            ui.output_ui("pending_changes_banner"),
             ui.output_ui("execute_pending_style"),
             ui.input_action_button(
                 "execute_analysis",
                 "Execute Analysis",
-                class_="btn-danger w-100",
+                class_="btn-danger w-100 btn-apply-pending--idle",
             ),
             sidebar_label("Column"),
             ui.input_radio_buttons(

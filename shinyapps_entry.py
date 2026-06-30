@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 
 os.environ["HF_CACHE_DIR"] = str(Path(__file__).parent / "hf_cache")
+os.environ["TFBPSHINY_DB_PATH"] = str(Path(__file__).parent / "brentlab_yeast.duckdb")
 os.environ["TFBPSHINY_LOG_LEVEL"] = str(10)  # logging.DEBUG
 
 from tfbpshiny.app import app  # noqa: E402,F401

@@ -11,68 +11,76 @@ Perturbation datasets measure the transcriptional response to TF manipulation ra
 than direct TF-DNA binding. Current datasets include TFKO experiments (Hu 2007,
 Kemmeren 2014, Hughes 2006 knockout), overexpression experiments (Hughes 2006
 overexpression, Hackett 2020), and auxin-inducible degron RNA-seq (Mahendrawada 2025).
-Each dataset reports a per-target-gene effect column (e.g. log2FoldChange, Madj,
-mean_norm_log2fc) and, where available, a p-value column.
 
 ## Structure
 
-The sidebar lets the user select which score to use (effect or p-value) and which
-correlation method to use for comparing two datasets (Pearson or Spearman). There
-is no dataset multi-selector in the sidebar; the perturbation datasets analyzed are
-exactly those selected on the select datasets page. The default score is effect and
-the default correlation method is Pearson. There is an "Execute Analysis" button that
-kicks off an extended_task to compute correlations; visualizations are absent until
-the first click. Changing sidebar options does not update visualizations until Execute
-is clicked again.
+There is no dataset multi-selector in the sidebar; the perturbation datasets analyzed
+are exactly those selected (and filtered) on the select datasets page. The sidebar has
+a "Column" radio group (choices: -log10(p-value), Effect, P-value; default Effect) --
+this control is currently a UI-only placeholder and is not read by the server logic, so
+changing it has no effect on the analysis. The "Correlation" radio group selects
+Pearson or Spearman; the default is Pearson. An "Execute Analysis" button sits above
+these controls.
 
-The workspace shows a brief status message while the task is computing and again while
-the plots are being built after the task completes, so the workspace is never silently
-blank.
+The workspace displays two tabs: "Correlation Matrix" and "Pair Distribution". Pairwise
+correlations are pre-computed and stored in the database (a `correlations` table,
+`comparison_type="perturbation"`); the page queries and aggregates them rather than
+computing correlations live.
 
-The workspace displays two views on separate tabs: Distributions and Scatter.
+The "Correlation Matrix" tab shows an upper-triangular matrix of all active perturbation
+dataset pairs. Each cell is a clickable button (stable id `corrpair_<db_a>__<db_b>`)
+showing the median per-regulator correlation for that pair to three decimal places, or
+"—" if there is no data for the pair. Clicking a cell toggles whether that pair is
+selected (visual highlight via a `.matrix-cell-active` class) and queues it for the Pair
+Distribution tab. The diagonal and lower triangle are rendered as empty grey
+placeholders.
 
-The Distributions tab shows one box plot per dataset pair (not all pairs combined in a
-single figure). Each plot contains jittered points where each point represents the
-per-regulator correlation for a shared regulator across the two datasets. Selecting a
-point highlights that regulator across all per-pair box plots simultaneously; the
-highlight trace is updated in-place via a FigureWidget, so box plots never fully
-re-render when the selected regulator changes.
-
-The Scatter tab shows one scatter plot per active pair, keyed by the selected
-regulator. Each scatter plot has the per-target score for the selected regulator on
-both axes (x = dataset A score for that regulator's samples; y = dataset B score).
-The axis labels include the dataset display name and the actual column name used (e.g.
-"2014 TFKO (Kemmeren): Madj"). The hover tooltip on each scatter point shows the
-target gene symbol. There is also a dropdown menu of regulators present in at least
-one active pair. Selecting a regulator from the dropdown highlights it in the
-boxplots and updates the scatter plots. If the selected regulator is absent from a
-dataset in a given pair, that pair's scatter plot is omitted and a note is displayed
-listing the datasets where the regulator was not found. The Scatter tab shows a status
-message while plots are being prepared after a regulator change.
+The "Pair Distribution" tab shows one box plot per *committed* pair (see Usage). Each
+point in a box plot is one regulator's correlation value for that pair, jittered, with a
+tooltip showing the regulator's display name and the correlation value. A "Highlight
+regulator" dropdown (populated from regulators present in the committed pairs) overlays
+the selected regulator's point on every box plot in black. Box plots fully re-render on
+regulator-selection changes; there is no in-place FigureWidget update.
 
 ## first load
 
-The sidebar defaults to effect and Pearson. Visualizations are absent until the user
-clicks Execute Analysis. Once clicked, a status message appears immediately and persists
-through both the computation phase and the subsequent plot-building phase. If no
-perturbation dataset pairs are active, the workspace shows an empty-state message
-prompting the user to select datasets on the select datasets page.
+The sidebar defaults to Effect (no effect on computation) and Pearson. Because
+correlations are pre-computed and fetched reactively (not via an extended task), the
+Correlation Matrix tab already shows live median-correlation values for every active
+pair on first load -- the user does not need to click Execute Analysis to see the
+matrix populate. The Pair Distribution tab shows "Click a cell in the Correlation
+Matrix to view its distribution." until at least one pair has been selected and
+committed.
+
+If fewer than two perturbation datasets are active, the page shows "Select at least
+two perturbation datasets to see correlations." above the tabs, and the Correlation
+Matrix tab shows the same message in place of the matrix.
 
 ## usage
 
-The user can select a regulator from the dropdown or click a point in the boxplot
-to set the selected regulator. Selecting a regulator highlights it across all pairwise
-distributions and updates the scatter plots to show that regulator's per-target scores.
-The user can change the score (effect vs. p-value) or correlation method from the
-sidebar, then click Execute Analysis to recompute. The user can return to the select
-datasets page, change the active perturbation datasets or their filters, then come back
-and click Execute Analysis to update. If the previously selected regulator is not
-present in the new result, the alphabetically first available regulator is selected
-automatically.
+Changing dataset filters or the active perturbation dataset set on the select datasets
+page takes effect immediately and automatically -- pair selections reset to "all active
+pairs", the matrix refetches, and no Execute click is required. Selecting a different
+correlation method (Pearson/Spearman), on the other hand, only marks the analysis as
+having pending changes: a banner reading "Pending changes — click Execute Analysis to
+update the distributions." appears, and the Execute Analysis button becomes fully
+opaque/clickable (it is dimmed by default via the `btn-apply-pending--idle` class).
+Clicking a matrix cell also marks the analysis pending in the same way, toggling that
+pair in/out of the pending selection without changing the Pair Distribution tab yet.
 
-Not all datasets expose a p-value column. When the user selects p-value and a dataset
-in an active pair has no p-value column, that pair is omitted from the analysis and
-a note is displayed.
+Clicking "Execute Analysis" commits the pending pair selection and correlation method,
+refetches the correlation data, re-renders the Pair Distribution box plots for the
+committed pairs, clears the pending-changes banner, and dims the button again.
+
+Selecting a regulator from the "Highlight regulator" dropdown highlights that
+regulator's point across all currently rendered box plots. If the previously selected
+regulator is not present after a dataset/filter change, the dropdown falls back to the
+alphabetically first available regulator.
+
+Not all perturbation datasets have a p-value column (`hughes_overexpression`,
+`hughes_knockout`, and `hackett` do not). There is currently no warning surfaced for
+this in the UI -- the "Column" selector that would otherwise let a user pick p-value is
+a UI-only placeholder with no effect on the analysis.
 
 ## impact on other pages
 

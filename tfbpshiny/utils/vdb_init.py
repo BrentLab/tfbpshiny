@@ -111,17 +111,17 @@ DEFAULT_RESPONSIVENESS_PRESETS: dict[str, ResponsivenessPreset] = {
     "Stringent": {
         "*": (1.0, 0.05),
         "degron": (0.38, 0.1),  # |fold change| > log2(1.3) and padj < 0.1
-        "hackett": (0.0, 1.0),  # |log2_shrunken_timecourses| > 0 (no pvalue col)
+        # hackett/hughes have no pvalue column; materialized with pvalue_threshold=0.05.
+        # Use effect_threshold only to distinguish Stringent from Relaxed.
+        "hackett": (0.0, 0.05),
         "kemmeren": (0.77, 0.05),  # |Madj| > log2(1.7) and pval < 0.05
         "hu_reimand": (0.0, 0.05),  # pval < 0.05 (no effect threshold)
-        # Hughes effect is mean_norm_log2fc (no pvalue col); original authors used
-        # a z-score threshold ~1.58 which returns very few DE genes; lowered here.
-        "hughes_overexpression": (1.0, 1.0),
-        "hughes_knockout": (1.0, 1.0),
+        "hughes_overexpression": (1.0, 0.05),
+        "hughes_knockout": (1.0, 0.05),
     },
     "Relaxed": {
         "*": (0.0, 0.05),
-        "hackett": (0.0, 1.0),  # |log2_shrunken_timecourses| > 0 (no pvalue col)
+        # hackett/hughes have no pvalue column; omit override so they use "*" default.
     },
 }
 

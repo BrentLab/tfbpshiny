@@ -1,14 +1,19 @@
 # flake8: noqa
-"""SQL queries for the Comparison (DTO / Top-N by Binding) module — Phase 2 DuckDB version."""
+"""SQL queries for the Comparison (DTO / Top-N by Binding) module — Phase 2 DuckDB
+version."""
 
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
 import duckdb
 import pandas as pd
 
 from tfbpshiny.utils.corr_query import get_filtered_sample_ids
+
+_perf_logger = logging.getLogger("shiny.perf")
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -297,18 +302,31 @@ def fetch_topn_results(
     if not pairs:
         return pd.DataFrame()
 
+    import json
+
     frames: list[pd.DataFrame] = []
     for b_db, p_db in pairs:
-        effect_threshold, pvalue_threshold = preset.get(p_db, preset.get("*", (0.0, 0.05)))
+        t_pair = time.perf_counter()
+        effect_threshold, pvalue_threshold = preset.get(
+            p_db, preset.get("*", (0.0, 0.05))
+        )
         try:
-            row_b = conn.execute(
-                "SELECT hf_repo, hf_config FROM dataset_registry WHERE db_name = ?",
-                [b_db],
-            ).df().iloc[0]
-            row_p = conn.execute(
-                "SELECT hf_repo, hf_config FROM dataset_registry WHERE db_name = ?",
-                [p_db],
-            ).df().iloc[0]
+            row_b = (
+                conn.execute(
+                    "SELECT hf_repo, hf_config FROM dataset_registry WHERE db_name = ?",
+                    [b_db],
+                )
+                .df()
+                .iloc[0]
+            )
+            row_p = (
+                conn.execute(
+                    "SELECT hf_repo, hf_config FROM dataset_registry WHERE db_name = ?",
+                    [p_db],
+                )
+                .df()
+                .iloc[0]
+            )
         except (IndexError, Exception):
             continue
         b_prefix = f"{row_b['hf_repo']};{row_b['hf_config']};"
@@ -345,10 +363,26 @@ def fetch_topn_results(
         try:
             df = conn.execute(sql, params).df()
             if not df.empty:
-                df["pair_key"] = f"{b_db}__{p_db}"
+                df["binding_db"] = b_db
+                df["perturbation_db"] = p_db
                 frames.append(df)
         except Exception:
             pass
+        elapsed = round((time.perf_counter() - t_pair) * 1000, 2)
+        _perf_logger.info(
+            json.dumps(
+                {
+                    "module": "comparison.queries",
+                    "label": "fetch_topn_pair",
+                    "kind": "data",
+                    "b_db": b_db,
+                    "p_db": p_db,
+                    "n_b_ids": len(b_ids),
+                    "n_p_ids": len(p_ids),
+                    "elapsed_ms": elapsed,
+                }
+            )
+        )
 
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 

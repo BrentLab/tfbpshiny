@@ -1,63 +1,77 @@
 # Binding
 
 This describes the workflow through the binding page. The binding page provides focused
-analysis of the selected binding sets. Note that the user must have first selected 
+analysis of the selected binding sets. Note that the user must have first selected
 datasets on the select datasets page (there are defaults set by the site developer)
-in order to have data to analyze on the binding page. The binding data available for 
-analysis should be only the data that is selected on the select datasets page, including 
+in order to have data to analyze on the binding page. The binding data available for
+analysis should be only the data that is selected on the select datasets page, including
 the filters.
 
 ## Structure
 
 The sidebar lets the user select among the active binding datasets (those selected on
-the select datasets page) which ones to include in the analysis, via a checkbox group.
-The sidebar also lets the user select which score to use (effect or p-value) and which
-correlation method to use (Pearson or Spearman). The default score is effect and the
-default correlation method is Pearson. There is an "Execute Analysis" button that kicks
-off an extended_task to compute correlations; visualizations are absent until the first
-click.
+the select datasets page) which ones to include in the analysis, via a checkbox group
+labeled "Datasets" (all active datasets are checked by default). The sidebar also has
+a "Column" radio group (choices: -log10(p-value), Effect, P-value; default
+-log10(p-value)) -- this control is currently a UI-only placeholder and is not read by
+the server logic, so changing it has no effect on the analysis. The "Correlation" radio
+group selects Pearson or Spearman; the default is **Spearman**. An "Execute Analysis"
+button sits above these controls.
 
-The workspace shows a brief status message while the task is computing and again while
-the plots are being built after the task completes, so the workspace is never silently
-blank.
+The workspace displays two tabs: "Correlation Matrix" and "Pair Distribution". Pairwise
+correlations are pre-computed and stored in the database (a `correlations` table,
+`comparison_type="binding"`); the page queries and aggregates them rather than
+computing correlations live.
 
-The workspace displays two views on separate tabs: Distributions and Scatter.
+The "Correlation Matrix" tab shows an upper-triangular matrix of all active-dataset
+pairs. Each cell is a clickable button (stable id `corrpair_<db_a>__<db_b>`) showing the
+median per-regulator correlation for that pair to three decimal places, or "—" if there
+is no data for the pair. Clicking a cell toggles whether that pair is selected (visual
+highlight via a `.matrix-cell-active` class) and queues it for the Pair Distribution
+tab. The diagonal and lower triangle are rendered as empty grey placeholders.
 
-The Distributions tab shows one box plot per dataset pair (not all pairs combined in a
-single figure). Each plot contains jittered points where each point represents the
-per-regulator correlation for a shared regulator across the two datasets. Selecting a
-point highlights that regulator across all per-pair box plots simultaneously; the
-highlight trace is updated in-place via a FigureWidget, so box plots never fully
-re-render when the selected regulator changes.
-
-The Scatter tab shows one scatter plot per active pair, keyed by the selected regulator.
-Each scatter plot shows per-target binding scores for the selected regulator on both
-axes, with the target gene symbol in the hover tooltip. There is also a dropdown of
-regulators present in at least one active pair. The Scatter tab shows a status message
-while plots are being prepared.
+The "Pair Distribution" tab shows one box plot per *committed* pair (see Usage). Each
+point in a box plot is one regulator's correlation value for that pair, jittered, with a
+tooltip showing the regulator's display name and the correlation value. A "Highlight
+regulator" dropdown (populated from regulators present in the committed pairs) overlays
+the selected regulator's point on every box plot in black. Box plots fully re-render on
+regulator-selection changes; there is no in-place FigureWidget update.
 
 ## first load
 
-The sidebar defaults to effect and Pearson, with all active binding datasets checked.
-Visualizations are absent until the user clicks Execute Analysis. Once clicked, a status
-message appears immediately and persists through both the computation phase and the
-subsequent plot-building phase. The message covers the full wait from click to final
-plot appearance.
+All active binding datasets are checked by default. The correlation method defaults to
+Spearman. Because correlations are pre-computed and fetched reactively (not via an
+extended task), the Correlation Matrix tab already shows live median-correlation values
+for every active pair on first load -- the user does not need to click Execute Analysis
+to see the matrix populate. The Pair Distribution tab, however, shows "Click a cell in
+the Correlation Matrix to view its distribution." until at least one pair has been
+selected and committed.
+
+If fewer than two binding datasets are active, the page shows "Select at least two
+binding datasets to see correlations." above the tabs, and the Correlation Matrix tab
+shows "Click Execute Analysis after selecting datasets."
 
 ## usage
 
-At this point, the user should be able to either select a regulator form the
-drop down to highlight it in the distributions, or click on a point in the
-distribution to select the regulator corresponding to that point and highlight
-it across the distributions and in the scatter plot. The user should be able to
-change the sidebar options and click "execute analysis" to update the
-visualizations with the new options. The user should be able to change the
-selected datasets on the select datasets page, and then come back to the binding
-page and click "execute analysis" to update the visualizations with the new
-selected datasets and filters. Note that if the user changes the selected
-datasets, then the previously selected regulator may not be present in the new
-set of selected datasets. If that occurs, then just select the alphabetically
-first regulator in the dropdown that is present.
+Toggling a dataset checkbox or changing dataset filters on the select datasets page
+takes effect immediately and automatically -- pair selections reset to "all active
+pairs", the matrix refetches, and no Execute click is required. Selecting a different
+correlation method (Pearson/Spearman), on the other hand, only marks the analysis as
+having pending changes: a banner reading "Pending changes — click Execute Analysis to
+update the distributions." appears, and the Execute Analysis button becomes fully
+opaque/clickable (it is dimmed by default via the `btn-apply-pending--idle` class).
+Clicking a matrix cell also marks the analysis pending in the same way, toggling that
+pair in/out of the pending selection without changing the Pair Distribution tab yet.
+
+Clicking "Execute Analysis" commits the pending pair selection and correlation method,
+refetches the correlation data, re-renders the Pair Distribution box plots for the
+committed pairs, clears the pending-changes banner, and dims the button again.
+
+Selecting a regulator from the "Highlight regulator" dropdown highlights that
+regulator's point across all currently rendered box plots. If the user changes the
+active datasets on the select datasets page such that the previously selected regulator
+is no longer present, the dropdown falls back to the alphabetically first available
+regulator.
 
 ## impact on other pages
 

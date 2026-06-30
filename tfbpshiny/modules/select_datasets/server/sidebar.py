@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import io
 from logging import Logger
 from typing import Any
 
@@ -15,7 +13,7 @@ from shiny.types import SilentException
 from tfbpshiny.components import export_download_button
 from tfbpshiny.modules.select_datasets.export import (
     ExportDataset,
-    build_export_tarball,
+    build_export_archive,
 )
 from tfbpshiny.modules.select_datasets.queries import (
     FIELD_TYPE_OVERRIDES,
@@ -88,7 +86,7 @@ def select_datasets_sidebar_server(
         "FROM dataset_registry WHERE is_primary = TRUE"
     ).df()
 
-    dataset_dict: dict[str, dict[str, str]] = {}
+    dataset_dict: dict[str, dict[str, Any]] = {}
     for _, row in _reg_df.iterrows():
         dataset_dict[str(row["db_name"])] = {
             "data_type": str(row["data_type"]),
@@ -222,8 +220,8 @@ def select_datasets_sidebar_server(
                 @reactive.event(input[u_id])
                 def _cascade() -> None:
                     """
-                    Narrow condition checkbox choices to levels that co-occur with
-                    the current upstream selection.
+                    Narrow condition checkbox choices to levels that co-occur with the
+                    current upstream selection.
 
                     :trigger: ``input[u_id]`` — fires when the upstream selectize
                         changes.
@@ -334,8 +332,8 @@ def select_datasets_sidebar_server(
     @reactive.event(input.modal_apply_filters)
     def _apply_filter_modal() -> None:
         """
-        Read filter inputs from the modal, persist them to ``dataset_filters``,
-        activate the dataset if it was off, then close the modal.
+        Read filter inputs from the modal, persist them to ``dataset_filters``, activate
+        the dataset if it was off, then close the modal.
 
         :trigger: ``input.modal_apply_filters`` — fires when the user clicks
             Apply Filters inside the filter modal.
@@ -507,8 +505,8 @@ def select_datasets_sidebar_server(
             len(ds_filters),
         )
 
-        if not _toggle_state().get(db_name, False):
-            _toggle_state.set({**_toggle_state(), db_name: True})
+        if not _pending_toggle().get(db_name, False):
+            _pending_toggle.set({**_pending_toggle(), db_name: True})
 
         ui.modal_remove()
         modal_open_for.set(None)
@@ -518,9 +516,13 @@ def select_datasets_sidebar_server(
         filename=lambda: "tfbpshiny_export.tar.gz",
         media_type="application/gzip",
     )
-    async def export_datasets():
+    def export_datasets():
         """
-        Build and stream a .tar.gz archive of all active datasets.
+        Build and stream a .tar.gz export kit for all active datasets.
+
+        The kit contains the VirtualDB config, a generated fetch_data.py
+        script (embedding each active dataset's SQL + params), requirements.txt,
+        and a top-level README -- no data is queried server-side.
 
         :trigger: ``input.export_datasets`` — fires when the user clicks the
             Export Selected Datasets download button.
@@ -531,7 +533,6 @@ def select_datasets_sidebar_server(
             return
 
         filters = dataset_filters()
-        n = len(all_active)
 
         export_list: list[ExportDataset] = []
         for db_name in all_active:
@@ -541,51 +542,20 @@ def select_datasets_sidebar_server(
 
             export_list.append(
                 ExportDataset(
+                    db_name=db_name,
                     display_name=display_name,
                     metadata_sql=meta_sql,
                     metadata_params=meta_params,
                     data_sql=data_sql,
                     data_params=data_params,
-                    description=None,
                 )
             )
 
-        progress_q: asyncio.Queue[str | None] = asyncio.Queue()
-        loop = asyncio.get_running_loop()
-
-        def _on_dataset_done(name: str) -> None:
-            loop.call_soon_threadsafe(progress_q.put_nowait, name)
-
-        def _build_and_signal() -> io.BytesIO:
-            try:
-                return build_export_tarball(export_list, conn, _on_dataset_done)
-            finally:
-                loop.call_soon_threadsafe(progress_q.put_nowait, None)
-
-        with ui.Progress(min=0, max=n, session=session) as progress:
-            progress.set(0, message="Preparing export...")
-
-            build_task = asyncio.create_task(asyncio.to_thread(_build_and_signal))
-
-            done = 0
-            while True:
-                name = await progress_q.get()
-                if name is None:
-                    break
-                done += 1
-                progress.set(
-                    done,
-                    message=f"Packaged {name}",
-                    detail=f"{done} of {n}",
-                )
-
-            try:
-                buf = await build_task
-            except Exception:
-                logger.exception("Export tarball build failed")
-                return
-
-            progress.set(n, message="Download ready")
+        try:
+            buf = build_export_archive(export_list)
+        except Exception:
+            logger.exception("Export archive build failed")
+            return
 
         while chunk := buf.read(65536):
             yield chunk

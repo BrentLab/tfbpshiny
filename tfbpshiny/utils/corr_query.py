@@ -1,4 +1,5 @@
-"""Shared DuckDB-based correlation query helper for binding and perturbation workspaces."""
+"""Shared DuckDB-based correlation query helper for binding and perturbation
+workspaces."""
 
 from __future__ import annotations
 
@@ -57,7 +58,8 @@ def fetch_corr_pairs(
     :param filters: dataset_filters dict keyed by db_name.
     :param method: 'pearson' or 'spearman'.
     :param comparison_type: 'binding' or 'perturbation'.
-    :returns: Dict mapping (db_a, db_b) to DataFrame with regulator_locus_tag, correlation.
+    :returns: Dict mapping (db_a, db_b) to DataFrame with regulator_locus_tag,
+        correlation.
 
     """
     result: dict[tuple[str, str], pd.DataFrame] = {}
@@ -96,7 +98,7 @@ def fetch_corr_pairs(
         phs_a = ", ".join(["?"] * len(ids_a))
         phs_b = ", ".join(["?"] * len(ids_b))
         sql = f"""
-        SELECT regulator_locus_tag, correlation
+        SELECT regulator_locus_tag, AVG(correlation) AS correlation
         FROM correlations
         WHERE comparison_type = ?
           AND method = ?
@@ -104,6 +106,7 @@ def fetch_corr_pairs(
           AND source_sample_b LIKE ?
           AND split_part(source_sample_a, ';', 3) IN ({phs_a})
           AND split_part(source_sample_b, ';', 3) IN ({phs_b})
+        GROUP BY regulator_locus_tag
         """
         params: list[Any] = (
             [comparison_type, method, prefix_a + "%", prefix_b + "%"] + ids_a + ids_b
