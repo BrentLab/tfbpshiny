@@ -133,9 +133,14 @@
 }
 
 /* --- Intersection matrix ------------------------------------------------ */
+/* Wraps the table so it scrolls horizontally instead of shrinking its
+   columns when the viewport narrows. */
+.matrix-scroll-container {
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+}
+
 .matrix-summary-table {
-    width: 100%;
-    table-layout: fixed;
     border-spacing: 0;
     border-collapse: collapse;
     font-size: var(--font-size-label);
@@ -153,12 +158,13 @@
     z-index: 2;
     background: #F8FAFC;
     text-align: left;
-    width: 20%;
+    min-width: 160px;
 }
 
 .matrix-summary-table .matrix-col-header {
     background: #F8FAFC;
     text-align: center;
+    min-width: 120px;
 }
 
 .matrix-summary-table .matrix-header-name {
@@ -181,6 +187,7 @@
     color: var(--color-text);
     text-align: left;
     padding: 10px 12px;
+    min-width: 160px;
 }
 
 .matrix-summary-table .matrix-cell-empty {
@@ -341,4 +348,41 @@
     margin-bottom: 0.5rem;
     font-size: 0.85rem;
     color: #664d03;
+}
+
+/* --- Extraction instructions shown above the export download button ----- */
+.export-instructions {
+    font-size: 0.8rem;
+    color: var(--color-text);
+    margin-bottom: 0.5rem;
+}
+
+.export-instructions p {
+    margin-bottom: 0.25rem;
+}
+
+.export-instructions pre {
+    background: var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem;
+    margin-bottom: 0;
+    font-size: 0.75rem;
+    white-space: pre-wrap;
+}
+
+/* --- Horizontal-scroll rows ----------------------------------------------
+   Wide rows of plots or cards (pair-distribution plots, comparison-module
+   table cards) that should keep their natural width and scroll on narrow
+   viewports rather than shrinking their contents. */
+.scroll-row {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 1rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+}
+
+.scroll-row.gap-lg {
+    gap: 1.5rem;
 }

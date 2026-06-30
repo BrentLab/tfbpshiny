@@ -52,11 +52,15 @@ is already one selected by not applied, it should be replaced.
 
 When the user clicks "Export Selected Datasets" on the workspace page, the app does
 **not** query the data itself and bundle the results into the tarball. Instead it builds
-a small "export kit" tarball (`tfbpshiny_export.tar.gz`) that the user runs on their own
-machine to pull the data via `labretriever`. This moves the cost of materializing
-potentially large query results off of the shiny server and onto the user's environment.
+a small "export kit" tarball (`tfbpshiny_export-<datetime>.tar.gz`, timestamped so
+repeated exports don't collide or overwrite each other on disk) that the user runs on
+their own machine to pull the data via `labretriever`. This moves the cost of
+materializing potentially large query results off of the shiny server and onto the
+user's environment.
 
-The tarball contains, at the top level:
+Extracting the tarball (`tar xzf tfbpshiny_export-<datetime>.tar.gz`) creates a
+`tfbpshiny_export-<datetime>/` directory (the same timestamp as the filename)
+containing:
 
 - `brentlab_yeast_collection.yaml` -- a copy of the VirtualDB configuration file
   (`tfbpshiny/brentlab_yeast_collection.yaml`) that the app itself uses to construct

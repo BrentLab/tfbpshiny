@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import runpy
 import tomllib
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,11 +13,13 @@ import pandas as pd
 import pytest
 
 from tfbpshiny.modules.select_datasets.export import (
+    EXPORT_DIR_NAME,
     ExportDataset,
     _safe_dir_name,
     build_export_archive,
     build_readme,
     fetch_and_write_dataset,
+    new_export_run_name,
     render_fetch_data_script,
     render_requirements_txt,
     render_top_level_readme,
@@ -35,6 +38,16 @@ def test_safe_dir_name_strips_leading_trailing():
 
 def test_safe_dir_name_empty_fallback():
     assert _safe_dir_name("***") == "dataset"
+
+
+# --- new_export_run_name ---
+
+
+def test_new_export_run_name_format():
+    name = new_export_run_name()
+    assert name.startswith(f"{EXPORT_DIR_NAME}-")
+    timestamp = name[len(f"{EXPORT_DIR_NAME}-") :]
+    datetime.strptime(timestamp, "%Y%m%d-%H%M%S")
 
 
 # --- build_readme ---
@@ -219,13 +232,15 @@ def test_build_export_archive_has_expected_entries():
     with tarfile.open(fileobj=buf, mode="r:gz") as tar:
         names = sorted(m.name for m in tar.getmembers())
         assert names == [
-            "README.md",
-            "brentlab_yeast_collection.yaml",
-            "fetch_data.py",
-            "requirements.txt",
+            f"{EXPORT_DIR_NAME}/README.md",
+            f"{EXPORT_DIR_NAME}/brentlab_yeast_collection.yaml",
+            f"{EXPORT_DIR_NAME}/fetch_data.py",
+            f"{EXPORT_DIR_NAME}/requirements.txt",
         ]
 
-        config_member = tar.extractfile("brentlab_yeast_collection.yaml")
+        config_member = tar.extractfile(
+            f"{EXPORT_DIR_NAME}/brentlab_yeast_collection.yaml"
+        )
         assert config_member is not None
         archived_bytes = config_member.read()
 
@@ -235,6 +250,20 @@ def test_build_export_archive_has_expected_entries():
         Path(tfbpshiny.__file__).parent / "brentlab_yeast_collection.yaml"
     ).read_bytes()
     assert archived_bytes == real_config
+
+
+def test_build_export_archive_honors_run_name():
+    import tarfile
+
+    buf = build_export_archive(_sample_export_datasets(), run_name="custom_run")
+    with tarfile.open(fileobj=buf, mode="r:gz") as tar:
+        names = sorted(m.name for m in tar.getmembers())
+        assert names == [
+            "custom_run/README.md",
+            "custom_run/brentlab_yeast_collection.yaml",
+            "custom_run/fetch_data.py",
+            "custom_run/requirements.txt",
+        ]
 
 
 def test_build_export_archive_missing_config_raises(monkeypatch: pytest.MonkeyPatch):

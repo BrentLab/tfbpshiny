@@ -439,7 +439,10 @@ Identical SQL structure to binding's `regulator_scatter_sql`.
 
 ---
 
-### `fetch_dto_data`
+### `fetch_dto_data` (deprecated)
+
+**File:** `tfbpshiny/deprecated/dto_queries.py` — moved out of the live `comparison`
+module; no remaining callers in the app.
 
 **Invocation:** Executes (or Builder when `sql_only=True`)  
 **sql_only path:** Yes  

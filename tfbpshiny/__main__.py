@@ -8,9 +8,7 @@ from shiny import run_app
 
 from tfbpshiny.configure_logger import LogLevel, configure_logger
 
-_DEFAULT_DB_PATH = str(
-    pathlib.Path(__file__).parent / "brentlab_yeast.duckdb"
-)
+_DEFAULT_DB_PATH = str(pathlib.Path(__file__).parent / "brentlab_yeast.duckdb")
 
 
 def run_shiny(args: argparse.Namespace) -> None:
@@ -67,15 +65,17 @@ def make_parser() -> argparse.ArgumentParser:
 
     # Subcommand: materialize (register if available)
     try:
-        from tfbpshiny.materialize.cli import register_subparser as _register_materialize
+        from tfbpshiny.materialize.cli import (
+            register_subparser as _register_materialize,
+        )
 
         _register_materialize(subparsers)
     except ImportError:
         pass
 
-    # Subcommand: shiny
+    # Subcommand: launch
     shiny_parser = subparsers.add_parser(
-        "shiny",
+        "launch",
         help="Start the Shiny app against a pre-materialized DuckDB file.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )

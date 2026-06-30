@@ -437,9 +437,11 @@ def pending_regulator_banner(
 
 def matrix_table(header_row: ui.Tag, *body_rows: ui.Tag) -> ui.Tag:
     """
-    Full intersection matrix ``<table>``.
+    Full intersection matrix ``<table>``, wrapped in a horizontal-scroll container so
+    columns keep their natural width and scroll on narrow viewports instead of
+    shrinking.
 
-    CSS: ``.matrix-summary-table``
+    CSS: ``.matrix-scroll-container``, ``.matrix-summary-table``
 
     :param header_row: A ``<tr>`` built from ``matrix_row_header`` and
         ``matrix_col_header`` cells.
@@ -448,11 +450,33 @@ def matrix_table(header_row: ui.Tag, *body_rows: ui.Tag) -> ui.Tag:
         and ``matrix_cell_interactive`` cells.
 
     """
-    return ui.tags.table(
-        {"class": "matrix-summary-table"},
-        ui.tags.thead(header_row),
-        ui.tags.tbody(*body_rows),
+    return ui.div(
+        {"class": "matrix-scroll-container"},
+        ui.tags.table(
+            {"class": "matrix-summary-table"},
+            ui.tags.thead(header_row),
+            ui.tags.tbody(*body_rows),
+        ),
     )
+
+
+def scroll_row(*children: Any, gap: Literal["sm", "lg"] = "sm") -> ui.Tag:
+    """
+    Horizontal flex row that scrolls instead of shrinking its children.
+
+    Used for rows of fixed-width plots or table cards (pair-distribution
+    plots, comparison-module table cards) that should keep their natural
+    width on narrow viewports and let the user scroll horizontally, rather
+    than squeezing graphs/column names down to fit.
+
+    CSS: ``.scroll-row`` / ``.scroll-row.gap-lg``
+
+    :param gap: ``"sm"`` (1rem, default) or ``"lg"`` (1.5rem) gap between
+        children.
+
+    """
+    cls = "scroll-row gap-lg" if gap == "lg" else "scroll-row"
+    return ui.div({"class": cls}, *children)
 
 
 def export_download_button(id: str) -> ui.Tag:
@@ -469,6 +493,30 @@ def export_download_button(id: str) -> ui.Tag:
         "Export Selected Datasets",
         icon=fa.icon_svg("download", width="14px", height="14px"),
         class_="btn-export-datasets",
+    )
+
+
+def export_instructions(run_name_placeholder: str) -> ui.Tag:
+    """
+    Extraction instructions shown above the export download button.
+
+    Tells the user to extract the archive and ``cd`` into it *before* they
+    get to the bundled README -- they need this step to even reach the
+    README, so it can't live only inside the tarball.
+
+    CSS: ``.export-instructions``
+
+    :param run_name_placeholder: Stand-in for the timestamped run name (the
+        real value isn't known until the download fires) -- used for both
+        the archive filename and the directory it extracts into.
+
+    """
+    return ui.div(
+        {"class": "export-instructions"},
+        ui.p("After downloading, extract the archive and enter its directory:"),
+        ui.tags.pre(
+            f"tar xzf {run_name_placeholder}.tar.gz\ncd {run_name_placeholder}"
+        ),
     )
 
 
@@ -496,6 +544,8 @@ __all__ = [
     "matrix_cell",
     "matrix_table",
     "pending_regulator_banner",
+    "scroll_row",
     # export
     "export_download_button",
+    "export_instructions",
 ]

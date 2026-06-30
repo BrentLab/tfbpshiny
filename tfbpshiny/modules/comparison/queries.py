@@ -22,17 +22,8 @@ _perf_logger = logging.getLogger("shiny.perf")
 #: callingcards target locus tags excluded from the top-N analysis (matching R)
 CC_TARGET_BLACKLIST = ("YOR201C", "YOR202W", "YOR203W", "YCL018W", "YEL021W")
 
-#: Pseudo-value added before -log10 to avoid log(0)
-DTO_LOG_PSEUDO = 1e-3
-
 #: Default top-N cutoff
 DEFAULT_TOP_N = 25
-
-#: Default effect size threshold (|effect| must exceed this to be "responsive")
-DEFAULT_EFFECT_THRESHOLD = 0.0
-
-#: Default p-value threshold (pvalue must be below this to be "responsive")
-DEFAULT_PVALUE_THRESHOLD = 0.05
 
 # ---------------------------------------------------------------------------
 # Source label maps (matching the R code)
@@ -258,16 +249,6 @@ BINDING_CONFIGS: dict[str, dict] = {
     ),
 }
 
-#: Per-perturbation-source kwargs (informational).
-PERTURBATION_CONFIGS: dict[str, dict] = {
-    "hackett": {},
-    "hughes_overexpression": {},
-    "hughes_knockout": {},
-    "hu_reimand": {},
-    "kemmeren": {},
-    "degron": {},
-}
-
 
 # ---------------------------------------------------------------------------
 # DuckDB-based top-N fetch
@@ -385,14 +366,3 @@ def fetch_topn_results(
         )
 
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-
-
-def fetch_dto_data(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
-    """
-    Fetch DTO empirical p-value data from the materialized dto table.
-
-    :param conn: Read-only DuckDB connection.
-    :returns: DataFrame with all columns from the ``dto`` table.
-
-    """
-    return conn.execute("SELECT * FROM dto").df()

@@ -74,10 +74,6 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     conn: duckdb.DuckDBPyConnection = duckdb.connect(_db_path, read_only=True)
     app_datasets = load_app_datasets(conn)
 
-    @reactive.calc
-    def _active_tab() -> str:
-        return input.main_nav()
-
     # Navigate to the target tab when a home-page card title link is clicked.
     for _link_id, _target in HOME_CARD_NAV_TARGETS.items():
 

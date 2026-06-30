@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 from plotly.io import to_html
 from shiny import module, reactive, render, ui
 
-from tfbpshiny.components import sidebar_label
+from tfbpshiny.components import scroll_row, sidebar_label
 from tfbpshiny.modules.comparison.queries import (
     BINDING_BASE_LABEL_MAP,
     BINDING_LABEL_MAP,
@@ -26,7 +26,7 @@ from tfbpshiny.modules.comparison.queries import (
     SCORING_VARIANT_ORDER,
     fetch_topn_results,
 )
-from tfbpshiny.utils.perf import perf
+from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.topn_matrix import build_topn_matrix_ui
 from tfbpshiny.utils.vdb_init import (
     DEFAULT_RESPONSIVENESS_PRESET,
@@ -138,6 +138,8 @@ def comparison_workspace_server(
     :param logger: Application logger.
 
     """
+    session.on_flush(lambda: reset_render_counts(session.id))
+
     # Pre-load display names and regulator labels from DuckDB.
     _display_df = conn.execute(
         "SELECT db_name, display_name FROM dataset_registry"
@@ -895,7 +897,8 @@ def comparison_workspace_server(
                     ui.div(
                         {
                             "style": (
-                                "flex: 1 1 0; border: 1px solid #ddd;"
+                                "flex: 0 0 auto; min-width: 260px;"
+                                " border: 1px solid #ddd;"
                                 " border-radius: 4px; overflow: hidden;"
                             )
                         },
@@ -935,13 +938,7 @@ def comparison_workspace_server(
                 )
 
             return ui.div(
-                {
-                    "style": (
-                        "display: flex; flex-wrap: wrap; gap: 1.5rem; "
-                        "margin-top: 0.5rem;"
-                    )
-                },
-                *cards,
+                {"style": "margin-top: 0.5rem;"}, scroll_row(*cards, gap="lg")
             )
 
     # ---------------------------------------------------------------------------
@@ -1052,7 +1049,8 @@ def comparison_workspace_server(
                     ui.div(
                         {
                             "style": (
-                                "flex: 1 1 0; border: 1px solid #ddd;"
+                                "flex: 0 0 auto; min-width: 260px;"
+                                " border: 1px solid #ddd;"
                                 " border-radius: 4px; overflow: hidden;"
                             )
                         },
@@ -1094,8 +1092,8 @@ def comparison_workspace_server(
             return ui.div(
                 {
                     "style": (
-                        "display: flex; flex-wrap: wrap; gap: 1.5rem; "
-                        "margin-top: 0.5rem;"
+                        "margin-top: 0.5rem; display: flex;"
+                        " flex-direction: column; gap: 1.5rem;"
                     )
                 },
                 *cards,

@@ -23,7 +23,6 @@ def select_datasets_server(
     conn: duckdb.DuckDBPyConnection,
     app_datasets: AppDatasets,
     logger: Logger,
-    active_tab: reactive.Calc_[str] | None = None,
 ) -> tuple[
     reactive.Calc_[list[str]],
     reactive.Calc_[list[str]],

@@ -24,7 +24,6 @@ from tfbpshiny.modules.select_datasets.ui import (
     diagonal_cell_modal_ui,
     off_diagonal_cell_modal_ui,
 )
-from tfbpshiny.utils.ratelimit import debounce
 from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS
 
 
@@ -42,8 +41,8 @@ def select_datasets_workspace_server(
     Render the sample-count matrix for all active datasets.
 
     :param active_binding_datasets: Reactive calc returning active binding db names.
-    :param active_perturbation_datasets: Reactive calc returning active perturbation
-        db names.
+    :param active_perturbation_datasets: Reactive calc returning active perturbation db
+        names.
     :param dataset_filters: Reactive value with per-dataset filter specs.
     :param conn: Read-only DuckDB connection to the materialized database.
     :param logger: Application logger.
@@ -62,15 +61,16 @@ def select_datasets_workspace_server(
         conn.execute("SELECT db_name FROM dataset_registry").df()["db_name"].tolist()
     )
 
-    @debounce(0.3)
     @reactive.calc
     def _settled_datasets() -> list[str]:
         """
-        Combined list of all active datasets, debounced to coalesce rapid toggle clicks.
+        Combined list of all active datasets.
+
+        Dataset selection only changes when the user clicks Apply Changes (see
+        ``sidebar.py::_apply_pending``), so no additional debouncing is needed here.
 
         :trigger: ``active_binding_datasets``, ``active_perturbation_datasets`` —
-            re-runs whenever either list changes, but downstream is only notified
-            after a specified quiet period.
+            re-runs whenever either list changes.
         :returns: Concatenated list of active db_name strings, binding first.
 
         """
@@ -79,9 +79,10 @@ def select_datasets_workspace_server(
     @reactive.calc
     def _matrix_data() -> dict[str, Any]:
         """
-        Compute per-dataset regulator/sample counts and pairwise common-regulator counts.
+        Compute per-dataset regulator/sample counts and pairwise common-regulator
+        counts.
 
-        :trigger: ``_settled_datasets`` — re-runs after rapid toggle changes settle.
+        :trigger: ``_settled_datasets`` — re-runs when the active dataset set changes.
         :trigger: ``dataset_filters`` — re-runs when any filter changes.
         :returns: Dict with keys ``"diagonal"`` — ``{db_name: {"regulators": int,
             "samples": int}}``; ``"cross_dataset"`` — ``{(db_i, db_j):
@@ -200,8 +201,8 @@ def select_datasets_workspace_server(
         @reactive.event(input[btn_id])
         def _on_click() -> None:
             """
-            If this pair is the active regulator filter, clear the filter.
-            Otherwise, show the off-diagonal cell modal.
+            If this pair is the active regulator filter, clear the filter. Otherwise,
+            show the off-diagonal cell modal.
 
             :trigger: ``input[offdiag_{db_a}__{db_b}]`` — fires when the user
                 clicks the off-diagonal matrix cell button.

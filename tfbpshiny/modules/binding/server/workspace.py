@@ -10,9 +10,10 @@ import plotly.graph_objects as go
 from plotly.io import to_html
 from shiny import module, reactive, render, ui
 
+from tfbpshiny.components import scroll_row
 from tfbpshiny.modules.binding.queries import fetch_corr_pairs
 from tfbpshiny.utils.correlation_matrix import build_correlation_matrix_ui
-from tfbpshiny.utils.perf import perf
+from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.vdb_init import get_regulator_display_name
 
 
@@ -42,6 +43,8 @@ def binding_workspace_server(
     :param logger: Application logger.
 
     """
+    session.on_flush(lambda: reset_render_counts(session.id))
+
     _display_df = conn.execute(
         "SELECT db_name, display_name FROM dataset_registry"
     ).df()
@@ -441,13 +444,7 @@ def binding_workspace_server(
 
             if not plots:
                 return ui.span()
-            return ui.div(
-                *plots,
-                style=(
-                    "display: flex; flex-wrap: wrap; gap: 1rem; "
-                    "align-items: flex-start;"
-                ),
-            )
+            return scroll_row(*plots)
 
 
 __all__ = ["binding_workspace_server"]

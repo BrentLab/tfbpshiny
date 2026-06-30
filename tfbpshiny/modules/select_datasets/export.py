@@ -23,6 +23,7 @@ import pprint
 import re
 import tarfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -30,6 +31,25 @@ if TYPE_CHECKING:
     from labretriever import VirtualDB
 
 _REQUIREMENTS_TXT = "labretriever>=1.1.3,<2.0\n"
+
+# Base name for the export run -- timestamped to build each run's name.
+EXPORT_DIR_NAME = "tfbpshiny_export"
+
+# Placeholder shown in static UI text, where the real timestamp isn't known yet.
+EXPORT_RUN_NAME_PLACEHOLDER = f"{EXPORT_DIR_NAME}-<datetime>"
+
+
+def new_export_run_name() -> str:
+    """
+    Build a timestamped run name shared by the downloaded archive's filename and the
+    directory it extracts into, so repeated exports don't collide or overwrite each
+    other on disk.
+
+    :returns: ``tfbpshiny_export-<YYYYmmdd-HHMMSS>``
+
+    """
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return f"{EXPORT_DIR_NAME}-{timestamp}"
 
 
 @dataclass(frozen=True)
@@ -300,8 +320,6 @@ def render_top_level_readme(
         f"## Usage\n"
         f"\n"
         f"```bash\n"
-        f"tar xzf tfbpshiny_export.tar.gz\n"
-        f"cd <extracted-directory>\n"
         f"python -m venv .venv\n"
         f"source .venv/bin/activate  # on Windows: .venv\\Scripts\\activate\n"
         f"pip install -r requirements.txt\n"
@@ -321,7 +339,9 @@ def render_top_level_readme(
     )
 
 
-def build_export_archive(datasets: list[ExportDataset]) -> io.BytesIO:
+def build_export_archive(
+    datasets: list[ExportDataset], run_name: str = EXPORT_DIR_NAME
+) -> io.BytesIO:
     """
     Assemble the export kit ``.tar.gz`` in memory.
 
@@ -332,6 +352,10 @@ def build_export_archive(datasets: list[ExportDataset]) -> io.BytesIO:
     small file read.
 
     :param datasets: Export specs for all datasets active at export time.
+    :param run_name: Directory name the tarball's entries are prefixed with
+        -- pass the same value used to build the downloaded filename (see
+        :func:`new_export_run_name`) so extracting the archive produces a
+        directory matching what the download instructions told the user.
     :returns: ``BytesIO`` buffer positioned at the start, ready for reading.
     :raises FileNotFoundError: If the bundled VirtualDB config yaml cannot be
         located on disk (a packaging error, not a user-facing scenario).
@@ -358,7 +382,7 @@ def build_export_archive(datasets: list[ExportDataset]) -> io.BytesIO:
             ("requirements.txt", requirements_bytes),
             ("README.md", readme_bytes),
         ):
-            info = tarfile.TarInfo(name=name)
+            info = tarfile.TarInfo(name=f"{run_name}/{name}")
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
 
@@ -367,7 +391,10 @@ def build_export_archive(datasets: list[ExportDataset]) -> io.BytesIO:
 
 
 __all__ = [
+    "EXPORT_DIR_NAME",
+    "EXPORT_RUN_NAME_PLACEHOLDER",
     "ExportDataset",
+    "new_export_run_name",
     "build_readme",
     "fetch_and_write_dataset",
     "run_fetch",

@@ -488,6 +488,7 @@ CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
     --exclude ".pytest_cache" \
     --exclude ".claude" \
     --exclude ".venv" \
+    --exclude "tfbpshiny/deprecated" \
     --exclude "mkdocs.yml" \
     --exclude "mkdocs_requirements.txt" \
     --exclude "production.yml" \
@@ -522,6 +523,7 @@ CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
     --exclude ".pytest_cache" \
     --exclude ".claude" \
     --exclude ".venv" \
+    --exclude "tfbpshiny/deprecated" \
     --exclude "mkdocs.yml" \
     --exclude "mkdocs_requirements.txt" \
     --exclude "production.yml" \
