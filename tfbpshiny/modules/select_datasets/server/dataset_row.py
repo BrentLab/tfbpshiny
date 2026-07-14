@@ -30,6 +30,7 @@ def dataset_row_ui(
     current_val: bool,
     is_collapsed: bool,
     has_active_filter: bool,
+    is_committed: bool = True,
 ) -> ui.Tag:
     """
     Render one dataset row (toggle switch + optional filter button).
@@ -40,18 +41,28 @@ def dataset_row_ui(
     :param is_collapsed: When ``True``, renders only the toggle switch.
     :param has_active_filter: When ``True``, adds the active-filter CSS class to the
         filter button.
+    :param is_committed: Whether this dataset's activation state has already been
+        applied via Apply Changes. When ``False``, a checked switch renders yellow
+        instead of blue. Must reflect only the *committed* state, not the switch's
+        own pending value — it stays constant across a toggle click (only Apply
+        Changes changes it), so checking/unchecking the box is a pure, instant
+        ``:checked`` CSS transition with no server round trip needed for the
+        color itself. Keying this off the pending value instead would make the
+        color depend on a class that only arrives after the next re-render,
+        visibly flashing the default color first.
 
     """
+    row_class = "dataset-row" + ("" if is_committed else " dataset-row--not-committed")
     if is_collapsed:
         return ui.div(
-            {"class": "dataset-row"},
+            {"class": row_class},
             ui.input_switch("toggle", label=None, value=current_val),
         )
     label_span = ui.span({"class": "dataset-row-label sidebar-text"}, label)
     if description:
         label_span = components.tooltip(label_span, description, placement="right")
     return ui.div(
-        {"class": "dataset-row"},
+        {"class": row_class},
         ui.input_switch("toggle", label=label_span, value=current_val),
         ui.input_action_button(
             "filter_btn",
@@ -75,6 +86,7 @@ def dataset_row_server(
     common_fields: set[str],
     toggle_state: reactive.Value[dict[str, bool]],
     dataset_filters: reactive.Value[dict[str, Any]],
+    pending_filters: reactive.Value[dict[str, dict[str, Any]]],
     modal_open_for: reactive.Value[str | None],
     modal_df: reactive.Value[pd.DataFrame | None],
     active_datasets_fn: Callable[[], list[str]],
@@ -90,7 +102,10 @@ def dataset_row_server(
     :param app_datasets: Pre-loaded per-dataset column classification.
     :param common_fields: Field names shared across all datasets.
     :param toggle_state: Shared reactive dict of ``{db_name: bool}``.
-    :param dataset_filters: Shared reactive dict of active filters.
+    :param dataset_filters: Shared reactive dict of committed (applied) filters.
+    :param pending_filters: Shared reactive dict of staged (not-yet-applied) filter
+        edits, keyed by db_name; a present key (even ``{}``) overrides the
+        committed value for that dataset.
     :param modal_open_for: Shared reactive tracking which dataset's modal is open.
     :param modal_df: Shared reactive holding the open modal's metadata DataFrame.
     :param active_datasets_fn: Callable that returns all currently active dataset
@@ -121,7 +136,13 @@ def dataset_row_server(
     @reactive.event(input.toggle)
     def _on_toggle() -> None:
         """
-        Update shared toggle state when the switch is flipped.
+        Update shared pending toggle state when the switch is flipped.
+
+        Only ``toggle_state`` (pending) is touched here — clearing this dataset's
+        filters on deactivation is deferred to commit time (see
+        ``select_datasets_sidebar_server::_apply_pending``) so that flipping the
+        switch off and back on before clicking Apply Changes doesn't discard
+        filters or trigger any downstream recomputation.
 
         :trigger: ``input.toggle`` — fires when the user flips this dataset's switch.
 
@@ -134,10 +155,6 @@ def dataset_row_server(
             if toggle_state().get(db_name) == val:
                 return
         toggle_state.set({**toggle_state(), db_name: val})
-        if not val:
-            current = dict(dataset_filters())
-            current.pop(db_name, None)
-            dataset_filters.set(current)
 
     @reactive.effect
     @reactive.event(input.filter_btn)
@@ -145,12 +162,23 @@ def dataset_row_server(
         """
         Fetch metadata and show the filter modal for this dataset.
 
+        Metadata is fetched unfiltered so that every field's choice list reflects
+        the full range of values in the dataset. Fetching with this dataset's own
+        active filters applied would restrict a field's choices to only its
+        already-selected value(s), leaving nothing else to pick in the dropdown.
+        ``existing_filters`` is passed separately to pre-populate selections.
+
         :trigger: ``input.filter_btn`` — fires when the user clicks the Filter
             button for this dataset.
 
         """
-        existing_filters = dataset_filters().get(db_name)
-        sql, params = metadata_query(db_name, existing_filters)
+        staged = pending_filters()
+        existing_filters = (
+            (staged[db_name] or None)
+            if db_name in staged
+            else dataset_filters().get(db_name)
+        )
+        sql, params = metadata_query(db_name)
         df = conn.execute(sql, params).df()
         modal_open_for.set(db_name)
         modal_df.set(df)
@@ -197,9 +225,7 @@ def dataset_row_server(
                 label = f"{sym} ({tag})" if sym and str(sym) != "nan" else tag
                 reg_display_labels[tag] = label
         except Exception:
-            logger.exception(
-                "Failed to fetch regulator display labels for %s", db_name
-            )
+            logger.exception("Failed to fetch regulator display labels for %s", db_name)
 
         ui.modal_show(
             dataset_filter_modal_ui(

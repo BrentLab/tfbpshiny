@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from shiny import module, ui
 
-from tfbpshiny.components import sidebar_label
+from tfbpshiny.components import sidebar_label, workspace_heading
 
 
 @module.ui
@@ -55,36 +55,32 @@ def binding_ui() -> ui.Tag:
             width=320,
             open="open",
         ),
-        ui.h1("Binding Correlation"),
         ui.div(
-            {"class": "sidebar-text"},
-            ui.p(
-                "Select binding datasets and options in the sidebar. "
-                "Correlations update automatically as selections change; "
-                "click Execute Analysis to force a refresh."
+            {"class": "workspace-centered"},
+            workspace_heading("Binding Correlation"),
+            ui.div(
+                {"class": "sidebar-text"},
+                ui.p(
+                    "Select binding datasets and options in the sidebar. "
+                    "Correlations update automatically as selections change; "
+                    "click Execute Analysis to force a refresh."
+                ),
+                ui.p(
+                    "The Correlation Matrix below shows median correlation for "
+                    "each dataset pair. Click a cell to select that pair."
+                ),
+                ui.p(
+                    "The Pair Distribution section shows the per-regulator "
+                    "correlation distribution for the selected pair."
+                ),
             ),
-            ui.p(
-                "The Correlation Matrix tab shows median correlation for each "
-                "dataset pair. Click a cell to select that pair."
-            ),
-            ui.p(
-                "The Pair Distribution tab shows the per-regulator correlation "
-                "distribution for the selected pair."
-            ),
-        ),
-        ui.output_ui("analysis_status"),
-        ui.navset_tab(
-            ui.nav_panel(
-                "Correlation Matrix",
-                ui.output_ui("corr_matrix_container"),
-            ),
-            ui.nav_panel(
-                "Pair Distribution",
-                ui.output_ui("regulator_selector_box"),
-                ui.output_ui("pair_box_status"),
-                ui.output_ui("pair_box_container"),
-            ),
-            id="binding_view_tabs",
+            ui.output_ui("analysis_status"),
+            workspace_heading("Correlation Matrix"),
+            ui.output_ui("corr_matrix_container"),
+            workspace_heading("Pair Distribution"),
+            ui.output_ui("regulator_selector_box"),
+            ui.output_ui("pair_box_status"),
+            ui.output_ui("pair_box_container"),
         ),
     )
 

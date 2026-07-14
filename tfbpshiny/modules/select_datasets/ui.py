@@ -504,6 +504,19 @@ def selection_ui() -> ui.Tag:
         ),
         workspace_heading("Regulator Counts in Dataset Intersections"),
         ui.output_ui("matrix_content"),
+        workspace_heading("Regulators by Dataset"),
+        ui.input_selectize(
+            "regulator_search",
+            label=None,
+            choices=[],
+            selected=[],
+            multiple=True,
+            options={
+                "plugins": ["remove_button"],
+                "placeholder": "Search regulators…",
+            },
+        ),
+        ui.output_ui("regulator_dataset_table_content"),
     )
 
 
@@ -599,9 +612,55 @@ def off_diagonal_cell_modal_ui(
     )
 
 
+def regulator_cell_modal_ui(
+    display_name: str,
+    regulator_symbol: str,
+    regulator_locus_tag: str,
+    columns: list[str],
+    rows: list[dict[str, Any]],
+) -> ui.Tag:
+    """
+    Modal listing the sample conditions in which a regulator is interrogated within one
+    dataset, honoring the dataset's active filters.
+
+    :param display_name: Human-readable dataset name.
+    :param regulator_symbol: Regulator gene symbol (falls back to the locus tag
+        when no symbol is available).
+    :param regulator_locus_tag: Regulator systematic locus tag.
+    :param columns: Column names to display, in order (``sample_id`` first).
+    :param rows: One dict per matching sample, keyed by ``columns``.
+
+    """
+    title = f"{regulator_symbol} ({regulator_locus_tag}) in {display_name}"
+    if not rows:
+        body: ui.Tag = ui.p("No samples match the current filters.")
+    else:
+        body = ui.div(
+            {"class": "matrix-scroll-container"},
+            ui.tags.table(
+                {"class": "table table-sm table-bordered mb-0"},
+                ui.tags.thead(ui.tags.tr(*[ui.tags.th(c) for c in columns])),
+                ui.tags.tbody(
+                    *[
+                        ui.tags.tr(*[ui.tags.td(str(row.get(c, ""))) for c in columns])
+                        for row in rows
+                    ]
+                ),
+            ),
+        )
+    return ui.modal(
+        body,
+        title=title,
+        size="l",
+        easy_close=True,
+        footer=ui.modal_button("Close"),
+    )
+
+
 __all__ = [
     "dataset_filter_modal_ui",
     "diagonal_cell_modal_ui",
     "off_diagonal_cell_modal_ui",
+    "regulator_cell_modal_ui",
     "selection_ui",
 ]

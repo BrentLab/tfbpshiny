@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from logging import Logger
 from typing import Any
 
@@ -27,7 +28,7 @@ from tfbpshiny.modules.select_datasets.server.dataset_row import (
     dataset_row_ui,
 )
 from tfbpshiny.modules.select_datasets.ui import _slugify
-from tfbpshiny.utils.vdb_init import AppDatasets
+from tfbpshiny.utils.vdb_init import DEFAULT_DATASET_FILTERS, AppDatasets
 
 
 def _build_experimental_condition_field_choices(
@@ -134,9 +135,23 @@ def select_datasets_sidebar_server(
     # whenever pending != committed.
     # {<db_name>: {<field_name>: {"type": "categorical" or "numeric" or "bool",
     #                              "value": list[str] | [lo, hi] | bool}}}
-    dataset_filters: reactive.Value[dict[str, Any]] = reactive.value({})
+    # ``dataset_filters`` is the committed state — the only thing passed to
+    # workspace/binding/perturbation/comparison, so it must never change except at
+    # Apply Changes commit time (matching how ``_committed_toggle`` works).
+    dataset_filters: reactive.Value[dict[str, Any]] = reactive.value(
+        copy.deepcopy(DEFAULT_DATASET_FILTERS)
+    )
     _committed_toggle: reactive.Value[dict[str, bool]] = reactive.value(_initial_toggle)
     _pending_toggle: reactive.Value[dict[str, bool]] = reactive.value(_initial_toggle)
+
+    # Staged, not-yet-applied filter edits from the filter modal (Queue Filters /
+    # Reset / Clear). Only holds entries that differ from ``dataset_filters()``,
+    # keyed by db_name — an entry (even ``{}``) means "queued"; an absent key means
+    # "no staged change, defer to the committed value". Committed into
+    # ``dataset_filters`` (and cleared) when the user clicks Apply Changes, so
+    # editing filters — even for an already-active dataset — never touches the
+    # workspace/analysis modules until then.
+    _pending_filters: reactive.Value[dict[str, dict[str, Any]]] = reactive.value({})
 
     # tracks which db_name's filter modal is currently open
     modal_open_for: reactive.Value[str | None] = reactive.value(None)
@@ -146,12 +161,13 @@ def select_datasets_sidebar_server(
     @reactive.calc
     def _has_pending_changes() -> bool:
         """
-        True when the pending toggle state differs from the committed state.
+        True when the pending toggle state differs from the committed state, or there
+        are staged (unapplied) filter edits.
 
-        :trigger: ``_pending_toggle``, ``_committed_toggle``.
+        :trigger: ``_pending_toggle``, ``_committed_toggle``, ``_pending_filters``.
 
         """
-        return _pending_toggle() != _committed_toggle()
+        return _pending_toggle() != _committed_toggle() or bool(_pending_filters())
 
     @reactive.calc
     def _active_binding_datasets() -> list[str]:
@@ -178,6 +194,29 @@ def select_datasets_sidebar_server(
     def _all_active() -> list[str]:
         return _active_binding_datasets() + _active_perturbation_datasets()
 
+    def _stage_filters(
+        working: dict[str, dict[str, Any]], all_db_names: list[str]
+    ) -> None:
+        """
+        Diff ``working`` against the committed ``dataset_filters`` and write the result
+        to ``_pending_filters``.
+
+        :param working: Full working copy of per-dataset filters (committed merged
+            with the prior overlay, then mutated by the caller).
+        :param all_db_names: Every registered dataset name, so entries that were
+            cleared entirely (popped from ``working``) are still diffed against
+            their committed value.
+
+        """
+        committed = dataset_filters()
+        new_overlay: dict[str, dict[str, Any]] = {}
+        for ds in set(all_db_names) | set(working) | set(committed):
+            committed_val = committed.get(ds, {})
+            new_val = working.get(ds, {})
+            if new_val != committed_val:
+                new_overlay[ds] = new_val
+        _pending_filters.set(new_overlay)
+
     for db_name, _, _ in binding_datasets + perturbation_datasets:
         dataset_row_server(
             db_name,
@@ -188,6 +227,7 @@ def select_datasets_sidebar_server(
             common_fields=common_fields,
             toggle_state=_pending_toggle,
             dataset_filters=dataset_filters,
+            pending_filters=_pending_filters,
             modal_open_for=modal_open_for,
             modal_df=modal_df,
             active_datasets_fn=_all_active,
@@ -219,11 +259,16 @@ def select_datasets_sidebar_server(
                 """
 
                 @reactive.effect
-                @reactive.event(input[u_id])
+                @reactive.event(input[u_id], ignore_init=True)
                 def _cascade() -> None:
                     """
-                    Narrow condition checkbox choices to levels that co-occur with the
+                    Narrow condition selectize choices to levels that co-occur with the
                     current upstream selection.
+
+                    ``ignore_init=True`` because dynamically-inserted modal inputs send
+                    their initial (empty) value to the server as soon as they're bound,
+                    which would otherwise fire this cascade immediately on modal open —
+                    before the user has touched anything.
 
                     :trigger: ``input[u_id]`` — fires when the upstream selectize
                         changes.
@@ -263,7 +308,7 @@ def select_datasets_sidebar_server(
                             cur = list(input[cond_id]())
                         except SilentException:
                             cur = list(choices)
-                        ui.update_checkbox_group(
+                        ui.update_selectize(
                             cond_id,
                             choices=choices,
                             selected=[v for v in cur if v in choices],
@@ -275,7 +320,10 @@ def select_datasets_sidebar_server(
     @reactive.event(input.modal_reset_filters)
     def _reset_filter_modal() -> None:
         """
-        Clear all filters for the open dataset and close the modal.
+        Stage clearing all filters for the open dataset and close the modal.
+
+        Only ``_pending_filters`` is touched — the reset is not applied to
+        ``dataset_filters`` until the user clicks Apply Changes.
 
         :trigger: ``input.modal_reset_filters`` — fires when the user clicks Reset
             inside the filter modal.
@@ -283,8 +331,9 @@ def select_datasets_sidebar_server(
         """
         db_name = modal_open_for()
         if db_name is not None:
-            current = dict(dataset_filters())
             all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
+            current = dict(dataset_filters())
+            current.update(_pending_filters())
             for ds in all_db_names:
                 if ds in current:
                     ds_filters = {
@@ -293,11 +342,11 @@ def select_datasets_sidebar_server(
                     if ds_filters:
                         current[ds] = ds_filters
                     else:
-                        current.pop(ds)
+                        current.pop(ds, None)
             current.pop(db_name, None)
-            dataset_filters.set(current)
+            _stage_filters(current, all_db_names)
             logger.debug(
-                "dataset_filters reset for %s: %d datasets with active filters",
+                "filters reset (staged) for %s: %d datasets with active filters",
                 db_name,
                 len(current),
             )
@@ -309,7 +358,10 @@ def select_datasets_sidebar_server(
     @reactive.event(input.modal_clear_regulator_filter)
     def _clear_regulator_filter() -> None:
         """
-        Remove regulator_locus_tag from all datasets and clear the selectize.
+        Stage removal of regulator_locus_tag from all datasets and clear the selectize.
+
+        Only ``_pending_filters`` is touched — the clear is not applied to
+        ``dataset_filters`` until the user clicks Apply Changes.
 
         :trigger: ``input.modal_clear_regulator_filter`` — fires when the user
             clicks Clear inside the Regulator card.
@@ -320,6 +372,7 @@ def select_datasets_sidebar_server(
             return
         all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
         current = dict(dataset_filters())
+        current.update(_pending_filters())
         for ds in all_db_names:
             ds_filters = dict(current.get(ds, {}))
             ds_filters.pop("regulator_locus_tag", None)
@@ -327,18 +380,22 @@ def select_datasets_sidebar_server(
                 current[ds] = ds_filters
             else:
                 current.pop(ds, None)
-        dataset_filters.set(current)
+        _stage_filters(current, all_db_names)
         ui.update_selectize("filter_regulator_locus_tag", selected=[])
 
     @reactive.effect
     @reactive.event(input.modal_apply_filters)
     def _apply_filter_modal() -> None:
         """
-        Read filter inputs from the modal, persist them to ``dataset_filters``, activate
-        the dataset if it was off, then close the modal.
+        Read filter inputs from the modal and stage them to ``_pending_filters``, mark
+        the dataset pending-active if it was off, then close the modal.
+
+        Only ``_pending_filters`` is touched here — staged edits are not applied to
+        ``dataset_filters`` (and so cannot affect the workspace/analysis modules)
+        until the user clicks Apply Changes.
 
         :trigger: ``input.modal_apply_filters`` — fires when the user clicks
-            Apply Filters inside the filter modal.
+            Queue Filters inside the filter modal.
 
         """
         db_name = modal_open_for()
@@ -407,10 +464,11 @@ def select_datasets_sidebar_server(
             reg_apply_to_all = bool(input["apply_to_all_regulator_locus_tag"]())
         except SilentException:
             reg_apply_to_all = True
+        merged = dict(dataset_filters())
+        merged.update(_pending_filters())
+
         if reg_selected:
-            saved_reg = (
-                dataset_filters().get(db_name, {}).get("regulator_locus_tag", {})
-            )
+            saved_reg = merged.get(db_name, {}).get("regulator_locus_tag", {})
             from_pair = saved_reg.get("from_pair") if saved_reg else None
             reg_spec: dict[str, Any] = {
                 "type": "categorical",
@@ -427,7 +485,7 @@ def select_datasets_sidebar_server(
             f: v for f, v in field_filters.items() if f not in common_fields
         }
 
-        current = dict(dataset_filters())
+        current = dict(merged)
         all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
 
         if reg_filter:
@@ -500,9 +558,9 @@ def select_datasets_sidebar_server(
         else:
             current.pop(db_name, None)
 
-        dataset_filters.set(current)
+        _stage_filters(current, all_db_names)
         logger.debug(
-            "dataset_filters applied for %s: %d fields set",
+            "filters queued for %s: %d fields set",
             db_name,
             len(ds_filters),
         )
@@ -579,15 +637,37 @@ def select_datasets_sidebar_server(
     @reactive.event(input.apply_pending)
     def _apply_pending() -> None:
         """
-        Commit pending toggle state, triggering analysis updates exactly once.
+        Commit pending toggle state and staged filter edits, triggering analysis updates
+        exactly once.
+
+        Filters for any dataset newly deactivated by this commit are cleared here
+        rather than immediately on toggle, so that flipping a switch off and back
+        on before clicking Apply Changes leaves its filters untouched.
 
         :trigger: ``input.apply_pending`` — fires when the user clicks Apply Changes.
 
         """
-        _committed_toggle.set(_pending_toggle())
+        pending = _pending_toggle()
+        committed = _committed_toggle()
+        deactivated = [
+            db
+            for db, was_on in committed.items()
+            if was_on and not pending.get(db, False)
+        ]
+
+        committed_filters = dataset_filters()
+        merged = dict(committed_filters)
+        merged.update(_pending_filters())
+        for db_name in deactivated:
+            merged.pop(db_name, None)
+        if merged != committed_filters:
+            dataset_filters.set(merged)
+        _pending_filters.set({})
+
+        _committed_toggle.set(pending)
         logger.debug(
             "_apply_pending committed: %d datasets active",
-            sum(_pending_toggle().values()),
+            sum(pending.values()),
         )
 
     @render.ui
@@ -597,15 +677,22 @@ def select_datasets_sidebar_server(
 
         :trigger: ``input.search`` — re-renders when the search input changes.
         :trigger: ``_pending_toggle`` — re-renders when any toggle changes.
-        :trigger: ``dataset_filters`` — re-renders when filters change.
+        :trigger: ``dataset_filters`` — re-renders when filters are committed
+            (Apply Changes).
+        :trigger: ``_pending_filters`` — re-renders when filters are staged
+            (Queue Filters / Reset / Clear in the filter modal).
 
         Toggle state is read with ``reactive.isolate()`` so that toggling a
         dataset does NOT trigger a full sidebar re-render.
 
         """
         pending_toggle = _pending_toggle()
+        merged_filters = dict(dataset_filters())
+        merged_filters.update(_pending_filters())
         active_filter_names: set[str] = {
-            db for db in dataset_filters() if pending_toggle.get(db, False)
+            db
+            for db in merged_filters
+            if pending_toggle.get(db, False) and merged_filters.get(db)
         }
         has_pending = _has_pending_changes()
         has_active = bool(_active_binding_datasets() or _active_perturbation_datasets())
@@ -619,6 +706,7 @@ def select_datasets_sidebar_server(
         def _dataset_row(db_name: str, label: str, description: str) -> ui.Tag:
             with reactive.isolate():
                 current_val = _pending_toggle().get(db_name, False)
+                committed_val = _committed_toggle().get(db_name, False)
             return dataset_row_ui(
                 db_name,
                 label=label,
@@ -626,6 +714,7 @@ def select_datasets_sidebar_server(
                 current_val=current_val,
                 is_collapsed=False,
                 has_active_filter=db_name in active_filter_names,
+                is_committed=committed_val,
             )
 
         section_tags: list[ui.Tag] = []

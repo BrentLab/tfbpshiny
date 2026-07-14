@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from logging import Logger
 from typing import Any
 
 import duckdb
+import pandas as pd
 from shiny import reactive, render, ui
+from shiny.types import SilentException
 
 from tfbpshiny.components import (
     matrix_cell,
@@ -17,12 +20,14 @@ from tfbpshiny.components import (
 )
 from tfbpshiny.modules.select_datasets.queries import (
     regulator_breakdown_query,
+    regulator_conditions_query,
     regulator_locus_tags_query,
     sample_count_query,
 )
 from tfbpshiny.modules.select_datasets.ui import (
     diagonal_cell_modal_ui,
     off_diagonal_cell_modal_ui,
+    regulator_cell_modal_ui,
 )
 from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS
 
@@ -76,6 +81,32 @@ def select_datasets_workspace_server(
         """
         return active_binding_datasets() + active_perturbation_datasets()
 
+    def _candidate_condition_columns(db_name: str) -> list[str]:
+        """
+        Non-identity, non-regulator, non-hidden columns from a dataset's meta table.
+
+        :param db_name: Dataset to inspect.
+        :returns: Column names eligible to display as sample "conditions".
+
+        """
+        try:
+            all_cols_df = conn.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = ? ORDER BY ordinal_position",
+                [f"{db_name}_meta"],
+            ).df()
+            all_cols = all_cols_df["column_name"].tolist()
+        except Exception:
+            return []
+
+        remove_cols = (
+            {"sample_id"}
+            | {c for c in all_cols if c.lower().startswith("regulator")}
+            | HIDDEN_FILTER_FIELDS.get("*", set())
+            | HIDDEN_FILTER_FIELDS.get(db_name, set())
+        )
+        return [c for c in all_cols if c not in remove_cols]
+
     @reactive.calc
     def _matrix_data() -> dict[str, Any]:
         """
@@ -86,13 +117,17 @@ def select_datasets_workspace_server(
         :trigger: ``dataset_filters`` — re-runs when any filter changes.
         :returns: Dict with keys ``"diagonal"`` — ``{db_name: {"regulators": int,
             "samples": int}}``; ``"cross_dataset"`` — ``{(db_i, db_j):
-            {"common_regulators": int, "samples_a": int, "samples_b": int}}``.
+            {"common_regulators": int, "samples_a": int, "samples_b": int}}``;
+            ``"regulator_sets"`` — ``{db_name: set[locus_tag]}``;
+            ``"regulator_symbols"`` — ``{locus_tag: symbol}`` union across all
+            active datasets.
 
         """
         active = _settled_datasets()
         filters = dataset_filters()
 
         regulator_sets: dict[str, set[str]] = {}
+        regulator_symbols: dict[str, str] = {}
         diagonal: dict[str, dict[str, int]] = {}
 
         for db_name in active:
@@ -100,8 +135,16 @@ def select_datasets_workspace_server(
 
             sql, params = regulator_locus_tags_query(db_name, db_filters)
             reg_df = conn.execute(sql, params).df()
-            regulators = set(reg_df["regulator_locus_tag"].dropna().astype(str))
+            reg_df = reg_df.dropna(subset=["regulator_locus_tag"])
+            regulators = set(reg_df["regulator_locus_tag"].astype(str))
             regulator_sets[db_name] = regulators
+            for locus_tag, symbol in zip(
+                reg_df["regulator_locus_tag"].astype(str), reg_df["regulator_symbol"]
+            ):
+                if locus_tag not in regulator_symbols:
+                    regulator_symbols[locus_tag] = (
+                        str(symbol) if pd.notna(symbol) else locus_tag
+                    )
 
             sql, params = sample_count_query(db_name, db_filters)
             n_samples = int(conn.execute(sql, params).df().iloc[0, 0])
@@ -130,7 +173,58 @@ def select_datasets_workspace_server(
                     "samples_b": n_b,
                 }
 
-        return {"diagonal": diagonal, "cross_dataset": cross_dataset}
+        return {
+            "diagonal": diagonal,
+            "cross_dataset": cross_dataset,
+            "regulator_sets": regulator_sets,
+            "regulator_symbols": regulator_symbols,
+        }
+
+    @reactive.calc
+    def _regulator_union() -> list[str]:
+        """
+        Locus tags for the union of regulators across all active datasets, sorted by
+        display symbol.
+
+        :trigger: ``_matrix_data`` — re-runs whenever the active regulator union
+            changes.
+        :returns: Sorted list of locus tags. Empty if no datasets are active or
+            computing ``_matrix_data`` fails.
+
+        """
+        try:
+            data = _matrix_data()
+        except Exception:
+            return []
+        regulator_sets = data["regulator_sets"]
+        symbol_map = data["regulator_symbols"]
+        return sorted(
+            set().union(*regulator_sets.values()) if regulator_sets else set(),
+            key=lambda lt: symbol_map.get(lt, lt),
+        )
+
+    @reactive.effect
+    def _sync_regulator_search_choices() -> None:
+        """
+        Refresh the regulator search selectize's choices to match the active regulator
+        union, preserving any selections still in range.
+
+        :trigger: ``_regulator_union`` — re-runs whenever the active regulator
+            union changes.
+
+        """
+        union = _regulator_union()
+        symbol_map = _matrix_data()["regulator_symbols"] if union else {}
+        choices = {lt: f"{symbol_map.get(lt, lt)} ({lt})" for lt in union}
+        try:
+            current_selected = list(input.regulator_search())
+        except SilentException:
+            current_selected = []
+        ui.update_selectize(
+            "regulator_search",
+            choices=choices,
+            selected=[lt for lt in current_selected if lt in choices],
+        )
 
     def _make_diagonal_effect(db_name: str) -> None:
         """
@@ -153,25 +247,7 @@ def select_datasets_workspace_server(
 
             """
             filters = dataset_filters().get(db_name)
-
-            # Get all columns from the _meta table, excluding identity/hidden fields.
-            try:
-                all_cols_df = conn.execute(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_name = ? ORDER BY ordinal_position",
-                    [f"{db_name}_meta"],
-                ).df()
-                all_cols = all_cols_df["column_name"].tolist()
-            except Exception:
-                all_cols = []
-
-            remove_cols = (
-                {"sample_id"}
-                | {c for c in all_cols if c.lower().startswith("regulator")}
-                | HIDDEN_FILTER_FIELDS.get("*", set())
-                | HIDDEN_FILTER_FIELDS.get(db_name, set())
-            )
-            candidate_cols = [c for c in all_cols if c not in remove_cols]
+            candidate_cols = _candidate_condition_columns(db_name)
 
             sql, params = regulator_breakdown_query(db_name, candidate_cols, filters)
             row = conn.execute(sql, params).df().iloc[0]
@@ -195,7 +271,7 @@ def select_datasets_workspace_server(
     def _make_off_diagonal_effect(db_a: str, db_b: str) -> None:
         """Register per-pair click and modal-action effects for an off-diagonal cell."""
         btn_id = f"offdiag_{db_a}__{db_b}"
-        apply_btn_id = "modal_select_common_regulators"
+        apply_btn_id = "modal_queue_common_regulators"
 
         @reactive.effect
         @reactive.event(input[btn_id])
@@ -239,7 +315,7 @@ def select_datasets_workspace_server(
             Compute the regulator intersection for this pair, write it as a
             ``regulator_locus_tag`` filter to all datasets, and highlight the cell.
 
-            :trigger: ``input[modal_select_common_regulators]`` — fires when the
+            :trigger: ``input[modal_queue_common_regulators]`` — fires when the
                 user clicks "Select common regulators" in the off-diagonal modal.
 
             """
@@ -314,6 +390,45 @@ def select_datasets_workspace_server(
                     _registered_effects.add(pair_id)
 
     @reactive.effect
+    @reactive.event(input.regulator_cell_click)
+    def _on_regulator_cell_click() -> None:
+        """
+        Show the conditions modal for the clicked cell of the regulator/dataset table.
+
+        A single shared input (``regulator_cell_click``) is used for every cell in
+        the regulator/dataset presence table, with the clicked ``(locus_tag,
+        db_name)`` pair JSON-encoded as the input value. This avoids registering
+        one reactive effect per cell, since that table can have hundreds of
+        regulator rows.
+
+        :trigger: ``input.regulator_cell_click`` — fires when the user clicks any
+            "x" cell in the regulator/dataset presence table.
+
+        """
+        try:
+            locus_tag, db_name = json.loads(input.regulator_cell_click())
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return
+        if db_name not in _settled_datasets():
+            return
+
+        data = _matrix_data()
+        symbol = data["regulator_symbols"].get(locus_tag, locus_tag)
+        candidate_cols = _candidate_condition_columns(db_name)
+        sql, params = regulator_conditions_query(
+            db_name, locus_tag, candidate_cols, dataset_filters().get(db_name)
+        )
+        rows_df = conn.execute(sql, params).df()
+        columns = ["sample_id", *candidate_cols]
+        rows = rows_df.to_dict("records")
+
+        ui.modal_show(
+            regulator_cell_modal_ui(
+                display_names.get(db_name, db_name), symbol, locus_tag, columns, rows
+            )
+        )
+
+    @reactive.effect
     def _clear_pair_when_filter_removed() -> None:
         """
         Clear the highlighted cell pair when no ``regulator_locus_tag`` filter remains.
@@ -378,7 +493,7 @@ def select_datasets_workspace_server(
                         matrix_cell(
                             "diagonal",
                             matrix_cell_button(
-                                f"diag_{db_row}",
+                                session.ns(f"diag_{db_row}"),
                                 f"{info.get('regulators', 0):,} regulators / "
                                 f"{info.get('samples', 0):,} samples",
                             ),
@@ -392,7 +507,7 @@ def select_datasets_workspace_server(
                         matrix_cell(
                             "interactive",
                             matrix_cell_button(
-                                f"offdiag_{db_row}__{db_col}",
+                                session.ns(f"offdiag_{db_row}__{db_col}"),
                                 f"{info.get('common_regulators', 0):,} "
                                 "common regulators",
                                 tooltip=(
@@ -408,6 +523,83 @@ def select_datasets_workspace_server(
             body_rows.append(ui.tags.tr(*cells))
 
         return matrix_table(ui.tags.tr(*header_cells), *body_rows)
+
+    @render.ui
+    def regulator_dataset_table_content() -> ui.Tag:
+        active = _settled_datasets()
+
+        if not active:
+            return ui.card(
+                ui.card_body(
+                    ui.p(
+                        "Select datasets from the sidebar to view regulators.",
+                        class_="text-muted",
+                    )
+                )
+            )
+
+        try:
+            data = _matrix_data()
+        except Exception:
+            logger.exception("Failed to compute regulator table data")
+            return ui.card(
+                ui.card_body(
+                    ui.p(
+                        "Failed to load regulator table. Check that filters are"
+                        " valid.",
+                        class_="text-danger",
+                    )
+                )
+            )
+
+        regulator_sets = data["regulator_sets"]
+        symbol_map = data["regulator_symbols"]
+        all_locus_tags = _regulator_union()
+
+        try:
+            search_selected = set(input.regulator_search())
+        except SilentException:
+            search_selected = set()
+        display_locus_tags = (
+            [lt for lt in all_locus_tags if lt in search_selected]
+            if search_selected
+            else all_locus_tags
+        )
+
+        if not display_locus_tags:
+            message = (
+                "No regulators match your search."
+                if search_selected
+                else "No regulators found for the current filters."
+            )
+            return ui.card(ui.card_body(ui.p(message, class_="text-muted")))
+
+        header_cells = [matrix_header_cell("Regulator", row=True)]
+        for db_name in active:
+            header_cells.append(matrix_header_cell(display_names.get(db_name, db_name)))
+
+        body_rows: list[ui.Tag] = []
+        for locus_tag in display_locus_tags:
+            cells: list[ui.Tag] = [
+                matrix_row_label(symbol_map.get(locus_tag, locus_tag))
+            ]
+            for db_name in active:
+                if locus_tag in regulator_sets.get(db_name, set()):
+                    cells.append(
+                        matrix_cell(
+                            "interactive",
+                            matrix_cell_button(
+                                session.ns("regulator_cell_click"),
+                                "x",
+                                value=json.dumps([locus_tag, db_name]),
+                            ),
+                        )
+                    )
+                else:
+                    cells.append(matrix_cell("empty"))
+            body_rows.append(ui.tags.tr(*cells))
+
+        return matrix_table(ui.tags.tr(*header_cells), *body_rows, scroll_y=True)
 
 
 __all__ = ["select_datasets_workspace_server"]

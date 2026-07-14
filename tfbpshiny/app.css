@@ -132,12 +132,63 @@
     display: none;
 }
 
+/* Dataset not yet committed via Apply Changes: a checked switch renders yellow
+   instead of the usual (Bootstrap primary blue), so a queued activation is
+   visually distinct from one that's actually taken effect. This class reflects
+   only the committed state (stable across a toggle click, not the live pending
+   value), so checking the box is a pure, instant `:checked` CSS transition —
+   no server round trip needed for the color, and so no flash of the default
+   blue before it. */
+.selection-sidebar .dataset-row--not-committed .form-check-input:checked {
+    background-color: #ffc107;
+    border-color: #ffc107;
+}
+
+/* --- Binding / Perturbation workspace: centered, stacked layout --------- */
+/* Replaces the old tabbed Correlation Matrix / Pair Distribution view: both
+   sections stack vertically (like the Select Datasets workspace) and are
+   centered horizontally instead of stretching left-aligned across the full
+   width. `align-items: center` shrinks each block (heading, description,
+   matrix, boxplot row) to its own content width and centers it, rather than
+   stretching to the container's full width with left-aligned content. */
+.workspace-centered {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.workspace-centered > h1,
+.workspace-centered > .sidebar-text {
+    text-align: center;
+}
+
 /* --- Intersection matrix ------------------------------------------------ */
 /* Wraps the table so it scrolls horizontally instead of shrinking its
-   columns when the viewport narrows. */
+   columns when the viewport narrows. `flex-shrink: 0` keeps it from being
+   squashed to near-zero height: the workspace's flex column otherwise treats
+   any `overflow: auto` child as having an automatic minimum size of 0
+   (rather than its content height), so with multiple such tables stacked in
+   one flex column the layout can collapse an earlier one almost entirely to
+   make room for a later, taller one. */
 .matrix-scroll-container {
     overflow-x: auto;
     padding-bottom: 0.5rem;
+    flex-shrink: 0;
+}
+
+/* Modifier for tables that can have many rows (e.g. the regulator/dataset
+   table): cap the height and scroll vertically instead of growing the page
+   without bound, with the header pinned so column names stay visible. */
+.matrix-scroll-container--scroll-y {
+    max-height: 520px;
+    overflow-y: auto;
+}
+
+.matrix-scroll-container--scroll-y .matrix-col-header,
+.matrix-scroll-container--scroll-y .matrix-row-header {
+    position: sticky;
+    top: 0;
+    z-index: 3;
 }
 
 .matrix-summary-table {

@@ -43,6 +43,7 @@ CSS variable reference (from ``app.css`` ``:root``)
 
 from __future__ import annotations
 
+import json
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Literal
 
@@ -291,7 +292,13 @@ def modal_section(*cards: ui.Tag) -> ui.Tag:
 # ---------------------------------------------------------------------------
 
 
-def matrix_cell_button(id: str, label: str, *, tooltip: str | None = None) -> ui.Tag:
+def matrix_cell_button(
+    id: str,
+    label: str,
+    *,
+    tooltip: str | None = None,
+    value: str | None = None,
+) -> ui.Tag:
     """
     Full-width, borderless button that fills a matrix table cell.
 
@@ -308,11 +315,17 @@ def matrix_cell_button(id: str, label: str, *, tooltip: str | None = None) -> ui
     :param label: Text displayed inside the button.
     :param tooltip: When provided, sets the native ``title`` attribute so
         browsers show a hover tooltip.
+    :param value: When provided, this literal value (JSON-encoded) is sent as
+        the input value instead of ``Math.random()``. Use this when many
+        buttons share a single input ``id`` (e.g. every cell of a large table)
+        and one reactive effect needs to decode which cell was clicked from
+        the value, rather than registering one reactive effect per cell.
 
     """
+    js_value = json.dumps(value) if value is not None else "Math.random()"
     attrs: dict[str, str | None] = {
         "class": "matrix-cell-button",
-        "onclick": f"Shiny.setInputValue('{id}', Math.random(), {{priority: 'event'}})",
+        "onclick": f"Shiny.setInputValue('{id}', {js_value}, {{priority: 'event'}})",
     }
     if tooltip is not None:
         attrs["title"] = tooltip
@@ -435,23 +448,33 @@ def pending_regulator_banner(
     )
 
 
-def matrix_table(header_row: ui.Tag, *body_rows: ui.Tag) -> ui.Tag:
+def matrix_table(
+    header_row: ui.Tag, *body_rows: ui.Tag, scroll_y: bool = False
+) -> ui.Tag:
     """
     Full intersection matrix ``<table>``, wrapped in a horizontal-scroll container so
     columns keep their natural width and scroll on narrow viewports instead of
     shrinking.
 
-    CSS: ``.matrix-scroll-container``, ``.matrix-summary-table``
+    CSS: ``.matrix-scroll-container``, ``.matrix-summary-table``,
+    ``.matrix-scroll-container--scroll-y``
 
     :param header_row: A ``<tr>`` built from ``matrix_row_header`` and
         ``matrix_col_header`` cells.
     :param body_rows: One ``<tr>`` per active dataset, built from
         ``matrix_row_label``, ``matrix_cell_empty``, ``matrix_cell_diagonal``,
         and ``matrix_cell_interactive`` cells.
+    :param scroll_y: When ``True``, caps the table height and scrolls
+        vertically with a pinned header, for tables that can have many rows
+        (e.g. a per-regulator table) rather than the intersection matrix's
+        default unbounded height.
 
     """
+    cls = "matrix-scroll-container"
+    if scroll_y:
+        cls += " matrix-scroll-container--scroll-y"
     return ui.div(
-        {"class": "matrix-scroll-container"},
+        {"class": cls},
         ui.tags.table(
             {"class": "matrix-summary-table"},
             ui.tags.thead(header_row),

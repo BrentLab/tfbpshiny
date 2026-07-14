@@ -114,18 +114,19 @@ def regulator_locus_tags_query(
     filters: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """
-    Return ``(sql, params)`` for fetching distinct regulator locus tags.
+    Return ``(sql, params)`` for fetching distinct regulator locus tags and symbols.
 
     :param db_name: Dataset name.
     :param filters: Active filters for this dataset.
-    :return: ``(sql_string, params_dict)`` — query returns rows with column
-        ``regulator_locus_tag``.
+    :return: ``(sql_string, params_dict)`` — query returns rows with columns
+        ``regulator_locus_tag`` and ``regulator_symbol``.
 
     """
     params: dict[str, Any] = {}
     where = _build_where(filters, params)
     return (
-        f"SELECT DISTINCT regulator_locus_tag FROM {db_name}_meta{where}",
+        "SELECT DISTINCT regulator_locus_tag, regulator_symbol "
+        f"FROM {db_name}_meta{where}",
         params,
     )
 
@@ -185,6 +186,39 @@ def regulator_breakdown_query(
     return sql, params
 
 
+def regulator_conditions_query(
+    db_name: str,
+    locus_tag: str,
+    candidate_cols: list[str],
+    filters: dict[str, Any] | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """
+    Return ``(sql, params)`` selecting ``sample_id`` and condition columns for every
+    sample that interrogates a given regulator in a dataset, honoring active filters.
+
+    :param db_name: Dataset name.
+    :param locus_tag: Regulator locus tag to restrict rows to.
+    :param candidate_cols: Non-identity, non-regulator, non-hidden columns to
+        include alongside ``sample_id``.
+    :param filters: Active filters for this dataset.
+    :return: ``(sql_string, params_dict)`` — rows ordered by ``sample_id``.
+
+    """
+    params: dict[str, Any] = {}
+    where = _build_where(filters, params)
+    where = (
+        f"{where} AND regulator_locus_tag = $__locus_tag"
+        if where
+        else " WHERE regulator_locus_tag = $__locus_tag"
+    )
+    params["__locus_tag"] = locus_tag
+    cols = ", ".join(f'"{c}"' for c in ["sample_id", *candidate_cols])
+    return (
+        f"SELECT {cols} FROM {db_name}_meta{where} ORDER BY sample_id",
+        params,
+    )
+
+
 def regulator_display_labels_query(db_name: str) -> tuple[str, dict]:
     """
     Return ``(sql, params)`` for fetching distinct regulator locus tags and symbols.
@@ -233,5 +267,6 @@ __all__ = [
     "sample_count_query",
     "regulator_locus_tags_query",
     "regulator_breakdown_query",
+    "regulator_conditions_query",
     "regulator_display_labels_query",
 ]
