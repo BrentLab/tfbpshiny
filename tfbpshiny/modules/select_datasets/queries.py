@@ -20,19 +20,23 @@ FIELD_TYPE_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
 }
 
 
-def _build_where(
+def _build_filter_clauses(
     filters: dict[str, Any] | None,
     params: dict[str, Any],
     prefix: str = "",
-) -> str:
+) -> list[str]:
     """
-    Build a WHERE clause string and populate ``params`` in-place.
+    Build the list of individual filter clauses and populate ``params`` in-place.
+
+    Shared by :func:`_build_where` (joins clauses into a row-restricting
+    ``WHERE``) and :func:`_build_filter_match_expr` (joins them into a
+    per-row boolean flag instead of restricting rows).
 
     :param filters: Filter spec — ``{field: {"type": ..., "value": ...}}``.
     :param params: Dict to populate with bound parameter values.
     :param prefix: String prepended to every param name to avoid collisions
         when two datasets share the same field names in one query.
-    :return: WHERE clause string (empty string if no filters).
+    :return: List of SQL boolean clause strings, one per filtered field.
 
     """
     clauses: list[str] = []
@@ -58,7 +62,52 @@ def _build_where(
             clauses.append(f'"{field}" = $bool_{p}')
             params[f"bool_{p}"] = bool(val)
 
+    return clauses
+
+
+def _build_where(
+    filters: dict[str, Any] | None,
+    params: dict[str, Any],
+    prefix: str = "",
+) -> str:
+    """
+    Build a WHERE clause string and populate ``params`` in-place.
+
+    :param filters: Filter spec — ``{field: {"type": ..., "value": ...}}``.
+    :param params: Dict to populate with bound parameter values.
+    :param prefix: String prepended to every param name to avoid collisions
+        when two datasets share the same field names in one query.
+    :return: WHERE clause string (empty string if no filters).
+
+    """
+    clauses = _build_filter_clauses(filters, params, prefix)
     return f" WHERE {' AND '.join(clauses)}" if clauses else ""
+
+
+def _build_filter_match_expr(
+    filters: dict[str, Any] | None,
+    params: dict[str, Any],
+    prefix: str = "",
+) -> str:
+    """
+    Build a boolean SQL expression (no ``WHERE`` keyword) that is ``TRUE`` for rows
+    matching every filter, for use as a per-row flag rather than a row-restricting
+    predicate.
+
+    :param filters: Filter spec — ``{field: {"type": ..., "value": ...}}``.
+    :param params: Dict to populate with bound parameter values.
+    :param prefix: String prepended to every param name to avoid collisions
+        when two datasets share the same field names in one query.
+    :return: SQL boolean expression string; ``"TRUE"`` when there are no
+        filters. Wrapped in ``COALESCE(..., FALSE)`` so a NULL comparison
+        (e.g. an uncastable numeric filter value) reads as "does not match"
+        rather than propagating SQL NULL.
+
+    """
+    clauses = _build_filter_clauses(filters, params, prefix)
+    if not clauses:
+        return "TRUE"
+    return f"COALESCE({' AND '.join(clauses)}, FALSE)"
 
 
 def metadata_query(
@@ -194,27 +243,30 @@ def regulator_conditions_query(
 ) -> tuple[str, dict[str, Any]]:
     """
     Return ``(sql, params)`` selecting ``sample_id`` and condition columns for every
-    sample that interrogates a given regulator in a dataset, honoring active filters.
+    sample that interrogates a given regulator in a dataset. Every sample is returned
+    regardless of the dataset's active filters — an extra ``__matches_filters`` boolean
+    column flags which ones pass them, so the caller can highlight/sort instead of
+    hiding non-matching samples.
 
     :param db_name: Dataset name.
     :param locus_tag: Regulator locus tag to restrict rows to.
     :param candidate_cols: Non-identity, non-regulator, non-hidden columns to
         include alongside ``sample_id``.
-    :param filters: Active filters for this dataset.
-    :return: ``(sql_string, params_dict)`` — rows ordered by ``sample_id``.
+    :param filters: Active filters for this dataset, used only to compute
+        ``__matches_filters`` — they no longer restrict which rows come back.
+    :return: ``(sql_string, params_dict)`` — rows ordered with
+        filter-matching samples first, then by ``sample_id``.
 
     """
     params: dict[str, Any] = {}
-    where = _build_where(filters, params)
-    where = (
-        f"{where} AND regulator_locus_tag = $__locus_tag"
-        if where
-        else " WHERE regulator_locus_tag = $__locus_tag"
-    )
+    match_expr = _build_filter_match_expr(filters, params)
     params["__locus_tag"] = locus_tag
     cols = ", ".join(f'"{c}"' for c in ["sample_id", *candidate_cols])
     return (
-        f"SELECT {cols} FROM {db_name}_meta{where} ORDER BY sample_id",
+        f"SELECT {cols}, ({match_expr}) AS __matches_filters "
+        f"FROM {db_name}_meta "
+        f"WHERE regulator_locus_tag = $__locus_tag "
+        f"ORDER BY __matches_filters DESC, sample_id",
         params,
     )
 

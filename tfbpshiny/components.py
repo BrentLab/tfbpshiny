@@ -368,11 +368,12 @@ def matrix_row_label(label: str | ui.Tag) -> ui.Tag:
 
 
 def matrix_cell(
-    kind: Literal["empty", "diagonal", "interactive"],
+    kind: Literal["empty", "diagonal", "interactive", "value"],
     button: ui.Tag | None = None,
     *,
     active: bool = False,
     pending: bool = False,
+    label: str | None = None,
 ) -> ui.Tag:
     """
     Data cell (``<td>``) in the intersection matrix.
@@ -388,17 +389,24 @@ def matrix_cell(
       adds ``.matrix-cell-active`` for the committed regulator filter pair;
       when ``pending=True`` adds ``.matrix-cell-pending`` for a queued but
       uncommitted pair. ``active`` takes precedence over ``pending``.
+    - ``"value"`` — non-interactive, read-only upper-triangle cell showing a
+      value (e.g. a correlation) with no click behavior: ``.matrix-cell-value``.
+      Renders ``label`` as plain text; ``button`` is ignored.
 
-    :param kind: One of ``"empty"``, ``"diagonal"``, or ``"interactive"``.
+    :param kind: One of ``"empty"``, ``"diagonal"``, ``"interactive"``, or
+        ``"value"``.
     :param button: A ``matrix_cell_button`` element. Required for ``"diagonal"``
-        and ``"interactive"``; ignored for ``"empty"``.
+        and ``"interactive"``; ignored for ``"empty"`` and ``"value"``.
     :param active: Marks the selected item (e.g. committed regulator filter pair
         or currently selected correlation pair).
     :param pending: Marks a queued regulator filter pair not yet committed.
+    :param label: Text content for ``"value"`` cells.
 
     """
     if kind == "empty":
         return ui.tags.td({"class": "matrix-cell-empty"}, "")
+    if kind == "value":
+        return ui.tags.td({"class": "matrix-cell-value"}, label or "")
     if kind == "diagonal":
         return ui.tags.td({"class": "matrix-cell-diagonal"}, button)
     # interactive

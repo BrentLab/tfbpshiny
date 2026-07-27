@@ -199,6 +199,23 @@ repositories:
           field: regulator_locus_tag
         Regulator symbol:
           field: regulator_symbol
+      macs2_annotated_peaks_combined:
+        tags:
+          data_type: binding
+          assay: ChIPexo
+          display_name: "2021 ChIP-exo Peaks (MACS2)"
+        description: >-
+          ChIP-exo peaks called with MACS2 (see scripts/rossi_peak_analysis.R),
+          filtered to -log10(q) > 0.1 and to peaks within 700 bp of the 5' end
+          of the most 5' exon. Reports the number of peaks annotated to each
+          target along with the nearest, median, and max -log10(q) score.
+        db_name: rossi_macs2_peaks
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
 
   BrentLab/hu_2007_reimand_2010:
     # perturbation

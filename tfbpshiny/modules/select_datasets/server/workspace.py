@@ -420,11 +420,19 @@ def select_datasets_workspace_server(
         )
         rows_df = conn.execute(sql, params).df()
         columns = ["sample_id", *candidate_cols]
-        rows = rows_df.to_dict("records")
+        active_sample_ids = set(
+            rows_df.loc[rows_df["__matches_filters"], "sample_id"].astype(str)
+        )
+        rows = rows_df[columns].to_dict("records")
 
         ui.modal_show(
             regulator_cell_modal_ui(
-                display_names.get(db_name, db_name), symbol, locus_tag, columns, rows
+                display_names.get(db_name, db_name),
+                symbol,
+                locus_tag,
+                columns,
+                rows,
+                active_sample_ids,
             )
         )
 

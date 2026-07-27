@@ -48,6 +48,7 @@ def fetch_corr_pairs(
     pairs: list[tuple[str, str]],
     filters: dict[str, Any],
     method: str,
+    score_type: str,
     comparison_type: str = "binding",
 ) -> dict[tuple[str, str], pd.DataFrame]:
     """
@@ -57,6 +58,8 @@ def fetch_corr_pairs(
     :param pairs: List of (db_a, db_b) dataset name pairs.
     :param filters: dataset_filters dict keyed by db_name.
     :param method: 'pearson' or 'spearman'.
+    :param score_type: 'effect', 'pvalue', or 'log10pval' — must match a
+        ``score_type`` value materialized in the ``correlations`` table.
     :param comparison_type: 'binding' or 'perturbation'.
     :returns: Dict mapping (db_a, db_b) to DataFrame with regulator_locus_tag,
         correlation.
@@ -102,6 +105,7 @@ def fetch_corr_pairs(
         FROM correlations
         WHERE comparison_type = ?
           AND method = ?
+          AND score_type = ?
           AND source_sample_a LIKE ?
           AND source_sample_b LIKE ?
           AND split_part(source_sample_a, ';', 3) IN ({phs_a})
@@ -109,7 +113,9 @@ def fetch_corr_pairs(
         GROUP BY regulator_locus_tag
         """
         params: list[Any] = (
-            [comparison_type, method, prefix_a + "%", prefix_b + "%"] + ids_a + ids_b
+            [comparison_type, method, score_type, prefix_a + "%", prefix_b + "%"]
+            + ids_a
+            + ids_b
         )
         try:
             df = conn.execute(sql, params).df()

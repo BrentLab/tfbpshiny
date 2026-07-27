@@ -126,6 +126,7 @@ and `PEAKS_VARIANT_MAP` dicts.
 | `rossi_500bp` | binding | 2021 ChIP-exo (Rossi, 500bp) | 2021 ChIP-exo | FALSE | FALSE | rossi | 500bp | promoter_enrichment |
 | `rossi_intergenic` | binding | 2021 ChIP-exo (Rossi, Intergenic) | 2021 ChIP-exo | FALSE | FALSE | rossi | intergenic | promoter_enrichment |
 | `rossi_peaks` | binding | 2021 ChIP-exo Peaks | 2021 ChIP-exo | FALSE | FALSE | rossi | peaks | peak_calling |
+| `rossi_macs2_peaks` | binding | 2021 ChIP-exo Peaks (MACS2) | 2021 ChIP-exo | FALSE | FALSE | rossi | peaks | peak_calling |
 | `chec_m2025` | binding | 2025 ChEC-seq (Mahendrawada) | 2025 ChEC-seq | TRUE | TRUE | NULL | kang | promoter_enrichment |
 | `chec_m2025_mindel` | binding | 2025 ChEC-seq (Mahendrawada, Mindel) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025 | mindel | promoter_enrichment |
 | `chec_m2025_500bp` | binding | 2025 ChEC-seq (Mahendrawada, 500bp) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025 | 500bp | promoter_enrichment |
@@ -376,14 +377,15 @@ CREATE TABLE correlations (
     regulator_locus_tag  VARCHAR  NOT NULL,
     comparison_type      VARCHAR  NOT NULL,  -- 'binding' | 'perturbation'
     method               VARCHAR  NOT NULL,  -- 'pearson' | 'spearman'
-    score_col_a          VARCHAR  NOT NULL,  -- column used from sample_a's dataset
-    score_col_b          VARCHAR  NOT NULL,  -- column used from sample_b's dataset
+    score_type           VARCHAR  NOT NULL,  -- 'effect' | 'pvalue' | 'log10pval'
+    score_col_a          VARCHAR  NOT NULL,  -- raw column used from sample_a's dataset
+    score_col_b          VARCHAR  NOT NULL,  -- raw column used from sample_b's dataset
     correlation          DOUBLE   NOT NULL,
     n_shared_targets     INTEGER  NOT NULL,  -- targets used; always >= 3
     PRIMARY KEY (
         source_sample_a, source_sample_b,
         regulator_locus_tag,
-        method, score_col_a, score_col_b
+        method, score_type
     )
 );
 ```
@@ -395,8 +397,18 @@ unordered pair is stored exactly once.
 
 - `comparison_type` lets you filter to binding or perturbation rows without
   parsing sample IDs.
-- `score_col_*` allows multiple scoring variants for the same dataset pair to
-  coexist (e.g. `poisson_pval` and `callingcards_enrichment` for callingcards).
+- `score_type` is computed for every dataset pair: `effect` always (every
+  dataset has an effect column); `pvalue` and `log10pval` only when *both*
+  sides of the pair have a non-empty pvalue column (`BINDING_DATASET_COLUMNS`
+  / `PERTURBATION_DATASET_COLUMNS` in `materialize/comparison/correlations.py`
+  — e.g. `hackett`, `hughes_overexpression`, `hughes_knockout` have none, so
+  pairs involving them only get `effect` rows).
+- `log10pval` is `-log10(GREATEST(pvalue, 1e-10))` — p-values below `1e-10`
+  are floored so a single near-zero p-value can't blow up the scale.
+- `score_col_*` records the raw column(s) actually used (e.g. `poisson_pval`
+  for `pvalue`/`log10pval`, `callingcards_enrichment` for `effect`) for
+  provenance/debugging; it is not part of the primary key since `score_type`
+  plus the dataset pair already determines it deterministically.
 - Rows are only written when `COUNT(shared targets) >= 3`.
 
 ---

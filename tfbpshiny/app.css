@@ -197,6 +197,13 @@
     font-size: var(--font-size-label);
 }
 
+/* Regulator-cell modal: sample rows that pass the dataset's active filters,
+   sorted to the top by the query and highlighted here. */
+.condition-row-active {
+    background: #E6FFFA;
+    font-weight: 600;
+}
+
 .matrix-summary-table th,
 .matrix-summary-table td {
     border-bottom: 1px solid #EDF2F7;
@@ -252,6 +259,15 @@
 
 .matrix-summary-table .matrix-cell-interactive {
     padding: 0;
+}
+
+.matrix-summary-table .matrix-cell-value {
+    padding: 10px 8px;
+    text-align: center;
+    color: var(--color-text);
+    font-size: var(--font-size-label);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
 }
 
 .matrix-summary-table .matrix-cell-diagonal:hover,

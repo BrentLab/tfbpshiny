@@ -618,36 +618,60 @@ def regulator_cell_modal_ui(
     regulator_locus_tag: str,
     columns: list[str],
     rows: list[dict[str, Any]],
+    active_sample_ids: set[str],
 ) -> ui.Tag:
     """
-    Modal listing the sample conditions in which a regulator is interrogated within one
-    dataset, honoring the dataset's active filters.
+    Modal listing every sample that interrogates a regulator within one dataset,
+    regardless of the dataset's active filters. Samples that pass the active filters are
+    highlighted and sorted to the top (see ``regulator_conditions_query``'s ``ORDER BY
+    __matches_filters DESC``).
 
     :param display_name: Human-readable dataset name.
     :param regulator_symbol: Regulator gene symbol (falls back to the locus tag
         when no symbol is available).
     :param regulator_locus_tag: Regulator systematic locus tag.
     :param columns: Column names to display, in order (``sample_id`` first).
-    :param rows: One dict per matching sample, keyed by ``columns``.
+    :param rows: One dict per sample, keyed by ``columns``, pre-sorted with
+        filter-matching samples first.
+    :param active_sample_ids: ``sample_id`` values (as strings) that pass the
+        dataset's active filters; their rows are highlighted.
 
     """
     title = f"{regulator_symbol} ({regulator_locus_tag}) in {display_name}"
     if not rows:
-        body: ui.Tag = ui.p("No samples match the current filters.")
+        body: ui.Tag = ui.p("No samples reference this regulator in this dataset.")
     else:
-        body = ui.div(
-            {"class": "matrix-scroll-container"},
-            ui.tags.table(
-                {"class": "table table-sm table-bordered mb-0"},
-                ui.tags.thead(ui.tags.tr(*[ui.tags.th(c) for c in columns])),
-                ui.tags.tbody(
-                    *[
-                        ui.tags.tr(*[ui.tags.td(str(row.get(c, ""))) for c in columns])
-                        for row in rows
-                    ]
+        body_children: list[ui.Tag] = []
+        if 0 < len(active_sample_ids) < len(rows):
+            body_children.append(
+                ui.p(
+                    {"class": "text-muted small mb-2"},
+                    "Bold rows pass the dataset's active filters.",
+                )
+            )
+        body_children.append(
+            ui.div(
+                {"class": "matrix-scroll-container"},
+                ui.tags.table(
+                    {"class": "table table-sm table-bordered mb-0"},
+                    ui.tags.thead(ui.tags.tr(*[ui.tags.th(c) for c in columns])),
+                    ui.tags.tbody(
+                        *[
+                            ui.tags.tr(
+                                (
+                                    {"class": "condition-row-active"}
+                                    if str(row.get("sample_id")) in active_sample_ids
+                                    else {}
+                                ),
+                                *[ui.tags.td(str(row.get(c, ""))) for c in columns],
+                            )
+                            for row in rows
+                        ]
+                    ),
                 ),
-            ),
+            )
         )
+        body = ui.div(*body_children)
     return ui.modal(
         body,
         title=title,

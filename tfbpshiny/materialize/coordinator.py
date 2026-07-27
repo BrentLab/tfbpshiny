@@ -5,6 +5,7 @@ Imports SQL generators from the submodules and executes them in dependency
 order against both VirtualDB (data source) and the output DuckDB file (target).
 Data is transferred as pandas DataFrames via ``vdb.query()`` → output
 ``conn.register()`` / ``conn.execute()``.
+
 """
 
 from __future__ import annotations
@@ -99,9 +100,7 @@ def _vdb_to_table(
                 f'CREATE TABLE "{target_table}" AS SELECT * FROM _tmp_df'
             )
         else:
-            output_conn.execute(
-                f'INSERT INTO "{target_table}" SELECT * FROM _tmp_df'
-            )
+            output_conn.execute(f'INSERT INTO "{target_table}" SELECT * FROM _tmp_df')
     finally:
         output_conn.unregister("_tmp_df")
 
@@ -116,9 +115,7 @@ def _vdb_to_table(
 
 def _regulators_for_binding(vdb: VirtualDB, binding_view: str) -> list[str]:
     """Return distinct regulator locus tags for a binding dataset (sorted)."""
-    df = vdb.query(
-        f"SELECT DISTINCT regulator_locus_tag FROM {binding_view}_meta"
-    )
+    df = vdb.query(f"SELECT DISTINCT regulator_locus_tag FROM {binding_view}_meta")
     return sorted(t for t in df["regulator_locus_tag"].dropna().tolist())
 
 
@@ -208,9 +205,7 @@ def materialize(
             "SELECT view_name FROM duckdb_views() WHERE view_name = 'dto'"
         ).fetchone()
         if dto_view is not None:
-            _vdb_to_table(
-                vdb, conn, dto_select_sql(), {}, "dto", "dto", mode="create"
-            )
+            _vdb_to_table(vdb, conn, dto_select_sql(), {}, "dto", "dto", mode="create")
         else:
             logger.warning("  dto view not found in VirtualDB — skipping")
 
@@ -228,9 +223,7 @@ def materialize(
         _exec_static(conn, topn_schema_sql(), "topn_results (schema)")
 
         if not args.skip_topn:
-            binding_views = [
-                db for db in datasets if db in BINDING_TOPN_CONFIGS
-            ]
+            binding_views = [db for db in datasets if db in BINDING_TOPN_CONFIGS]
             perturbation_views = [
                 db for db in datasets if db in PERTURBATION_TOPN_DATASETS
             ]
@@ -294,11 +287,9 @@ def materialize(
             binding_corr_views = [
                 db for db in datasets if db in BINDING_DATASET_COLUMNS
             ]
-            for view_a, view_b in itertools.combinations(
-                sorted(binding_corr_views), 2
-            ):
-                col_a = BINDING_DATASET_COLUMNS[view_a][0]
-                col_b = BINDING_DATASET_COLUMNS[view_b][0]
+            for view_a, view_b in itertools.combinations(sorted(binding_corr_views), 2):
+                effect_a, pvalue_a = BINDING_DATASET_COLUMNS[view_a]
+                effect_b, pvalue_b = BINDING_DATASET_COLUMNS[view_b]
                 hf_a = DATASET_HF_COORDS.get(view_a, ("", ""))
                 hf_b = DATASET_HF_COORDS.get(view_b, ("", ""))
                 for method in methods:
@@ -306,11 +297,13 @@ def materialize(
                         view_a=view_a,
                         hf_repo_a=hf_a[0],
                         hf_config_a=hf_a[1],
-                        col_a=col_a,
+                        effect_col_a=effect_a,
+                        pvalue_col_a=pvalue_a,
                         view_b=view_b,
                         hf_repo_b=hf_b[0],
                         hf_config_b=hf_b[1],
-                        col_b=col_b,
+                        effect_col_b=effect_b,
+                        pvalue_col_b=pvalue_b,
                         method=method,
                         comparison_type="binding",
                     )
@@ -328,11 +321,9 @@ def materialize(
             pert_corr_views = [
                 db for db in datasets if db in PERTURBATION_DATASET_COLUMNS
             ]
-            for view_a, view_b in itertools.combinations(
-                sorted(pert_corr_views), 2
-            ):
-                col_a = PERTURBATION_DATASET_COLUMNS[view_a][0]
-                col_b = PERTURBATION_DATASET_COLUMNS[view_b][0]
+            for view_a, view_b in itertools.combinations(sorted(pert_corr_views), 2):
+                effect_a, pvalue_a = PERTURBATION_DATASET_COLUMNS[view_a]
+                effect_b, pvalue_b = PERTURBATION_DATASET_COLUMNS[view_b]
                 hf_a = DATASET_HF_COORDS.get(view_a, ("", ""))
                 hf_b = DATASET_HF_COORDS.get(view_b, ("", ""))
                 for method in methods:
@@ -340,11 +331,13 @@ def materialize(
                         view_a=view_a,
                         hf_repo_a=hf_a[0],
                         hf_config_a=hf_a[1],
-                        col_a=col_a,
+                        effect_col_a=effect_a,
+                        pvalue_col_a=pvalue_a,
                         view_b=view_b,
                         hf_repo_b=hf_b[0],
                         hf_config_b=hf_b[1],
-                        col_b=col_b,
+                        effect_col_b=effect_b,
+                        pvalue_col_b=pvalue_b,
                         method=method,
                         comparison_type="perturbation",
                     )

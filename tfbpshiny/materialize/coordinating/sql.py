@@ -4,6 +4,7 @@ SQL generators for the coordinating layer of the materialized DuckDB schema.
 All functions return pure SQL strings (no side effects) so they can be called
 from a Jupyter notebook to inspect output before running the full pipeline.
 The coordinator is the only code that calls ``.execute()``.
+
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ DATASET_HF_COORDS: dict[str, tuple[str, str]] = {
     "rossi_500bp": ("BrentLab/rossi_2021", "rossi_2021_af_combined_start_codon_500bp"),
     "rossi_intergenic": ("BrentLab/rossi_2021", "rossi_2021_af_combined_intergenic"),
     "rossi_peaks": ("BrentLab/rossi_2021", "yep_filtered_peaks_combined"),
+    "rossi_macs2_peaks": ("BrentLab/rossi_2021", "macs2_annotated_peaks_combined"),
     "chec_m2025": (
         "BrentLab/mahendrawada_2025",
         "chec_mahendrawada_m2025_af_combined",
@@ -244,6 +246,11 @@ INSERT INTO dataset_registry VALUES
  'binding', 'ChIPexo',
  '2021 ChIP-exo Peaks', '2021 ChIP-exo',
  FALSE, FALSE, 'rossi', 'peaks', 'peak_calling'),
+('rossi_macs2_peaks',
+ 'BrentLab/rossi_2021', 'macs2_annotated_peaks_combined',
+ 'binding', 'ChIPexo',
+ '2021 ChIP-exo Peaks (MACS2)', '2021 ChIP-exo',
+ FALSE, FALSE, 'rossi', 'peaks', 'peak_calling'),
 -- chec_m2025 variants
 ('chec_m2025_mindel',
  'BrentLab/mahendrawada_2025', 'chec_mahendrawada_m2025_af_combined_mindel',
@@ -350,7 +357,9 @@ def column_metadata_sql(vdb: VirtualDB) -> str:
             safe_db = db_name.replace("'", "''")
             rows.append(f"('{safe_db}', '{safe_col}', 'upstream')")
 
-    values_clause = ",\n    ".join(rows) if rows else "('__placeholder__', '__none__', 'condition')"
+    values_clause = (
+        ",\n    ".join(rows) if rows else "('__placeholder__', '__none__', 'condition')"
+    )
     return f"""
 CREATE TABLE dataset_column_metadata (
     db_name     VARCHAR NOT NULL,
