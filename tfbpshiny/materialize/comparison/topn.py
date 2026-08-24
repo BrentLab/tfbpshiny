@@ -5,6 +5,7 @@ Adapted from ``modules/comparison/queries.py::topn_responsive_ratio``.
 Functions return SQL strings (no side effects) so they can be called from a
 Jupyter notebook to inspect the query before running the full pipeline.
 The coordinator is the only code that calls ``.execute()``.
+
 """
 
 from __future__ import annotations
@@ -147,7 +148,80 @@ BINDING_TOPN_CONFIGS: dict[str, dict[str, Any]] = {
         target_blacklist=(),
         binding_dedup_cte="",
     ),
+    # Promoter-set-matched peak calls. Rossi uses MACS, Mahendrawada uses HOMER
+    # (replicating the reference publication's method); both expose the same
+    # nearest/median/max score columns, so all eight rank on max_score.
+    "rossi_peaks_kang": dict(
+        binding_sample_col="sample_id",
+        rank_col="max_score",
+        rank_asc=False,
+        target_blacklist=(),
+        binding_dedup_cte="",
+    ),
+    "rossi_peaks_mindel": dict(
+        binding_sample_col="sample_id",
+        rank_col="max_score",
+        rank_asc=False,
+        target_blacklist=(),
+        binding_dedup_cte="",
+    ),
+    "rossi_peaks_500bp": dict(
+        binding_sample_col="sample_id",
+        rank_col="max_score",
+        rank_asc=False,
+        target_blacklist=(),
+        binding_dedup_cte="",
+    ),
+    "rossi_peaks_intergenic": dict(
+        binding_sample_col="sample_id",
+        rank_col="max_score",
+        rank_asc=False,
+        target_blacklist=(),
+        binding_dedup_cte="",
+    ),
+    "chec_m2025_peaks_kang": dict(
+        binding_sample_col="sample_id",
+        rank_col="max_score",
+        rank_asc=False,
+        target_blacklist=(),
+        binding_dedup_cte="",
+    ),
+    "chec_m2025_peaks_mindel": dict(
+        binding_sample_col="sample_id",
+        rank_col="max_score",
+        rank_asc=False,
+        target_blacklist=(),
+        binding_dedup_cte="",
+    ),
+    "chec_m2025_peaks_500bp": dict(
+        binding_sample_col="sample_id",
+        rank_col="max_score",
+        rank_asc=False,
+        target_blacklist=(),
+        binding_dedup_cte="",
+    ),
+    "chec_m2025_peaks_intergenic": dict(
+        binding_sample_col="sample_id",
+        rank_col="max_score",
+        rank_asc=False,
+        target_blacklist=(),
+        binding_dedup_cte="",
+    ),
 }
+
+#: Sentinel ``top_n`` meaning "every bound target, no rank cutoff". Used for the
+#: authors'-binding-threshold figure, where the peak datasets already encode the
+#: authors' binary call so there is nothing left to threshold.
+TOP_N_ALL = 0
+
+#: Binding datasets whose rows *are* the authors' binding call, so a rank cutoff would
+#: discard part of their answer. These additionally get ``TOP_N_ALL`` rows.
+PEAK_BINDING_DATASETS: frozenset[str] = frozenset({"rossi_peaks", "chec_m2025_peaks"})
+
+#: Fixed top-N cutoffs materialized into `topn_results`. The Comparison module's UI
+#: offers exactly these choices (see modules/comparison/queries.py, ui.py) — defined
+#: once here so materialization and the UI selector can't drift out of sync.
+TOP_N_CHOICES: tuple[int, ...] = (10, 25, 50, 75, 100)
 
 #: Perturbation datasets eligible for top-N analysis (no per-dataset kwargs needed).
 PERTURBATION_TOPN_DATASETS: frozenset[str] = frozenset(
@@ -199,6 +273,7 @@ CREATE TABLE topn_results (
     n                           INTEGER  NOT NULL,
     n_responsive                INTEGER  NOT NULL,
     responsive_ratio            DOUBLE   NOT NULL,
+    n_intersecting_targets      INTEGER  NOT NULL,
     PRIMARY KEY (
         binding_source_sample,
         perturbation_source_sample,
@@ -220,6 +295,12 @@ def _responsive_expr(
     """
     Build a SQL expression evaluating to 1 (responsive) or 0.
 
+    Responsiveness is always decided by the ``(effect, pvalue)`` thresholds passed in,
+    which the coordinator resolves per dataset from
+    :data:`~tfbpshiny.utils.vdb_init.DEFAULT_RESPONSIVENESS_PRESETS`. The ``Stringent``
+    preset holds each dataset's published criteria. The ``responsive`` boolean some
+    source parquets ship is deprecated upstream and is deliberately not read.
+
     :param perturbation_view: Dataset name (key in ``PERTURBATION_DATASET_COLUMNS``).
     :param effect_threshold: Absolute effect magnitude must exceed this.
     :param pvalue_threshold: P-value must be below this (ignored when no pvalue col).
@@ -227,6 +308,7 @@ def _responsive_expr(
     :param params: Dict populated in-place with threshold values.
     :returns: SQL CASE expression string evaluating to 1 or 0.
     :rtype: str
+    :raises KeyError: If the dataset declares no effect column to threshold on.
 
     """
     cols = PERTURBATION_DATASET_COLUMNS.get(perturbation_view, ("", ""))
@@ -244,8 +326,11 @@ def _responsive_expr(
         )
     elif effect_col:
         return f"CASE WHEN ABS(p.{effect_col}) > ${eff_key} THEN 1 ELSE 0 END"
-    else:
-        return "CAST(p.responsive AS INTEGER)"
+    raise KeyError(
+        f"{perturbation_view!r} declares no effect column in "
+        "PERTURBATION_DATASET_COLUMNS, so responsiveness cannot be thresholded. "
+        "Add one there."
+    )
 
 
 def topn_pair_select_sql(
@@ -276,6 +361,12 @@ def topn_pair_select_sql(
 
     No user-level filters are applied; the query covers all samples in both
     datasets (subject to harbison YPD dedup when applicable).
+
+    The result includes ``n_intersecting_targets``: the count of distinct targets
+    shared by that specific binding/perturbation sample pair for that regulator,
+    uncapped by ``top_n`` (unlike ``n``, which is capped at ``top_n``). This lets
+    consumers require a regulator/sample-pair to have had at least ``top_n``
+    candidate targets before the top-N cutoff was applied.
 
     :param binding_view: Binding dataset name (DuckDB view/table name).
     :param binding_hf_repo: HuggingFace repo for the binding dataset.
@@ -359,6 +450,11 @@ def topn_pair_select_sql(
     top_n_key = f"{param_prefix}_top_n"
     params[top_n_key] = top_n
 
+    # TOP_N_ALL keeps every bound target. Used for the peak datasets, where the
+    # authors' peak call already *is* the threshold and ranking would discard part of
+    # their answer. `n` then carries the size of the authors' bound set.
+    rank_cutoff_clause = "" if top_n == TOP_N_ALL else f"WHERE rnk <= ${top_n_key}"
+
     # Escaped literal strings for composite ID construction (no user input).
     b_prefix = f"{binding_hf_repo};{binding_hf_config};".replace("'", "''")
     p_prefix = f"{pert_hf_repo};{pert_hf_config};".replace("'", "''")
@@ -379,6 +475,19 @@ def topn_pair_select_sql(
             {responsive_expr} AS is_responsive
         FROM {perturbation_view} p
         {pert_filter_where}
+    ),
+    intersecting_counts AS (
+        SELECT
+            b.binding_sample_id,
+            b.regulator_locus_tag,
+            pert.perturbation_sample_id,
+            COUNT(DISTINCT b.target_locus_tag) AS n_intersecting_targets
+        FROM binding b
+        JOIN perturbation pert
+            ON  b.regulator_locus_tag = pert.regulator_locus_tag
+            AND b.target_locus_tag    = pert.target_locus_tag
+        WHERE b.regulator_locus_tag != b.target_locus_tag
+        GROUP BY b.binding_sample_id, b.regulator_locus_tag, pert.perturbation_sample_id
     ),
     intersecting_targets AS (
         SELECT DISTINCT b.regulator_locus_tag, b.target_locus_tag
@@ -406,7 +515,7 @@ def topn_pair_select_sql(
     top_n_binding AS (
         SELECT binding_sample_id, regulator_locus_tag, target_locus_tag
         FROM binding_ranked
-        WHERE rnk <= ${top_n_key}
+        {rank_cutoff_clause}
     ),
     summary AS (
         SELECT
@@ -423,17 +532,22 @@ def topn_pair_select_sql(
         GROUP BY b.binding_sample_id, b.regulator_locus_tag, pert.perturbation_sample_id
     )
     SELECT
-        '{b_prefix}' || binding_sample_id         AS binding_source_sample,
-        '{p_prefix}' || perturbation_sample_id    AS perturbation_source_sample,
-        regulator_locus_tag,
-        ${top_n_key}::INTEGER                     AS top_n,
-        '{rank_col_safe}'                         AS rank_col,
-        {rank_asc_sql}                            AS rank_asc,
-        {effect_threshold!r}::DOUBLE              AS effect_threshold,
-        {pvalue_threshold!r}::DOUBLE              AS pvalue_threshold,
-        n,
-        n_responsive,
-        responsive_ratio
-    FROM summary
+        '{b_prefix}' || s.binding_sample_id         AS binding_source_sample,
+        '{p_prefix}' || s.perturbation_sample_id    AS perturbation_source_sample,
+        s.regulator_locus_tag,
+        ${top_n_key}::INTEGER                       AS top_n,
+        '{rank_col_safe}'                           AS rank_col,
+        {rank_asc_sql}                              AS rank_asc,
+        {effect_threshold!r}::DOUBLE                AS effect_threshold,
+        {pvalue_threshold!r}::DOUBLE                AS pvalue_threshold,
+        s.n,
+        s.n_responsive,
+        s.responsive_ratio,
+        COALESCE(ic.n_intersecting_targets, 0)::INTEGER AS n_intersecting_targets
+    FROM summary s
+    LEFT JOIN intersecting_counts ic
+        ON  s.binding_sample_id      = ic.binding_sample_id
+        AND s.regulator_locus_tag    = ic.regulator_locus_tag
+        AND s.perturbation_sample_id = ic.perturbation_sample_id
     """
     return sql, params

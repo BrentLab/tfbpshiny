@@ -5,7 +5,11 @@ from __future__ import annotations
 from shiny import module, ui
 
 from tfbpshiny.components import sidebar_label
-from tfbpshiny.modules.comparison.queries import DEFAULT_TOP_N
+from tfbpshiny.modules.comparison.queries import (
+    METRIC_DTO,
+    METRIC_LABELS,
+    METRIC_TOPN,
+)
 
 
 @module.ui
@@ -13,49 +17,39 @@ def comparison_ui() -> ui.Tag:
     return ui.layout_sidebar(
         ui.sidebar(
             ui.h2("Comparisons"),
-            ui.output_ui("execute_pending_style"),
-            ui.input_action_button(
-                "execute_analysis",
-                "Execute Analysis",
-                class_="btn-danger w-100",
-            ),
-            sidebar_label("Top N"),
-            ui.input_numeric(
-                "top_n",
-                label=None,
-                value=DEFAULT_TOP_N,
-                min=1,
-                max=500,
-                step=5,
-            ),
-            sidebar_label("Responsiveness"),
+            sidebar_label("Metric"),
             ui.input_radio_buttons(
-                "responsiveness_preset",
+                "metric",
                 label=None,
                 choices={
-                    "Relaxed": ui.tooltip(
-                        ui.span("Relaxed"),
-                        "Applies a uniform pvalue < 0.05 threshold. Hover over"
-                        " perturbation column headers in Compare Datasets for"
-                        " per-dataset details.",
+                    METRIC_TOPN: ui.tooltip(
+                        ui.span(METRIC_LABELS[METRIC_TOPN]),
+                        "Median percent of a regulator's top-N bound targets that are"
+                        " transcriptionally responsive.",
                         placement="right",
                     ),
-                    "Stringent": ui.tooltip(
-                        ui.span("Stringent"),
-                        "Uses the original authors' thresholds for each dataset."
-                        " Hover over perturbation column headers in Compare"
-                        " Datasets for per-dataset details.",
+                    METRIC_DTO: ui.tooltip(
+                        ui.span(METRIC_LABELS[METRIC_DTO]),
+                        "Percent of regulators whose bound and responsive target sets"
+                        " overlap more than chance (empirical p < 0.01), out of all"
+                        " regulators shared by the two datasets.",
                         placement="right",
                     ),
                 },
-                selected="Relaxed",
-                inline=True,
+                selected=METRIC_TOPN,
             ),
+            # Top-N and DTO take different parameters, so the rest of the shared
+            # controls are rendered per metric rather than shown-and-ignored.
+            ui.output_ui("metric_controls"),
             ui.output_ui("tab_specific_controls"),
             id="comparison_sidebar",
             width=320,
             open="open",
         ),
+        # Tables recompute live as sidebar controls change; some fetches take a
+        # couple of seconds, so show a busy indicator in place of the Execute
+        # button that used to signal pending work.
+        ui.busy_indicators.use(spinners=True, pulse=True),
         ui.h1("Binding/Perturbation Comparisons"),
         ui.div(
             {"class": "sidebar-text"},
@@ -77,13 +71,17 @@ def comparison_ui() -> ui.Tag:
                     ui.strong("Compare Promoter Definitions:"),
                     " side-by-side tables comparing promoter enrichment scores across"
                     " promoter sets. Rows are binding datasets; columns are promoter"
-                    " set definitions.",
+                    " set definitions. ChIP-chip (Harbison) is absent: its regions are"
+                    " microarray probes fixed by the platform, and the source ships"
+                    " per-target ratios with no signal track to re-summarise over a"
+                    " promoter window, so it has no variant to place in any column.",
                 ),
                 ui.tags.li(
                     ui.strong("Compare Analysis Methods:"),
-                    " side-by-side tables comparing promoter enrichment vs. original"
-                    " peaks scoring for ChIP-exo and ChEC-seq datasets. Rows are"
-                    " scoring variants.",
+                    " one table per perturbation dataset comparing promoter enrichment"
+                    " against peak calling over the same promoter definition, for"
+                    " ChIP-exo and ChEC-seq datasets. Rows are binding methods;"
+                    " columns are promoter set definitions.",
                 ),
             ),
             ui.tags.details(
@@ -108,6 +106,17 @@ def comparison_ui() -> ui.Tag:
                     " replicates are combined by taking the median score. For"
                     " Mahendrawada 2025, the peak score from the original publication"
                     " is used.",
+                ),
+                ui.p(
+                    ui.strong("Peak Calling"),
+                    " is an independent re-calling of peaks from the same raw data,"
+                    " intersected with each of the four promoter definitions below."
+                    " This makes it directly comparable to promoter enrichment over"
+                    " the same window. Rossi 2021 uses MACS; Mahendrawada 2025 uses"
+                    " HOMER, replicating the peak-calling method used in the"
+                    " reference publication (a peak is kept when it appears in at"
+                    " least two replicates). Targets are ranked by the maximum peak"
+                    " score within the promoter.",
                 ),
             ),
             ui.tags.details(

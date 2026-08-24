@@ -30,3 +30,11 @@ def test_navigate_to_binding(page: Page, app):
     # "Binding" is exact: distinct from "Binding/Perturbation Comparisons".
     page.locator('a.nav-link[data-value="Binding"]').click()
     expect(page.get_by_role("heading", name="Binding Correlation")).to_be_visible()
+
+
+def test_navigate_to_figures(page: Page, app):
+    page.goto(app.url)
+    page.locator('a.nav-link[data-value="Figures"]').click()
+    # The section headings are static, so this does not wait on the figures
+    # themselves computing.
+    expect(page.get_by_role("heading", name="1. Rank vs. response")).to_be_visible()

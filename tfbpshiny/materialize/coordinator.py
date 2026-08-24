@@ -19,16 +19,28 @@ from typing import Any
 import duckdb
 from labretriever import VirtualDB
 
+from tfbpshiny.materialize.comparison.agreement import (
+    AGREEMENT_EXCLUDED,
+    agreement_pair_select_sql,
+    agreement_schema_sql,
+)
 from tfbpshiny.materialize.comparison.correlations import (
     BINDING_DATASET_COLUMNS,
     PERTURBATION_DATASET_COLUMNS,
     correlation_pair_select_sql,
     correlations_schema_sql,
 )
-from tfbpshiny.materialize.comparison.dto import dto_select_sql
+from tfbpshiny.materialize.comparison.dto import (
+    DTO_INSERT_COLUMNS,
+    dto_resolve_regulators_sql,
+    dto_schema_sql,
+    dto_select_sql,
+)
 from tfbpshiny.materialize.comparison.topn import (
     BINDING_TOPN_CONFIGS,
+    PEAK_BINDING_DATASETS,
     PERTURBATION_TOPN_DATASETS,
+    TOP_N_ALL,
     topn_pair_select_sql,
     topn_schema_sql,
 )
@@ -39,11 +51,13 @@ from tfbpshiny.materialize.coordinating.sql import (
     comparative_registry_sql,
     dataset_registry_sql,
     promoter_sets_sql,
+    sample_regulator_sql,
 )
 from tfbpshiny.materialize.metadata.sql import (
     meta_select_sql,
     regulator_display_names_select_sql,
 )
+from tfbpshiny.utils.vdb_init import DEFAULT_RESPONSIVENESS_PRESETS
 
 logger = logging.getLogger("shiny")
 
@@ -65,6 +79,7 @@ def _vdb_to_table(
     target_table: str,
     label: str,
     mode: str = "create",
+    columns: list[str] | None = None,
 ) -> int:
     """
     Execute a SELECT against VirtualDB and write the result to the output connection.
@@ -77,6 +92,12 @@ def _vdb_to_table(
     :param label: Short label used in log messages.
     :param mode: ``'create'`` → ``CREATE TABLE … AS SELECT *``; ``'insert'`` →
         ``INSERT INTO … SELECT *``.
+    :param columns: Target column names for ``'insert'`` mode, in SELECT order. Pass
+        this only when the target table has columns the SELECT does not supply (e.g.
+        ``dto.regulator_locus_tag``, filled afterwards from ``sample_regulator``).
+        Leave as ``None`` to insert positionally, which is what every other caller
+        wants -- some SELECTs contain unaliased expressions whose DataFrame column
+        names are the expression text, not the target column name.
     :returns: Number of rows written.
     :rtype: int
 
@@ -99,6 +120,11 @@ def _vdb_to_table(
             output_conn.execute(
                 f'CREATE TABLE "{target_table}" AS SELECT * FROM _tmp_df'
             )
+        elif columns:
+            col_list = ", ".join(f'"{c}"' for c in columns)
+            output_conn.execute(
+                f'INSERT INTO "{target_table}" ({col_list}) SELECT * FROM _tmp_df'
+            )
         else:
             output_conn.execute(f'INSERT INTO "{target_table}" SELECT * FROM _tmp_df')
     finally:
@@ -111,6 +137,59 @@ def _vdb_to_table(
         time.monotonic() - t0,
     )
     return row_count
+
+
+def _topn_variants(
+    binding_db: str,
+    perturbation_db: str,
+    top_n_values: list[int],
+    effect_thresholds: list[float],
+    pvalue_thresholds: list[float],
+    preset_names: list[str] | None = None,
+) -> list[tuple[int, float, float]]:
+    """
+    Enumerate the (top_n, effect, pvalue) variants to materialize for a pair.
+
+    Two things are layered on top of the plain cross product:
+
+    * **Preset thresholds.** Each named preset contributes the *own* ``(effect,
+      pvalue)`` pair of this perturbation dataset, rather than cross-producting global
+      lists. Relaxed and Stringent together need only 1-2 pairs per dataset, where the
+      cross product of their four distinct pairs would materialize eight. Both presets
+      are materialized by default so the app's selector can toggle between them --
+      a preset with no rows silently shows nothing.
+    * **Whole-bound-set rows.** Peak datasets additionally get ``TOP_N_ALL``, where the
+      authors' peak call is the threshold and no rank cutoff applies.
+
+    :param binding_db: Binding dataset name.
+    :param perturbation_db: Perturbation dataset name.
+    :param top_n_values: Rank cutoffs from the CLI.
+    :param effect_thresholds: Effect cutoffs from the CLI.
+    :param pvalue_thresholds: P-value cutoffs from the CLI.
+    :param preset_names: Responsiveness presets whose thresholds to include.
+    :returns: Distinct variants, in a stable order.
+
+    """
+    threshold_pairs: list[tuple[float, float]] = [
+        (e, pv) for e in effect_thresholds for pv in pvalue_thresholds
+    ]
+    for preset_name in preset_names or []:
+        preset = DEFAULT_RESPONSIVENESS_PRESETS.get(preset_name, {})
+        pair = preset.get(perturbation_db, preset.get("*"))
+        if pair is not None and pair not in threshold_pairs:
+            threshold_pairs.append(pair)
+
+    # Peak datasets carry the authors' binding call, so they also get the
+    # no-rank-cutoff variant.
+    cutoffs = list(top_n_values)
+    if binding_db in PEAK_BINDING_DATASETS:
+        cutoffs.append(TOP_N_ALL)
+
+    variants: list[tuple[int, float, float]] = []
+    for top_n in cutoffs:
+        for eff, pval in threshold_pairs:
+            variants.append((top_n, eff, pval))
+    return variants
 
 
 def _regulators_for_binding(vdb: VirtualDB, binding_view: str) -> list[str]:
@@ -197,17 +276,52 @@ def materialize(
             mode="create",
         )
 
+        # (db_name, sample_id) -> regulator_locus_tag, over every meta table that has
+        # a regulator column. Consumed by the DTO phase below (which ships only
+        # composite identifiers) and by the Comparison module's DTO denominator.
+        _exec_static(conn, sample_regulator_sql(reg_names), "sample_regulator")
+
         # ------------------------------------------------------------------
         # 3. Comparison — HF-sourced (DTO)
         # ------------------------------------------------------------------
         logger.info("=== Phase 3: HF-sourced comparison (DTO) ===")
+        # labretriever registers comparative datasets (those with a `links:` block) as
+        # `__dto_parquet` + `dto_expanded` and never creates a bare `dto` view, so this
+        # must look for the expanded one. Looking for 'dto' here silently skipped the
+        # whole phase on every build.
         dto_view = vdb._conn.execute(
-            "SELECT view_name FROM duckdb_views() WHERE view_name = 'dto'"
+            "SELECT view_name FROM duckdb_views() WHERE view_name = 'dto_expanded'"
         ).fetchone()
-        if dto_view is not None:
-            _vdb_to_table(vdb, conn, dto_select_sql(), {}, "dto", "dto", mode="create")
-        else:
-            logger.warning("  dto view not found in VirtualDB — skipping")
+        if dto_view is None:
+            raise RuntimeError(
+                "dto_expanded view not found in VirtualDB. The DTO dataset must be "
+                "declared with a `links:` block in the collection YAML for "
+                "labretriever to build it."
+            )
+        _exec_static(conn, dto_schema_sql(), "dto (schema)")
+        dto_rows = _vdb_to_table(
+            vdb,
+            conn,
+            dto_select_sql(),
+            {},
+            "dto",
+            "dto",
+            mode="insert",
+            columns=DTO_INSERT_COLUMNS,
+        )
+        if dto_rows == 0:
+            raise RuntimeError("dto_expanded returned no rows")
+        _exec_static(conn, dto_resolve_regulators_sql(), "dto (regulators)")
+        unresolved = conn.execute(
+            "SELECT count(*) FROM dto WHERE regulator_locus_tag IS NULL"
+        ).fetchone()[0]
+        if unresolved:
+            logger.warning(
+                "  dto: %d of %d rows have no regulator "
+                "(binding sample absent from sample_regulator)",
+                unresolved,
+                dto_rows,
+            )
 
         # ------------------------------------------------------------------
         # 4. Comparison — computed
@@ -239,10 +353,17 @@ def materialize(
                     for i in range(0, len(regulators), chunk)
                 ] or [()]
 
-                for top_n, eff_thresh, pval_thresh in itertools.product(
-                    top_n_values, effect_thresholds, pvalue_thresholds
+                for top_n, eff_thresh, pval_thresh in _topn_variants(
+                    b_db,
+                    p_db,
+                    top_n_values,
+                    effect_thresholds,
+                    pvalue_thresholds,
+                    preset_names=getattr(args, "presets", None),
                 ):
-                    pair_label = f"topn {b_db}×{p_db} n={top_n}"
+                    pair_label = (
+                        f"topn {b_db}×{p_db} n={top_n} " f"({eff_thresh},{pval_thresh})"
+                    )
                     pair_rows = 0
                     for batch_idx, batch in enumerate(batches):
                         sql, params = topn_pair_select_sql(
@@ -278,6 +399,79 @@ def materialize(
                     logger.info("  %-40s  total %d rows", pair_label, pair_rows)
         else:
             logger.info("  topn_results skipped (--skip-topn)")
+
+        # ---- topn_agreement ----
+        # Same-datatype top-N set overlap, for the "agreement between datasets"
+        # figure. Every dataset pair is materialized, not just the primaries: the
+        # figure's dataset selector lets a reader compare promoter sets and calling
+        # methods as well as assays, and which slice is interesting is a read-time
+        # question. Only AGREEMENT_EXCLUDED is held back -- see its docstring.
+        _exec_static(conn, agreement_schema_sql(), "topn_agreement (schema)")
+
+        if not args.skip_topn:
+            for ctype, cfg_map in (
+                ("binding", BINDING_TOPN_CONFIGS),
+                ("perturbation", None),
+            ):
+                if ctype == "binding":
+                    views = sorted(
+                        db
+                        for db in datasets
+                        if db in cfg_map and db not in AGREEMENT_EXCLUDED
+                    )
+                else:
+                    views = sorted(
+                        db for db in datasets if db in PERTURBATION_DATASET_COLUMNS
+                    )
+                logger.info(
+                    "  topn_agreement %s: %d datasets, %d pairs",
+                    ctype,
+                    len(views),
+                    len(views) * (len(views) - 1) // 2,
+                )
+                for view_a, view_b in itertools.combinations(views, 2):
+                    hf_a = DATASET_HF_COORDS.get(view_a, ("", ""))
+                    hf_b = DATASET_HF_COORDS.get(view_b, ("", ""))
+                    if ctype == "binding":
+                        cfg_a, cfg_b = cfg_map[view_a], cfg_map[view_b]
+                        col_a, col_b = (
+                            cfg_a["binding_sample_col"],
+                            cfg_b["binding_sample_col"],
+                        )
+                        rank_a, asc_a = cfg_a["rank_col"], cfg_a["rank_asc"]
+                        rank_b, asc_b = cfg_b["rank_col"], cfg_b["rank_asc"]
+                    else:
+                        col_a = col_b = "sample_id"
+                        rank_a = PERTURBATION_DATASET_COLUMNS[view_a][0]
+                        rank_b = PERTURBATION_DATASET_COLUMNS[view_b][0]
+                        # Ranked by |effect|, so larger is always "more responsive".
+                        asc_a = asc_b = False
+                    sql, params = agreement_pair_select_sql(
+                        view_a=view_a,
+                        hf_repo_a=hf_a[0],
+                        hf_config_a=hf_a[1],
+                        sample_col_a=col_a,
+                        rank_col_a=rank_a,
+                        rank_asc_a=asc_a,
+                        view_b=view_b,
+                        hf_repo_b=hf_b[0],
+                        hf_config_b=hf_b[1],
+                        sample_col_b=col_b,
+                        rank_col_b=rank_b,
+                        rank_asc_b=asc_b,
+                        comparison_type=ctype,
+                    )
+                    _vdb_to_table(
+                        vdb,
+                        conn,
+                        sql,
+                        params,
+                        "topn_agreement",
+                        f"agreement({ctype}) {view_a}×{view_b}",
+                        mode="insert",
+                    )
+        else:
+            logger.info("  topn_agreement skipped (--skip-topn)")
 
         # ---- correlations ----
         _exec_static(conn, correlations_schema_sql(), "correlations (schema)")

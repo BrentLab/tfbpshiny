@@ -199,17 +199,67 @@ repositories:
           field: regulator_locus_tag
         Regulator symbol:
           field: regulator_symbol
-      macs2_annotated_peaks_combined:
+      macs_kang:
         tags:
           data_type: binding
           assay: ChIPexo
-          display_name: "2021 ChIP-exo Peaks (MACS2)"
+          display_name: "2021 ChIP-exo Peaks (MACS, Kang)"
         description: >-
-          ChIP-exo peaks called with MACS2 (see scripts/rossi_peak_analysis.R),
-          filtered to -log10(q) > 0.1 and to peaks within 700 bp of the 5' end
-          of the most 5' exon. Reports the number of peaks annotated to each
-          target along with the nearest, median, and max -log10(q) score.
-        db_name: rossi_macs2_peaks
+          ChIP-exo peaks called with MACS (see scripts/rossi_peak_analysis.R),
+          then intersected with the Kang promoter set (700 bp upstream of the
+          start codon, truncated by upstream features). Targets are scored by
+          the nearest, median, and max -log10(q) of the peaks in the promoter.
+        db_name: rossi_peaks_kang
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+      macs_mindel:
+        tags:
+          data_type: binding
+          assay: ChIPexo
+          display_name: "2021 ChIP-exo Peaks (MACS, Mindel)"
+        description: >-
+          ChIP-exo peaks called with MACS (see scripts/rossi_peak_analysis.R),
+          then intersected with the Mindel promoter set. Targets are scored by
+          the nearest, median, and max -log10(q) of the peaks in the promoter.
+        db_name: rossi_peaks_mindel
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+      macs_bp500:
+        tags:
+          data_type: binding
+          assay: ChIPexo
+          display_name: "2021 ChIP-exo Peaks (MACS, 500bp)"
+        description: >-
+          ChIP-exo peaks called with MACS (see scripts/rossi_peak_analysis.R),
+          then intersected with the promoter set defined as 500 bp upstream of
+          the start codon. Targets are scored by the nearest, median, and max
+          -log10(q) of the peaks in the promoter.
+        db_name: rossi_peaks_500bp
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+      macs_intergenic:
+        tags:
+          data_type: binding
+          assay: ChIPexo
+          display_name: "2021 ChIP-exo Peaks (MACS, Intergenic)"
+        description: >-
+          ChIP-exo peaks called with MACS (see scripts/rossi_peak_analysis.R),
+          then intersected with the intergenic promoter set from SGD 5-1.
+          Targets are scored by the nearest, median, and max -log10(q) of the
+          peaks in the promoter.
+        db_name: rossi_peaks_intergenic
         sample_id:
           field: sample_id
         Regulator locus tag:
@@ -334,6 +384,91 @@ repositories:
           field: regulator_locus_tag
         Regulator symbol:
           field: regulator_symbol
+      kang_peaks:
+        tags:
+          data_type: binding
+          assay: ChEC-seq
+          display_name: "2025 ChEC-seq Peaks (HOMER, Kang)"
+        description: >-
+          ChEC-seq peaks called with HOMER, replicating the peak-calling method
+          used in the reference publication (see
+          scripts/mahendrawada_peak_analysis.R), then intersected with the Kang
+          promoter set (700 bp upstream of the start codon, truncated by
+          upstream features). A peak is retained when it appears in at least two
+          replicates. Targets are scored by the nearest, median, and max peak
+          score in the promoter.
+        db_name: chec_m2025_peaks_kang
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+        Experimental condition:
+          field: condition
+      mindel_peaks:
+        tags:
+          data_type: binding
+          assay: ChEC-seq
+          display_name: "2025 ChEC-seq Peaks (HOMER, Mindel)"
+        description: >-
+          ChEC-seq peaks called with HOMER, replicating the peak-calling method
+          used in the reference publication (see
+          scripts/mahendrawada_peak_analysis.R), then intersected with the
+          Mindel promoter set. A peak is retained when it appears in at least
+          two replicates. Targets are scored by the nearest, median, and max
+          peak score in the promoter.
+        db_name: chec_m2025_peaks_mindel
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+        Experimental condition:
+          field: condition
+      bp500_peaks:
+        tags:
+          data_type: binding
+          assay: ChEC-seq
+          display_name: "2025 ChEC-seq Peaks (HOMER, 500bp)"
+        description: >-
+          ChEC-seq peaks called with HOMER, replicating the peak-calling method
+          used in the reference publication (see
+          scripts/mahendrawada_peak_analysis.R), then intersected with the
+          promoter set defined as 500 bp upstream of the start codon. A peak is
+          retained when it appears in at least two replicates. Targets are
+          scored by the nearest, median, and max peak score in the promoter.
+        db_name: chec_m2025_peaks_500bp
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+        Experimental condition:
+          field: condition
+      intergenic_peaks:
+        tags:
+          data_type: binding
+          assay: ChEC-seq
+          display_name: "2025 ChEC-seq Peaks (HOMER, Intergenic)"
+        description: >-
+          ChEC-seq peaks called with HOMER, replicating the peak-calling method
+          used in the reference publication (see
+          scripts/mahendrawada_peak_analysis.R), then intersected with the
+          intergenic promoter set from SGD 5-1. A peak is retained when it
+          appears in at least two replicates. Targets are scored by the nearest,
+          median, and max peak score in the promoter.
+        db_name: chec_m2025_peaks_intergenic
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+        Experimental condition:
+          field: condition
       # perturbation
       rnaseq_reprocessed:
         tags:
@@ -445,18 +580,45 @@ repositories:
           field: dto_fdr
         links:
           binding_id:
-            - [BrentLab/harbison_2004, harbison_2004]
-            - [BrentLab/callingcards, annotated_features]
-            - [BrentLab/callingcards, annotated_features_combined]
-            - [BrentLab/callingcards, annotated_features_orig_reprocess]
+            # 22 binding datasets present in the dto partitions
+            # callingcards
+            - [BrentLab/callingcards, 2026_analysis_set]
+            - [BrentLab/callingcards, annotated_feature_reprocess_mindel_analysis]
+            - [BrentLab/callingcards, annotated_feature_reprocess_start_codon_500bp_analysis]
+            - [BrentLab/callingcards, annotated_feature_reprocess_intergenic_analysis]
+            # rossi_2021
             - [BrentLab/rossi_2021, rossi_2021_af_combined]
+            - [BrentLab/rossi_2021, rossi_2021_af_combined_mindel]
+            - [BrentLab/rossi_2021, rossi_2021_af_combined_start_codon_500bp]
+            - [BrentLab/rossi_2021, rossi_2021_af_combined_intergenic]
+            - [BrentLab/rossi_2021, yep_filtered_peaks_combined]
+            - [BrentLab/rossi_2021, macs_kang]
+            - [BrentLab/rossi_2021, macs_mindel]
+            - [BrentLab/rossi_2021, macs_bp500]
+            - [BrentLab/rossi_2021, macs_intergenic]
+            # mahendrawada_2025
             - [BrentLab/mahendrawada_2025, chec_mahendrawada_m2025_af_combined]
+            - [BrentLab/mahendrawada_2025, chec_mahendrawada_m2025_af_combined_mindel]
+            - [BrentLab/mahendrawada_2025, chec_mahendrawada_m2025_af_combined_start_codon_500bp]
+            - [BrentLab/mahendrawada_2025, chec_mahendrawada_m2025_af_combined_intergenic]
+            - [BrentLab/mahendrawada_2025, mahendrawada_chec_seq]
+            - [BrentLab/mahendrawada_2025, kang_peaks]
+            - [BrentLab/mahendrawada_2025, mindel_peaks]
+            - [BrentLab/mahendrawada_2025, bp500_peaks]
+            - [BrentLab/mahendrawada_2025, intergenic_peaks]
           perturbation_id:
-            - [BrentLab/kemmeren_2014, kemmeren_2014]
-            - [BrentLab/hackett_2020, hackett_2020]
+            # 6 perturbation datasets present in the dto partitions
+            # hu_2007_reimand_2010
+            - [BrentLab/hu_2007_reimand_2010, hu_2007_reimand_2010]
+            # mahendrawada_2025
+            - [BrentLab/mahendrawada_2025, rnaseq_reprocessed]
+            # hughes_2006
             - [BrentLab/hughes_2006, overexpression]
             - [BrentLab/hughes_2006, knockout]
-            - [BrentLab/mahendrawada_2025, rnaseq_reprocessed]
+            # kemmeren_2014
+            - [BrentLab/kemmeren_2014, kemmeren_2014]
+            # hackett_2020
+            - [BrentLab/hackett_2020, hackett_2020_analysis_set]
 
 factor_aliases:
   Carbon source:

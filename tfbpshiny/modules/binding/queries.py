@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from tfbpshiny.utils.corr_query import fetch_corr_pairs, get_filtered_sample_ids  # noqa: F401
+from tfbpshiny.utils.corr_query import (  # noqa: F401
+    fetch_corr_pairs,
+    get_filtered_sample_ids,
+)
 
 # Maps binding db_name -> (score_col, pvalue_col) — must match what was materialized.
 BINDING_DATASET_COLUMNS: dict[str, tuple[str, str]] = {

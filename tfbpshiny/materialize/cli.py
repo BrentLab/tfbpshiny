@@ -3,6 +3,7 @@ CLI handler for the ``tfbpshiny materialize`` subcommand.
 
 Registers the subparser and implements ``run_materialize``, which loads
 VirtualDB from the YAML config and calls :func:`~.coordinator.materialize`.
+
 """
 
 from __future__ import annotations
@@ -44,9 +45,11 @@ def run_materialize(args: argparse.Namespace) -> None:
     output_path = pathlib.Path(args.output)
     if output_path.exists():
         try:
-            answer = input(
-                f"\n'{output_path}' already exists. Overwrite? [y/N] "
-            ).strip().lower()
+            answer = (
+                input(f"\n'{output_path}' already exists. Overwrite? [y/N] ")
+                .strip()
+                .lower()
+            )
         except EOFError:
             answer = ""
         if answer in ("y", "yes"):
@@ -66,9 +69,7 @@ def run_materialize(args: argparse.Namespace) -> None:
         logger.exception("Failed to initialize VirtualDB.")
         sys.exit(1)
 
-    logger.info(
-        "Writing materialized database to %s …", args.output
-    )
+    logger.info("Writing materialized database to %s …", args.output)
     try:
         materialize(args.output, vdb, args)
     except Exception:
@@ -123,6 +124,23 @@ def register_subparser(subparsers: argparse._SubParsersAction) -> None:  # type:
         ),
     )
     p.add_argument(
+        "--preset",
+        dest="presets",
+        type=str,
+        action="append",
+        default=None,
+        choices=["Relaxed", "Stringent"],
+        help=(
+            "Materialize the (effect, pvalue) pair each perturbation dataset uses "
+            "under this responsiveness preset, so the app's preset selector can "
+            "toggle between them. Stringent holds each dataset's published "
+            "criteria. Repeatable; defaults to both Relaxed and Stringent. "
+            "Thresholds resolve per dataset, so the two presets together "
+            "need only 1-2 pairs per dataset rather than the 8 a global cross "
+            "product of --effect-threshold x --pvalue-threshold would produce."
+        ),
+    )
+    p.add_argument(
         "--effect-threshold",
         dest="effect_thresholds",
         type=float,
@@ -169,10 +187,16 @@ def register_subparser(subparsers: argparse._SubParsersAction) -> None:  # type:
 
 def _run_with_defaults(args: argparse.Namespace) -> None:
     """Apply list-argument defaults then delegate to :func:`run_materialize`."""
+    from tfbpshiny.materialize.comparison.topn import TOP_N_CHOICES
+
     if args.top_n_values is None:
-        args.top_n_values = [25]
+        args.top_n_values = list(TOP_N_CHOICES)
     if args.effect_thresholds is None:
         args.effect_thresholds = [0.0]
     if args.pvalue_thresholds is None:
         args.pvalue_thresholds = [0.05]
+    if args.presets is None:
+        # Both by default: the Comparison page offers a Relaxed/Stringent toggle, and
+        # a preset that was never materialized silently returns no rows.
+        args.presets = ["Relaxed", "Stringent"]
     run_materialize(args)

@@ -13,6 +13,8 @@ from tfbpshiny.modules.binding.server import binding_workspace_server
 from tfbpshiny.modules.binding.ui import binding_ui
 from tfbpshiny.modules.comparison.server import comparison_workspace_server
 from tfbpshiny.modules.comparison.ui import comparison_ui
+from tfbpshiny.modules.figures.server import figures_workspace_server
+from tfbpshiny.modules.figures.ui import figures_ui
 from tfbpshiny.modules.home.ui import HOME_CARD_NAV_TARGETS, home_ui
 from tfbpshiny.modules.perturbation.server import perturbation_workspace_server
 from tfbpshiny.modules.perturbation.ui import perturbation_ui
@@ -37,6 +39,7 @@ _selection_ui = selection_ui("select_datasets")
 _binding_ui = binding_ui("binding")
 _perturbation_ui = perturbation_ui("perturbation")
 _comparison_ui = comparison_ui("comparison")
+_figures_ui = figures_ui("figures")
 
 app_ui = ui.page_navbar(
     ui.nav_panel("Home", home_ui()),
@@ -47,6 +50,7 @@ app_ui = ui.page_navbar(
         "Binding/Perturbation Comparisons",
         _comparison_ui,
     ),
+    ui.nav_panel("Figures", _figures_ui),
     ui.nav_spacer(),
     ui.nav_control(github_badge()),
     title="TF Binding & Perturbation Explorer",
@@ -56,6 +60,7 @@ app_ui = ui.page_navbar(
         "Binding",
         "Perturbation",
         "Binding/Perturbation Comparisons",
+        "Figures",
     ],
     navbar_options=ui.navbar_options(bg="#722F37", theme="dark"),
     header=ui.tags.head(
@@ -69,9 +74,11 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     """Create shared reactive state and call all module servers."""
     import duckdb
 
+    from tfbpshiny.utils.schema_check import warn_if_stale_topn_schema
     from tfbpshiny.utils.vdb_init import load_app_datasets
 
     conn: duckdb.DuckDBPyConnection = duckdb.connect(_db_path, read_only=True)
+    warn_if_stale_topn_schema(conn, logger)
     app_datasets = load_app_datasets(conn)
 
     # Navigate to the target tab when a home-page card title link is clicked.
@@ -114,6 +121,13 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         "comparison",
         active_binding_datasets=active_binding_datasets,
         active_perturbation_datasets=active_perturbation_datasets,
+        dataset_filters=dataset_filters,
+        conn=conn,
+        logger=logger,
+    )
+
+    figures_workspace_server(
+        "figures",
         dataset_filters=dataset_filters,
         conn=conn,
         logger=logger,

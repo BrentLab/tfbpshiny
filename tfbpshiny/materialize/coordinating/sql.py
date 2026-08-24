@@ -38,7 +38,10 @@ DATASET_HF_COORDS: dict[str, tuple[str, str]] = {
     "rossi_500bp": ("BrentLab/rossi_2021", "rossi_2021_af_combined_start_codon_500bp"),
     "rossi_intergenic": ("BrentLab/rossi_2021", "rossi_2021_af_combined_intergenic"),
     "rossi_peaks": ("BrentLab/rossi_2021", "yep_filtered_peaks_combined"),
-    "rossi_macs2_peaks": ("BrentLab/rossi_2021", "macs2_annotated_peaks_combined"),
+    "rossi_peaks_kang": ("BrentLab/rossi_2021", "macs_kang"),
+    "rossi_peaks_mindel": ("BrentLab/rossi_2021", "macs_mindel"),
+    "rossi_peaks_500bp": ("BrentLab/rossi_2021", "macs_bp500"),
+    "rossi_peaks_intergenic": ("BrentLab/rossi_2021", "macs_intergenic"),
     "chec_m2025": (
         "BrentLab/mahendrawada_2025",
         "chec_mahendrawada_m2025_af_combined",
@@ -56,6 +59,13 @@ DATASET_HF_COORDS: dict[str, tuple[str, str]] = {
         "chec_mahendrawada_m2025_af_combined_intergenic",
     ),
     "chec_m2025_peaks": ("BrentLab/mahendrawada_2025", "mahendrawada_chec_seq"),
+    "chec_m2025_peaks_kang": ("BrentLab/mahendrawada_2025", "kang_peaks"),
+    "chec_m2025_peaks_mindel": ("BrentLab/mahendrawada_2025", "mindel_peaks"),
+    "chec_m2025_peaks_500bp": ("BrentLab/mahendrawada_2025", "bp500_peaks"),
+    "chec_m2025_peaks_intergenic": (
+        "BrentLab/mahendrawada_2025",
+        "intergenic_peaks",
+    ),
     "kemmeren": ("BrentLab/kemmeren_2014", "kemmeren_2014"),
     "degron": ("BrentLab/mahendrawada_2025", "rnaseq_reprocessed"),
     "hackett": ("BrentLab/hackett_2020", "hackett_2020_analysis_set"),
@@ -95,7 +105,12 @@ INSERT INTO promoter_sets VALUES
      'Full intergenic region upstream of the 5'' end of the feature; 1 410 of 6 040 features are divergently transcribed'),
     ('peaks',
      'Peaks',
-     'Regions as called by the original authors'' peak-calling pipeline; not a fixed promoter window');
+     'Regions as called by the original authors'' peak-calling pipeline; not a fixed promoter window'),
+    ('array',
+     'Array Probes',
+     'Regions fixed by the ChIP-chip microarray platform. Not a promoter '
+     || 'window and not re-quantifiable over one: the source ships per-target '
+     || 'binding ratios with no underlying signal track to re-summarise');
 """
 
 
@@ -160,11 +175,15 @@ INSERT INTO dataset_registry VALUES
  'binding', 'CallingCards',
  '2026 Calling Cards', '2026 Calling Cards',
  TRUE, TRUE, NULL, 'kang', 'promoter_enrichment'),
+-- Harbison's regions come from the microarray, not a promoter definition. It was
+-- tagged 'kang', which put it in the Kang column of the promoter-definition grid and
+-- implied a comparison that cannot be made: there are no Mindel/500bp/intergenic
+-- variants of it and no signal track from which to build any.
 ('harbison',
  'BrentLab/harbison_2004', 'harbison_2004',
  'binding', 'ChIP-chip',
  '2004 ChIP-chip (Harbison)', '2004 ChIP-chip',
- TRUE, FALSE, NULL, 'kang', 'promoter_enrichment'),
+ TRUE, FALSE, NULL, 'array', 'promoter_enrichment'),
 ('rossi',
  'BrentLab/rossi_2021', 'rossi_2021_af_combined',
  'binding', 'ChIPexo',
@@ -246,11 +265,26 @@ INSERT INTO dataset_registry VALUES
  'binding', 'ChIPexo',
  '2021 ChIP-exo Peaks', '2021 ChIP-exo',
  FALSE, FALSE, 'rossi', 'peaks', 'peak_calling'),
-('rossi_macs2_peaks',
- 'BrentLab/rossi_2021', 'macs2_annotated_peaks_combined',
+('rossi_peaks_kang',
+ 'BrentLab/rossi_2021', 'macs_kang',
  'binding', 'ChIPexo',
- '2021 ChIP-exo Peaks (MACS2)', '2021 ChIP-exo',
- FALSE, FALSE, 'rossi', 'peaks', 'peak_calling'),
+ '2021 ChIP-exo Peaks (MACS, Kang)', '2021 ChIP-exo',
+ FALSE, FALSE, 'rossi', 'kang', 'peak_calling'),
+('rossi_peaks_mindel',
+ 'BrentLab/rossi_2021', 'macs_mindel',
+ 'binding', 'ChIPexo',
+ '2021 ChIP-exo Peaks (MACS, Mindel)', '2021 ChIP-exo',
+ FALSE, FALSE, 'rossi', 'mindel', 'peak_calling'),
+('rossi_peaks_500bp',
+ 'BrentLab/rossi_2021', 'macs_bp500',
+ 'binding', 'ChIPexo',
+ '2021 ChIP-exo Peaks (MACS, 500bp)', '2021 ChIP-exo',
+ FALSE, FALSE, 'rossi', '500bp', 'peak_calling'),
+('rossi_peaks_intergenic',
+ 'BrentLab/rossi_2021', 'macs_intergenic',
+ 'binding', 'ChIPexo',
+ '2021 ChIP-exo Peaks (MACS, Intergenic)', '2021 ChIP-exo',
+ FALSE, FALSE, 'rossi', 'intergenic', 'peak_calling'),
 -- chec_m2025 variants
 ('chec_m2025_mindel',
  'BrentLab/mahendrawada_2025', 'chec_mahendrawada_m2025_af_combined_mindel',
@@ -271,7 +305,27 @@ INSERT INTO dataset_registry VALUES
  'BrentLab/mahendrawada_2025', 'mahendrawada_chec_seq',
  'binding', 'ChEC-seq',
  '2025 ChEC-seq Peaks (Mahendrawada)', '2025 ChEC-seq',
- FALSE, FALSE, 'chec_m2025', 'peaks', 'peak_calling');
+ FALSE, FALSE, 'chec_m2025', 'peaks', 'peak_calling'),
+('chec_m2025_peaks_kang',
+ 'BrentLab/mahendrawada_2025', 'kang_peaks',
+ 'binding', 'ChEC-seq',
+ '2025 ChEC-seq Peaks (HOMER, Kang)', '2025 ChEC-seq',
+ FALSE, FALSE, 'chec_m2025', 'kang', 'peak_calling'),
+('chec_m2025_peaks_mindel',
+ 'BrentLab/mahendrawada_2025', 'mindel_peaks',
+ 'binding', 'ChEC-seq',
+ '2025 ChEC-seq Peaks (HOMER, Mindel)', '2025 ChEC-seq',
+ FALSE, FALSE, 'chec_m2025', 'mindel', 'peak_calling'),
+('chec_m2025_peaks_500bp',
+ 'BrentLab/mahendrawada_2025', 'bp500_peaks',
+ 'binding', 'ChEC-seq',
+ '2025 ChEC-seq Peaks (HOMER, 500bp)', '2025 ChEC-seq',
+ FALSE, FALSE, 'chec_m2025', '500bp', 'peak_calling'),
+('chec_m2025_peaks_intergenic',
+ 'BrentLab/mahendrawada_2025', 'intergenic_peaks',
+ 'binding', 'ChEC-seq',
+ '2025 ChEC-seq Peaks (HOMER, Intergenic)', '2025 ChEC-seq',
+ FALSE, FALSE, 'chec_m2025', 'intergenic', 'peak_calling');
 """
 
 
@@ -370,4 +424,59 @@ CREATE TABLE dataset_column_metadata (
 
 INSERT INTO dataset_column_metadata VALUES
     {values_clause};
+"""
+
+
+def sample_regulator_sql(db_names: list[str]) -> str:
+    """
+    Return SQL creating and populating the ``sample_regulator`` lookup table.
+
+    Maps ``(db_name, sample_id) -> regulator_locus_tag`` across every dataset whose
+    ``{db_name}_meta`` table carries a regulator column. Two consumers need it:
+
+    * resolving ``dto.regulator_locus_tag`` -- the DTO source carries only composite
+      ``repo;config;sample_id`` identifiers, with no regulator column of its own;
+    * computing the DTO denominator, which is the count of regulators present in
+      *both* a binding and a perturbation dataset.
+
+    ``sample_id`` is cast to VARCHAR because the underlying meta tables disagree on
+    type (VARCHAR for callingcards and degron, INTEGER elsewhere) and the composite
+    identifiers DTO ships are strings.
+
+    Rows with a NULL regulator are skipped so the column can be ``NOT NULL``.
+
+    :param db_names: Dataset names whose ``{db_name}_meta`` table exists **and** has a
+        ``regulator_locus_tag`` column.
+    :returns: ``CREATE TABLE`` + ``INSERT`` SQL string.
+    :rtype: str
+
+    """
+    ddl = """
+CREATE TABLE sample_regulator (
+    db_name             VARCHAR NOT NULL,
+    sample_id           VARCHAR NOT NULL,
+    regulator_locus_tag VARCHAR NOT NULL,
+    PRIMARY KEY (db_name, sample_id)
+);
+"""
+    if not db_names:
+        return ddl
+
+    selects = [
+        f"""SELECT '{db.replace("'", "''")}' AS db_name,
+       CAST(sample_id AS VARCHAR)          AS sample_id,
+       regulator_locus_tag
+FROM "{db}_meta"
+WHERE regulator_locus_tag IS NOT NULL"""
+        for db in db_names
+    ]
+    # DISTINCT because a meta table may carry several rows per sample (e.g. one per
+    # condition), which would otherwise violate the primary key.
+    union = "\n UNION ALL\n".join(selects)
+    return f"""{ddl}
+INSERT INTO sample_regulator
+SELECT DISTINCT ON (db_name, sample_id) db_name, sample_id, regulator_locus_tag
+FROM (
+{union}
+);
 """

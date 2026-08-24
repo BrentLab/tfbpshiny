@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from tfbpshiny.utils.corr_query import fetch_corr_pairs, get_filtered_sample_ids  # noqa: F401
+from tfbpshiny.utils.corr_query import (  # noqa: F401
+    fetch_corr_pairs,
+    get_filtered_sample_ids,
+)
 
 # Maps perturbation db_name -> (effect_col, pvalue_col).
 # Empty string means the column does not exist in that dataset.
