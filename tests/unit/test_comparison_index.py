@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 
 from tfbpshiny.modules.comparison.queries import (
-    BINDING_METHOD_ORDER,
-    PROMOTER_SET_ORDER,
+    METHOD_LEVELS,
+    PROMOTER_SET_LEVELS,
     build_binding_index,
 )
 
@@ -75,7 +75,7 @@ def registry_df() -> pd.DataFrame:
                 binding_method_id="promoter_enrichment",
             )
         )
-    for ps in PROMOTER_SET_ORDER:
+    for ps in PROMOTER_SET_LEVELS:
         rows.append(
             _row(
                 f"rossi_peaks_{ps}",
@@ -93,7 +93,7 @@ def test_every_promoter_set_resolves_both_methods(registry_df: pd.DataFrame) -> 
     index = build_binding_index(registry_df)
     assert index.resolve("rossi", "kang", "promoter_enrichment") == "rossi"
     assert index.resolve("rossi", "mindel", "promoter_enrichment") == "rossi_mindel"
-    for ps in PROMOTER_SET_ORDER:
+    for ps in PROMOTER_SET_LEVELS:
         assert index.resolve("rossi", ps, "peak_calling") == f"rossi_peaks_{ps}"
 
 
@@ -103,19 +103,19 @@ def test_original_peaks_excluded_from_promoter_set_columns(
     """The authors' peaks keep promoter_set_id='peaks' and never fill a column."""
     index = build_binding_index(registry_df)
     assert index.promoter_set_id["rossi_peaks"] == "peaks"
-    assert "peaks" not in PROMOTER_SET_ORDER
+    assert "peaks" not in PROMOTER_SET_LEVELS
     resolved = {
         index.resolve("rossi", ps, m)
-        for ps in PROMOTER_SET_ORDER
-        for m in BINDING_METHOD_ORDER
+        for ps in PROMOTER_SET_LEVELS
+        for m in METHOD_LEVELS
     }
     assert "rossi_peaks" not in resolved
 
 
 def test_promoter_sets_with_both_methods_is_ordered(registry_df: pd.DataFrame) -> None:
-    """Returned promoter sets follow PROMOTER_SET_ORDER, not registry row order."""
+    """Returned promoter sets follow PROMOTER_SET_LEVELS, not registry row order."""
     index = build_binding_index(registry_df)
-    assert index.promoter_sets_with_both_methods("rossi") == list(PROMOTER_SET_ORDER)
+    assert index.promoter_sets_with_both_methods("rossi") == list(PROMOTER_SET_LEVELS)
 
 
 def test_dataset_without_peaks_is_not_method_comparable(
@@ -174,14 +174,14 @@ def test_sidebar_promoter_set_keys_match_data_keys() -> None:
         _PROMOTER_TOOLTIPS,
     )
 
-    assert set(_PROMOTER_SET_ALIAS) == set(PROMOTER_SET_ORDER)
-    assert set(_PROMOTER_TOOLTIPS) == set(PROMOTER_SET_ORDER)
+    assert set(_PROMOTER_SET_ALIAS) == set(PROMOTER_SET_LEVELS)
+    assert set(_PROMOTER_TOOLTIPS) == set(PROMOTER_SET_LEVELS)
 
 
 def test_index_promoter_set_ids_are_known(registry_df: pd.DataFrame) -> None:
     """Every promoter_set_id is either a real column or the 'peaks' catch-all."""
     index = build_binding_index(registry_df)
-    assert set(index.promoter_set_id.values()) <= set(PROMOTER_SET_ORDER) | {"peaks"}
+    assert set(index.promoter_set_id.values()) <= set(PROMOTER_SET_LEVELS) | {"peaks"}
 
 
 def test_empty_registry_yields_empty_index() -> None:

@@ -13,19 +13,13 @@ crossed-random-effects version (the R/``glmer`` route, drafted separately for
 ``hf_yeast_explorer``) would let the regulator effect itself vary by method rather than
 just shifting the intercept -- future work, not required here.
 
-Ported directly from ``tmp/topn_method_regression.ipynb`` (the "cross-check -- pooled
-model" section), which already validated this design against a per-regulator stratified
-fit and cross-checked its inputs against the live app.
+``tmp/topn_method_regression.ipynb`` calls these functions to reproduce the app's
+tables; it is a consumer of this module, not its source.
 
-This module is self-contained (mirrors the convention already established in
-``topn.py``'s module docstring): it does not import from ``modules/comparison/``, even
-though a `BindingIndex`-shaped resolver already exists there, because ``materialize/``
-is meant to stand on its own. ``get_filtered_sample_ids``/``DEFAULT_DATASET_FILTERS``
-are the one exception -- they are shared, app-wide utilities (not registry-resolution
-helpers this module would otherwise keep a local copy of), reused here so the panel
-respects the same default sample selections every other Comparison tab already applies
-at query time. Materialize runs offline with no live session, so it can only ever bake
-in the *default* filters, not a user's live in-session change.
+The panel applies ``DEFAULT_DATASET_FILTERS`` (through ``get_filtered_sample_ids``) so
+it respects the same default sample selections every Comparison tab applies at query
+time. Materialize runs offline with no live session, so it can only ever bake in the
+*default* filters, not a user's live in-session change.
 
 The panel's candidate targets are restricted to the cross-promoter-set intersection
 (see :func:`promoter_set_target_universe`) rather than reading the shared
@@ -49,6 +43,7 @@ from typing import Any
 import pandas as pd
 import statsmodels.formula.api as smf
 
+from tfbpshiny.datasets import METHOD_LEVELS, PROMOTER_SET_LEVELS
 from tfbpshiny.utils.corr_query import (
     expand_filters_to_variants,
     get_filtered_sample_ids,
@@ -62,13 +57,6 @@ logger = logging.getLogger("shiny")
 #: the method contrast and contributes nothing to the interaction); Harbison's regions
 #: are microarray probes with no re-quantifiable window (`promoter_set_id='array'`).
 ASSAY_PRIMARIES: tuple[str, ...] = ("rossi_500bp", "chec_m2025_500bp")
-
-#: Promoter sets that are real, re-quantifiable windows. `'peaks'` (the authors'
-#: original calls) and `'array'` (Harbison) are deliberately not levels of this factor.
-PROMOTER_SET_LEVELS: tuple[str, ...] = ("kang", "mindel", "500bp", "intergenic")
-
-#: The two binding methods being compared.
-METHOD_LEVELS: tuple[str, ...] = ("promoter_enrichment", "peak_calling")
 
 #: Minimum distinct regulators required to fit -- below this a regulator fixed effect
 #: and cluster-robust SEs are not meaningful.

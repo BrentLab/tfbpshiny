@@ -31,6 +31,7 @@ from typing import Any
 import duckdb
 import pandas as pd
 
+from tfbpshiny.datasets import PRESET_NAMES, TOP_N_CHOICES
 from tfbpshiny.modules.comparison import queries as cq
 from tfbpshiny.modules.figures import queries as fq
 from tfbpshiny.utils.corr_query import expand_filters_to_variants, fetch_corr_pairs
@@ -41,8 +42,8 @@ from tfbpshiny.utils.vdb_init import (
     load_app_datasets,
 )
 
-PRESETS = ("Relaxed", "Stringent")
-TOP_NS = (10, 25, 50, 75, 100)
+PRESETS = PRESET_NAMES
+TOP_NS = TOP_N_CHOICES
 FEATURED_TF = "YJL110C"  # the Figures tab's default featured TF (GZF3)
 
 

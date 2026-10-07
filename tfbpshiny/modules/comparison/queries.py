@@ -13,7 +13,13 @@ from typing import Any
 import duckdb
 import pandas as pd
 
-from tfbpshiny.materialize.comparison.topn import TOP_N_CHOICES
+from tfbpshiny.datasets import (
+    DEFAULT_TOP_N,
+    DTO_PVALUE_THRESHOLD,
+    METHOD_LEVELS,
+    PROMOTER_SET_LEVELS,
+    TOP_N_CHOICES,
+)
 from tfbpshiny.utils.corr_query import get_filtered_sample_ids
 
 _perf_logger = logging.getLogger("shiny.perf")
@@ -21,18 +27,6 @@ _perf_logger = logging.getLogger("shiny.perf")
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-#: Default (pre-selected) top-N choice in the UI. Must be a member of
-#: ``TOP_N_CHOICES`` (tfbpshiny.materialize.comparison.topn) -- the fixed set of
-#: values actually materialized into ``topn_results``.
-DEFAULT_TOP_N = 25
-
-assert DEFAULT_TOP_N in TOP_N_CHOICES
-
-#: Promoter sets that define a fixed upstream window, in display order. The
-#: ``peaks`` promoter set (the original authors' peak calls, which have no fixed
-#: window) is deliberately excluded -- it is not comparable across methods.
-PROMOTER_SET_ORDER: tuple[str, ...] = ("kang", "mindel", "500bp", "intergenic")
 
 #: Display label for each ``promoter_sets.promoter_set_id``.
 PROMOTER_SET_LABELS: dict[str, str] = {
@@ -43,9 +37,6 @@ PROMOTER_SET_LABELS: dict[str, str] = {
     "peaks": "Peaks",
     "array": "Array Probes",
 }
-
-#: Binding methods in display order, matching ``binding_methods.binding_method_id``.
-BINDING_METHOD_ORDER: tuple[str, ...] = ("promoter_enrichment", "peak_calling")
 
 #: Display label for each ``binding_methods.binding_method_id``.
 BINDING_METHOD_LABELS: dict[str, str] = {
@@ -146,7 +137,7 @@ class BindingIndex:
         :returns: ``True`` when the dataset sits on a real promoter definition.
 
         """
-        return self.promoter_set_id.get(primary, "") in PROMOTER_SET_ORDER
+        return self.promoter_set_id.get(primary, "") in PROMOTER_SET_LEVELS
 
     def resolve_or_self(
         self, primary: str, promoter_set_id: str, method_id: str
@@ -179,13 +170,13 @@ class BindingIndex:
         Return promoter set ids having both a promoter-enrichment and a peak dataset.
 
         :param primary: Primary binding db_name.
-        :returns: Promoter set ids in :data:`PROMOTER_SET_ORDER` order.
+        :returns: Promoter set ids in :data:`PROMOTER_SET_LEVELS` order.
 
         """
         return [
             ps
-            for ps in PROMOTER_SET_ORDER
-            if all(self.resolve(primary, ps, m) for m in BINDING_METHOD_ORDER)
+            for ps in PROMOTER_SET_LEVELS
+            if all(self.resolve(primary, ps, m) for m in METHOD_LEVELS)
         ]
 
     def supports_method_comparison(self, primary: str) -> bool:
@@ -390,9 +381,6 @@ METRIC_LABELS: dict[str, str] = {
     METRIC_TOPN: "Top-N % responsive",
     METRIC_DTO: "DTO % significant",
 }
-
-#: Empirical p-value below which a regulator counts as a significant overlap.
-DTO_PVALUE_THRESHOLD = 0.01
 
 #: Which perturbation ranking the DTO run used. Coverage is uneven: Hackett and both
 #: Hughes sets exist only as `log2fc`, while Kemmeren, Hu and Degron carry both.

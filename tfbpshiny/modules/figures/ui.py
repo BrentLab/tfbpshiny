@@ -5,12 +5,34 @@ from __future__ import annotations
 from shiny import module, ui
 
 from tfbpshiny.components import sidebar_label, workspace_heading
+from tfbpshiny.datasets import DEFAULT_TOP_N, PRESET_NAMES, TOP_N_CHOICES
+from tfbpshiny.modules.figures.plots import (
+    DTO_VENN_LAYOUT_COST_BASED,
+    DTO_VENN_LAYOUT_DEFAULT,
+)
 from tfbpshiny.modules.figures.queries import (
     AGREEMENT_HALF_LIFE_DEFAULT,
     AGREEMENT_HALF_LIFE_MAX,
     AGREEMENT_HALF_LIFE_MIN,
     AGREEMENT_HALF_LIFE_STEP,
 )
+
+#: Preset the figures open on. Stringent, unlike the Comparison page: the figures
+#: reproduce the publication, which uses each dataset's own criteria.
+FIGURES_DEFAULT_PRESET = "Stringent"
+
+#: Tooltip for each responsiveness preset, keyed by name.
+_PRESET_HELP: dict[str, str] = {
+    "Relaxed": "Uniform |effect| > 0 and p < 0.05.",
+    "Stringent": (
+        "Each dataset's own published criteria, resolved per"
+        " dataset (e.g. TFKO |Madj| > log2(1.7) and p < 0.05;"
+        " degron |log2FC| > log2(1.3) and padj < 0.1)."
+    ),
+}
+
+assert FIGURES_DEFAULT_PRESET in PRESET_NAMES
+assert set(_PRESET_HELP) == set(PRESET_NAMES)
 
 
 @module.ui
@@ -35,27 +57,19 @@ def figures_ui() -> ui.Tag:
                 "scoring",
                 label=None,
                 choices={
-                    "Relaxed": ui.tooltip(
-                        ui.span("Relaxed"),
-                        "Uniform |effect| > 0 and p < 0.05.",
-                        placement="right",
-                    ),
-                    "Stringent": ui.tooltip(
-                        ui.span("Stringent"),
-                        "Each dataset's own published criteria, resolved per"
-                        " dataset (e.g. TFKO |Madj| > log2(1.7) and p < 0.05;"
-                        " degron |log2FC| > log2(1.3) and padj < 0.1).",
-                        placement="right",
-                    ),
+                    name: ui.tooltip(
+                        ui.span(name), _PRESET_HELP[name], placement="right"
+                    )
+                    for name in PRESET_NAMES
                 },
-                selected="Stringent",
+                selected=FIGURES_DEFAULT_PRESET,
             ),
             sidebar_label("Top N"),
             ui.input_radio_buttons(
                 "box_top_n",
                 label=None,
-                choices={"10": "10", "25": "25", "50": "50", "75": "75", "100": "100"},
-                selected="25",
+                choices={str(n): str(n) for n in TOP_N_CHOICES},
+                selected=str(DEFAULT_TOP_N),
                 inline=True,
             ),
             id="figures_sidebar",
@@ -195,10 +209,10 @@ def figures_ui() -> ui.Tag:
                 "dto_venn_layout",
                 label=None,
                 choices={
-                    "default": "Default",
-                    "cost_based": "Cost-based (proportional)",
+                    DTO_VENN_LAYOUT_DEFAULT: "Default",
+                    DTO_VENN_LAYOUT_COST_BASED: "Cost-based (proportional)",
                 },
-                selected="default",
+                selected=DTO_VENN_LAYOUT_DEFAULT,
                 inline=True,
             ),
             ui.output_ui("fig_dto_venn"),

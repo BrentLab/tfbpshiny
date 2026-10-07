@@ -8,6 +8,8 @@ from dataclasses import dataclass
 import duckdb
 import pandas as pd
 
+from tfbpshiny.datasets import DEFAULT_PRESET, PERTURBATION_DATASET_COLUMNS
+
 logger = logging.getLogger("shiny")
 
 # Metadata fields to suppress from the filter UI, keyed by db_name.
@@ -88,10 +90,10 @@ FIELD_TYPE_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
 ResponsivenessPreset = dict[str, tuple[float, float]]
 
 # Named presets for per-dataset responsiveness definitions in the Comparison module.
-# Add or modify entries here to tune what counts as a "responsive" target.
-# Columns used per dataset are defined in perturbation/queries.py::DATASET_COLUMNS.
-# NOTE: degron uses the "pvalue" column (raw DESeq2 p-value), NOT padj. If padj
-# is preferred, add "padj" to DATASET_COLUMNS["degron"] and update the comment.
+# Add or modify entries here to tune what counts as a "responsive" target. The keys
+# must be exactly ``tfbpshiny.datasets.PRESET_NAMES``; the columns each threshold
+# applies to are ``tfbpshiny.datasets.PERTURBATION_DATASET_COLUMNS`` (degron is
+# thresholded on ``padj``).
 
 # provide two options: author settings (more stringent) and relaxed thresholds
 # (chose reasonable, with result)
@@ -113,26 +115,14 @@ DEFAULT_RESPONSIVENESS_PRESETS: dict[str, ResponsivenessPreset] = {
     },
 }
 
-# Inline perturbation dataset columns so vdb_init.py has no import from the
-# perturbation queries module (which would create a circular dependency risk and
-# requires the old VirtualDB import chain).
-_PERTURBATION_DATASET_COLUMNS: dict[str, tuple[str, str]] = {
-    "degron": ("log2FoldChange", "padj"),
-    "hughes_overexpression": ("mean_norm_log2fc", ""),
-    "hughes_knockout": ("mean_norm_log2fc", ""),
-    "kemmeren": ("Madj", "pval"),
-    "hackett": ("log2_shrunken_timecourses", ""),
-    "hu_reimand": ("effect", "pval"),
-}
-
 
 def get_responsiveness_label(preset_name: str, p_db: str) -> str:
     """
     Generate a human-readable threshold description from the preset and column tables.
 
-    Derives the label directly from :data:`DEFAULT_RESPONSIVENESS_PRESETS` and the
-    ``_PERTURBATION_DATASET_COLUMNS`` mapping, so there is a single source of truth
-    for threshold values.
+    Derives the label directly from :data:`DEFAULT_RESPONSIVENESS_PRESETS` and
+    :data:`tfbpshiny.datasets.PERTURBATION_DATASET_COLUMNS`, so there is a single
+    source of truth for threshold values.
 
     :param preset_name: Active preset name (key in
         :data:`DEFAULT_RESPONSIVENESS_PRESETS`).
@@ -148,7 +138,7 @@ def get_responsiveness_label(preset_name: str, p_db: str) -> str:
     thresholds = preset.get(p_db, preset.get("*", (0.0, 0.05)))
     effect_thresh, pval_thresh = thresholds
 
-    cols = _PERTURBATION_DATASET_COLUMNS.get(p_db, ("effect", "pvalue"))
+    cols = PERTURBATION_DATASET_COLUMNS.get(p_db, ("effect", "pvalue"))
     effect_col = cols[0] if cols[0] else "effect"
     pval_col = cols[1] if len(cols) > 1 else ""
 
@@ -163,8 +153,9 @@ def get_responsiveness_label(preset_name: str, p_db: str) -> str:
 
 
 # The default preset shown in the Comparison module sidebar.
-# Must be a key in DEFAULT_RESPONSIVENESS_PRESETS.
-DEFAULT_RESPONSIVENESS_PRESET: str = "Relaxed"
+DEFAULT_RESPONSIVENESS_PRESET: str = DEFAULT_PRESET
+
+assert DEFAULT_RESPONSIVENESS_PRESET in DEFAULT_RESPONSIVENESS_PRESETS
 
 
 def get_regulator_display_name(
@@ -209,6 +200,34 @@ class AppDatasets:
     upstream_cols: dict[str, list[str]]
 
 
+def promoter_set_labels(conn: duckdb.DuckDBPyConnection) -> dict[str, str]:
+    """
+    Display label for every promoter set, from the ``promoter_sets`` registry table.
+
+    :param conn: Open read-only DuckDB connection to the materialized database.
+    :returns: ``promoter_set_id`` -> ``display_name`` (e.g. ``"500bp" -> "500 bp"``).
+
+    """
+    rows = conn.execute(
+        "SELECT promoter_set_id, display_name FROM promoter_sets"
+    ).fetchall()
+    return {str(k): str(v) for k, v in rows}
+
+
+def binding_method_labels(conn: duckdb.DuckDBPyConnection) -> dict[str, str]:
+    """
+    Display label for every binding method, from the ``binding_methods`` table.
+
+    :param conn: Open read-only DuckDB connection to the materialized database.
+    :returns: ``binding_method_id`` -> ``display_name``.
+
+    """
+    rows = conn.execute(
+        "SELECT binding_method_id, display_name FROM binding_methods"
+    ).fetchall()
+    return {str(k): str(v) for k, v in rows}
+
+
 def load_app_datasets(conn: duckdb.DuckDBPyConnection) -> AppDatasets:
     """
     Load AppDatasets from dataset_column_metadata table in the materialized DuckDB.
@@ -240,6 +259,8 @@ __all__ = [
     "DEFAULT_RESPONSIVENESS_PRESET",
     "get_responsiveness_label",
     "AppDatasets",
+    "binding_method_labels",
     "get_regulator_display_name",
     "load_app_datasets",
+    "promoter_set_labels",
 ]

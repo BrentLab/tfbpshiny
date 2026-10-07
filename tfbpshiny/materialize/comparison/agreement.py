@@ -15,13 +15,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from tfbpshiny.datasets import GENE_UNIVERSE
+
 #: Rank cutoffs at which set overlap is measured. Log-spaced to 500: agreement changes
 #: fastest at the top of the ranking, and a linear grid would spend most of its points
 #: in the flat tail.
 AGREEMENT_TOP_N: tuple[int, ...] = tuple(range(10, 210, 10))
-
-#: Gene universe used for the random expectation, ``(N / GENE_UNIVERSE) * N``.
-GENE_UNIVERSE = 6000
 
 #: Binding datasets excluded from the agreement analysis.
 #:

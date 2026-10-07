@@ -12,19 +12,15 @@ from __future__ import annotations
 import duckdb
 import pytest
 
+from tfbpshiny.datasets import PERTURBATION_CORRELATION_COLUMNS as CORR_PERT_COLUMNS
+from tfbpshiny.datasets import PERTURBATION_DATASET_COLUMNS as TOPN_PERT_COLUMNS
 from tfbpshiny.materialize.comparison.agreement import (
     AGREEMENT_RANK_OVERRIDES,
     agreement_pair_select_sql,
     agreement_rank_column,
 )
 from tfbpshiny.materialize.comparison.correlations import (
-    PERTURBATION_DATASET_COLUMNS as CORR_PERT_COLUMNS,
-)
-from tfbpshiny.materialize.comparison.correlations import (
     correlation_pair_select_sql,
-)
-from tfbpshiny.materialize.comparison.topn import (
-    PERTURBATION_DATASET_COLUMNS as TOPN_PERT_COLUMNS,
 )
 from tfbpshiny.materialize.comparison.topn import (
     topn_pair_select_sql_v2,

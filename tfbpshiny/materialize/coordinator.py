@@ -20,6 +20,12 @@ import duckdb
 import pandas as pd
 from labretriever import VirtualDB
 
+from tfbpshiny.datasets import (
+    BINDING_DATASET_COLUMNS,
+    PERTURBATION_CORRELATION_COLUMNS,
+    PERTURBATION_DATASET_COLUMNS,
+    PRESET_NAMES,
+)
 from tfbpshiny.materialize.comparison.agreement import (
     AGREEMENT_EXCLUDED,
     agreement_pair_select_sql,
@@ -31,8 +37,6 @@ from tfbpshiny.materialize.comparison.callingcards_authors_bound import (
     callingcards_authors_bound_select_sql,
 )
 from tfbpshiny.materialize.comparison.correlations import (
-    BINDING_DATASET_COLUMNS,
-    PERTURBATION_DATASET_COLUMNS,
     correlation_pair_select_sql,
     correlations_schema_sql,
 )
@@ -64,18 +68,9 @@ from tfbpshiny.materialize.comparison.target_sets import (
     target_sets_schema_sql,
     target_sets_select_sql,
 )
-
-# TOPN_PERTURBATION_COLUMNS is aliased because correlations.py (imported above) defines
-# an identical map under the same name. The staged top-N path must follow the top-N
-# module's copy rather than silently inherit the other if the two ever diverge.
 from tfbpshiny.materialize.comparison.topn import (
     BINDING_TOPN_CONFIGS,
     PEAK_BINDING_DATASETS,
-)
-from tfbpshiny.materialize.comparison.topn import (
-    PERTURBATION_DATASET_COLUMNS as TOPN_PERTURBATION_COLUMNS,
-)
-from tfbpshiny.materialize.comparison.topn import (
     PERTURBATION_TOPN_DATASETS,
     TOP_N_ALL,
     binding_stage_sql,
@@ -330,7 +325,7 @@ def _topn_staged(
                             rank_asc=b_cfg["rank_asc"],
                             top_n_values=cutoffs,
                             threshold_pairs=pairs,
-                            has_pvalue=bool(TOPN_PERTURBATION_COLUMNS[p_db][1]),
+                            has_pvalue=bool(PERTURBATION_DATASET_COLUMNS[p_db][1]),
                             regulator_subset=batch,
                             param_prefix=f"bp{batch_idx}",
                             round_decimals=round_decimals,
@@ -480,7 +475,7 @@ def _method_promoter_topn_staged(
                             rank_asc=b_cfg["rank_asc"],
                             top_n_values=cutoffs,
                             threshold_pairs=pairs,
-                            has_pvalue=bool(TOPN_PERTURBATION_COLUMNS[p_db][1]),
+                            has_pvalue=bool(PERTURBATION_DATASET_COLUMNS[p_db][1]),
                             regulator_subset=batch,
                             param_prefix=f"mpm{batch_idx}",
                             round_decimals=round_decimals,
@@ -692,7 +687,7 @@ def materialize(
         # is conceptually part of populating that table.
         if not args.skip_topn and CALLINGCARDS_BINDING_VIEW in datasets:
             cc_hf = DATASET_HF_COORDS.get(CALLINGCARDS_BINDING_VIEW, ("", ""))
-            preset_names = getattr(args, "presets", None) or ["Relaxed", "Stringent"]
+            preset_names = getattr(args, "presets", None) or list(PRESET_NAMES)
             for perturbation_db in sorted(
                 db for db in datasets if db in PERTURBATION_TOPN_DATASETS
             ):
@@ -731,7 +726,7 @@ def materialize(
         # cutoff. See harbison_authors_bound.py.
         if not args.skip_topn and HARBISON_BINDING_VIEW in datasets:
             hb_hf = DATASET_HF_COORDS.get(HARBISON_BINDING_VIEW, ("", ""))
-            preset_names = getattr(args, "presets", None) or ["Relaxed", "Stringent"]
+            preset_names = getattr(args, "presets", None) or list(PRESET_NAMES)
             for perturbation_db in sorted(
                 db for db in datasets if db in PERTURBATION_TOPN_DATASETS
             ):
@@ -785,7 +780,7 @@ def materialize(
                     )
                 else:
                     views = sorted(
-                        db for db in datasets if db in PERTURBATION_DATASET_COLUMNS
+                        db for db in datasets if db in PERTURBATION_CORRELATION_COLUMNS
                     )
                 logger.info(
                     "  topn_agreement %s: %d datasets, %d pairs",
@@ -813,10 +808,10 @@ def materialize(
                         col_a = col_b = "sample_id"
                         # Ranked by |effect|, so larger is always "more responsive".
                         rank_a, asc_a = agreement_rank_column(
-                            view_a, PERTURBATION_DATASET_COLUMNS[view_a][0], False
+                            view_a, PERTURBATION_CORRELATION_COLUMNS[view_a][0], False
                         )
                         rank_b, asc_b = agreement_rank_column(
-                            view_b, PERTURBATION_DATASET_COLUMNS[view_b][0], False
+                            view_b, PERTURBATION_CORRELATION_COLUMNS[view_b][0], False
                         )
                     sql, params = agreement_pair_select_sql(
                         view_a=view_a,
@@ -880,7 +875,7 @@ def materialize(
                     else:
                         sample_col = "sample_id"
                         rank_col, rank_asc = agreement_rank_column(
-                            view, PERTURBATION_DATASET_COLUMNS[view][0], False
+                            view, PERTURBATION_CORRELATION_COLUMNS[view][0], False
                         )
                     _vdb_to_table(
                         vdb,
@@ -937,11 +932,11 @@ def materialize(
 
             # Perturbation × perturbation pairs
             pert_corr_views = [
-                db for db in datasets if db in PERTURBATION_DATASET_COLUMNS
+                db for db in datasets if db in PERTURBATION_CORRELATION_COLUMNS
             ]
             for view_a, view_b in itertools.combinations(sorted(pert_corr_views), 2):
-                effect_a, pvalue_a = PERTURBATION_DATASET_COLUMNS[view_a]
-                effect_b, pvalue_b = PERTURBATION_DATASET_COLUMNS[view_b]
+                effect_a, pvalue_a = PERTURBATION_CORRELATION_COLUMNS[view_a]
+                effect_b, pvalue_b = PERTURBATION_CORRELATION_COLUMNS[view_b]
                 hf_a = DATASET_HF_COORDS.get(view_a, ("", ""))
                 hf_b = DATASET_HF_COORDS.get(view_b, ("", ""))
                 for method in methods:
@@ -1000,10 +995,7 @@ def materialize(
             perturbation_dbs = sorted(
                 db for db in datasets if db in PERTURBATION_TOPN_DATASETS
             )
-            preset_names = getattr(args, "presets", None) or [
-                "Relaxed",
-                "Stringent",
-            ]
+            preset_names = getattr(args, "presets", None) or list(PRESET_NAMES)
 
             t_mpm_topn = time.monotonic()
             n_mpm_units = _method_promoter_topn_staged(

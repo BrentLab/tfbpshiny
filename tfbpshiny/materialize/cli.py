@@ -16,6 +16,7 @@ import sys
 from typing import Literal, cast
 
 from tfbpshiny.configure_logger import LogLevel, configure_logger
+from tfbpshiny.datasets import PRESET_NAMES, TOP_N_CHOICES
 from tfbpshiny.materialize.rounding import DEFAULT_FLOAT_DECIMALS
 
 
@@ -132,7 +133,7 @@ def register_subparser(
         type=str,
         action="append",
         default=None,
-        choices=["Relaxed", "Stringent"],
+        choices=list(PRESET_NAMES),
         help=(
             "Materialize the (effect, pvalue) pair each perturbation dataset uses "
             "under this responsiveness preset, so the app's preset selector can "
@@ -219,8 +220,6 @@ def register_subparser(
 
 def _run_with_defaults(args: argparse.Namespace) -> None:
     """Apply list-argument defaults then delegate to :func:`run_materialize`."""
-    from tfbpshiny.materialize.comparison.topn import TOP_N_CHOICES
-
     if args.top_n_values is None:
         args.top_n_values = list(TOP_N_CHOICES)
     if args.effect_thresholds is None:
@@ -230,5 +229,5 @@ def _run_with_defaults(args: argparse.Namespace) -> None:
     if args.presets is None:
         # Both by default: the Comparison page offers a Relaxed/Stringent toggle, and
         # a preset that was never materialized silently returns no rows.
-        args.presets = ["Relaxed", "Stringent"]
+        args.presets = list(PRESET_NAMES)
     run_materialize(args)

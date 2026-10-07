@@ -11,11 +11,11 @@ from plotly.io import to_html
 from shiny import module, reactive, render, ui
 
 from tfbpshiny.components import scroll_row
-from tfbpshiny.modules.binding.queries import fetch_corr_pairs
 from tfbpshiny.modules.binding.ui import (
     COL_PREFERENCE_CHOICES,
     COL_PREFERENCE_CHOICES_NO_LOG10,
 )
+from tfbpshiny.utils.corr_query import fetch_corr_pairs
 from tfbpshiny.utils.correlation_matrix import build_correlation_matrix_ui
 from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.vdb_init import get_regulator_display_name

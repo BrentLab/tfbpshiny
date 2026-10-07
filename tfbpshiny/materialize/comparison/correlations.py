@@ -1,10 +1,11 @@
 """
 SQL generators for the ``correlations`` comparison table.
 
-Adapted from ``modules/binding/queries.py::_corr_pair_sql_impl``.
 Functions return SQL strings (no side effects) so they can be called from a
 Jupyter notebook to inspect the query before running the full pipeline.
-The coordinator is the only code that calls ``.execute()``.
+The coordinator is the only code that calls ``.execute()``. The per-dataset score
+columns it correlates are ``tfbpshiny.datasets.BINDING_DATASET_COLUMNS`` and
+``PERTURBATION_CORRELATION_COLUMNS``.
 
 """
 
@@ -13,41 +14,6 @@ from __future__ import annotations
 from typing import Any
 
 from tfbpshiny.materialize.rounding import DEFAULT_FLOAT_DECIMALS, round_expr
-
-# ---------------------------------------------------------------------------
-# Per-dataset measurement columns (self-contained copy, not imported from modules/)
-# ---------------------------------------------------------------------------
-
-#: Binding dataset → (effect_col, pvalue_col).
-#: Empty string means the column does not exist in that dataset.
-BINDING_DATASET_COLUMNS: dict[str, tuple[str, str]] = {
-    "callingcards_kang": ("callingcards_enrichment", "poisson_pval"),
-    "callingcards_mindel": ("callingcards_enrichment", "poisson_pval"),
-    "callingcards_500bp": ("callingcards_enrichment", "poisson_pval"),
-    "callingcards_intergenic": ("callingcards_enrichment", "poisson_pval"),
-    "harbison": ("effect", "pvalue"),
-    "rossi": ("enrichment", "poisson_pval"),
-    "rossi_mindel": ("enrichment", "poisson_pval"),
-    "rossi_500bp": ("enrichment", "poisson_pval"),
-    "rossi_intergenic": ("enrichment", "poisson_pval"),
-    "chec_m2025": ("enrichment", "poisson_pval"),
-    "chec_m2025_mindel": ("enrichment", "poisson_pval"),
-    "chec_m2025_500bp": ("enrichment", "poisson_pval"),
-    "chec_m2025_intergenic": ("enrichment", "poisson_pval"),
-}
-
-#: Perturbation dataset → (effect_col, pvalue_col).
-PERTURBATION_DATASET_COLUMNS: dict[str, tuple[str, str]] = {
-    "degron": ("log2FoldChange", "padj"),
-    "hughes_overexpression": ("mean_norm_log2fc", ""),
-    "hughes_knockout": ("mean_norm_log2fc", ""),
-    "kemmeren": ("Madj", "pval"),
-    # Correlation and ranking use log2_cleaned_ratio; log2_shrunken_timecourses is
-    # 95% exactly zero, so correlating or ranking on it is close to meaningless.
-    # topn.py keeps the shrunken column, which is what defines "responsive".
-    "hackett": ("log2_cleaned_ratio", ""),
-    "hu_reimand": ("effect", "pval"),
-}
 
 #: p-values below this are treated as this value before taking -log10, so a
 #: single near-zero p-value can't blow up the log10pval scale. Matches the
@@ -398,8 +364,6 @@ def correlation_pair_select_sql(
 
 
 __all__ = [
-    "BINDING_DATASET_COLUMNS",
-    "PERTURBATION_DATASET_COLUMNS",
     "LOG10PVAL_FLOOR",
     "correlations_schema_sql",
     "correlation_pair_select_sql",

@@ -11,10 +11,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from tfbpshiny.datasets import PERTURBATION_DATASET_COLUMNS, TOP_N_ALL
 from tfbpshiny.materialize.rounding import DEFAULT_FLOAT_DECIMALS, round_expr
 
 # ---------------------------------------------------------------------------
-# Per-dataset configuration (self-contained copy, not imported from modules/)
+# Per-dataset ranking configuration
 # ---------------------------------------------------------------------------
 
 #: callingcards target locus tags excluded from top-N (matching R analysis)
@@ -228,19 +229,9 @@ BINDING_TOPN_CONFIGS: dict[str, dict[str, Any]] = {
     ),
 }
 
-#: Sentinel ``top_n`` meaning "every bound target, no rank cutoff". Used for the
-#: authors'-binding-threshold figure, where the peak datasets already encode the
-#: authors' binary call so there is nothing left to threshold.
-TOP_N_ALL = 0
-
 #: Binding datasets whose rows *are* the authors' binding call, so a rank cutoff would
 #: discard part of their answer. These additionally get ``TOP_N_ALL`` rows.
 PEAK_BINDING_DATASETS: frozenset[str] = frozenset({"rossi_peaks", "chec_m2025_peaks"})
-
-#: Fixed top-N cutoffs materialized into `topn_results`. The Comparison module's UI
-#: offers exactly these choices (see modules/comparison/queries.py, ui.py) — defined
-#: once here so materialization and the UI selector can't drift out of sync.
-TOP_N_CHOICES: tuple[int, ...] = (10, 25, 50, 75, 100)
 
 #: Perturbation datasets eligible for top-N analysis (no per-dataset kwargs needed).
 PERTURBATION_TOPN_DATASETS: frozenset[str] = frozenset(
@@ -253,18 +244,6 @@ PERTURBATION_TOPN_DATASETS: frozenset[str] = frozenset(
         "degron",
     }
 )
-
-#: Map: perturbation db_name → (effect_col, pvalue_col).
-#: Empty string means the column does not exist.
-PERTURBATION_DATASET_COLUMNS: dict[str, tuple[str, str]] = {
-    "degron": ("log2FoldChange", "padj"),
-    "hughes_overexpression": ("mean_norm_log2fc", ""),
-    "hughes_knockout": ("mean_norm_log2fc", ""),
-    "kemmeren": ("Madj", "pval"),
-    "hackett": ("log2_shrunken_timecourses", ""),
-    "hu_reimand": ("effect", "pval"),
-}
-
 
 # ---------------------------------------------------------------------------
 # SQL generators

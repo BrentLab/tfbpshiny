@@ -93,7 +93,7 @@ Peak-calling datasets come in two flavours, distinguished by `promoter_set_id`:
 
 - **`promoter_set_id = 'peaks'`** — the original authors' peak annotations
 - **`promoter_set_id = 'array'`** — Harbison's ChIP-chip microarray probes.
-  Neither `peaks` nor `array` appears in `PROMOTER_SET_ORDER`, so neither ever
+  Neither `peaks` nor `array` appears in `tfbpshiny.datasets.PROMOTER_SET_LEVELS`, so neither ever
   becomes a column in the promoter-definition grid: both are region definitions
   fixed by something other than a choice of upstream window.
   (`rossi_peaks`, `chec_m2025_peaks`). These have no fixed upstream window, so

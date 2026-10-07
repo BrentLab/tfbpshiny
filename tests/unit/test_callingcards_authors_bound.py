@@ -13,12 +13,27 @@ import math
 
 import duckdb
 import pandas as pd
+import pytest
 
+from tfbpshiny.datasets import PERTURBATION_DATASET_COLUMNS
 from tfbpshiny.materialize.comparison.callingcards_authors_bound import (
     CALLINGCARDS_LOG_POISSON_THRESHOLD,
     callingcards_authors_bound_select_sql,
 )
 from tfbpshiny.materialize.comparison.topn import TOP_N_ALL
+
+
+@pytest.fixture(autouse=True)
+def _fake_pert_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Give the synthetic ``fake_pert`` view degron's (effect, pvalue) column mapping.
+
+    Scoped to the test so the shared columns table is restored afterwards.
+
+    """
+    monkeypatch.setitem(
+        PERTURBATION_DATASET_COLUMNS, "fake_pert", ("log2FoldChange", "padj")
+    )
 
 
 def _synthetic_conn() -> duckdb.DuckDBPyConnection:
@@ -57,12 +72,8 @@ def _synthetic_conn() -> duckdb.DuckDBPyConnection:
 
 
 def _run(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
-    # A fake perturbation dataset name pointed at the synthetic table, reusing
-    # degron's (effect, pvalue) column mapping, so the query's
-    # `{perturbation_view}` resolves to our fixture rather than a real dataset.
-    import tfbpshiny.materialize.comparison.topn as topn
-
-    topn.PERTURBATION_DATASET_COLUMNS["fake_pert"] = ("log2FoldChange", "padj")
+    # `fake_pert` resolves to the synthetic table; its column mapping is registered
+    # by the autouse fixture above.
     sql, params = callingcards_authors_bound_select_sql(
         binding_hf_repo="R",
         binding_hf_config="cc",

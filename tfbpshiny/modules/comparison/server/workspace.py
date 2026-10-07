@@ -13,23 +13,24 @@ from plotly.io import to_html
 from shiny import module, reactive, render, ui
 
 from tfbpshiny.components import scroll_row, sidebar_label
+from tfbpshiny.datasets import PRESET_NAMES
 from tfbpshiny.materialize.comparison.method_promoter_model import (
     pair_methods_on_regulators,
 )
 from tfbpshiny.modules.comparison.queries import (
     BINDING_METHOD_COLORS,
     BINDING_METHOD_LABELS,
-    BINDING_METHOD_ORDER,
     DEFAULT_DTO_RANKING_COLUMN,
     DEFAULT_TOP_N,
     DTO_PVALUE_THRESHOLD,
     DTO_RANKING_COLUMNS,
+    METHOD_LEVELS,
     METRIC_DTO,
     METRIC_TOPN,
     PEAK_CALLER_NOTES,
     PERTURBATION_LABEL_MAP,
     PROMOTER_SET_LABELS,
-    PROMOTER_SET_ORDER,
+    PROMOTER_SET_LEVELS,
     TOP_N_CHOICES,
     build_binding_index,
     fetch_dto_results,
@@ -53,6 +54,22 @@ _BINDING_ORDER = [
     "2025 ChEC-seq",
     "2026 Calling Cards",
 ]
+
+#: Tooltip for each responsiveness preset, keyed by name.
+_PRESET_HELP: dict[str, str] = {
+    "Relaxed": (
+        "Applies a uniform pvalue < 0.05 threshold. Hover over"
+        " perturbation column headers in Compare Datasets for"
+        " per-dataset details."
+    ),
+    "Stringent": (
+        "Uses the original authors' thresholds for each dataset."
+        " Hover over perturbation column headers in Compare"
+        " Datasets for per-dataset details."
+    ),
+}
+
+assert set(_PRESET_HELP) == set(PRESET_NAMES)
 
 #: Selector label for each promoter set, keyed by ``promoter_set_id``.
 _PROMOTER_SET_ALIAS: dict[str, str] = {
@@ -397,7 +414,7 @@ def comparison_workspace_server(
 
         result: list[str] = []
         for b_db in active_binding_datasets():
-            for ps_id in PROMOTER_SET_ORDER:
+            for ps_id in PROMOTER_SET_LEVELS:
                 if ps_id not in included_ps:
                     continue
                 db = binding_index.resolve(b_db, ps_id, "promoter_enrichment")
@@ -440,13 +457,13 @@ def comparison_workspace_server(
         try:
             cm_ps = list(input.cm_promoter_set())
         except Exception:
-            cm_ps = list(PROMOTER_SET_ORDER)
+            cm_ps = list(PROMOTER_SET_LEVELS)
 
         result: list[str] = []
-        for ps_id in PROMOTER_SET_ORDER:
+        for ps_id in PROMOTER_SET_LEVELS:
             if ps_id not in cm_ps:
                 continue
-            for method_id in BINDING_METHOD_ORDER:
+            for method_id in METHOD_LEVELS:
                 db = binding_index.resolve(cm_binding_db, ps_id, method_id)
                 if db:
                     result.append(db)
@@ -917,22 +934,12 @@ def comparison_workspace_server(
                 "responsiveness_preset",
                 label=None,
                 choices={
-                    "Relaxed": ui.tooltip(
-                        ui.span("Relaxed"),
-                        "Applies a uniform pvalue < 0.05 threshold. Hover over"
-                        " perturbation column headers in Compare Datasets for"
-                        " per-dataset details.",
-                        placement="right",
-                    ),
-                    "Stringent": ui.tooltip(
-                        ui.span("Stringent"),
-                        "Uses the original authors' thresholds for each dataset."
-                        " Hover over perturbation column headers in Compare"
-                        " Datasets for per-dataset details.",
-                        placement="right",
-                    ),
+                    name: ui.tooltip(
+                        ui.span(name), _PRESET_HELP[name], placement="right"
+                    )
+                    for name in PRESET_NAMES
                 },
-                selected="Relaxed",
+                selected=DEFAULT_RESPONSIVENESS_PRESET,
                 inline=True,
             ),
         )
@@ -1007,7 +1014,7 @@ def comparison_workspace_server(
                     "cm_promoter_set",
                     label=None,
                     choices={k: _PROMOTER_SET_ALIAS[k] for k in _PROMOTER_SET_ALIAS},
-                    selected=list(PROMOTER_SET_ORDER),
+                    selected=list(PROMOTER_SET_LEVELS),
                 ),
                 ui.input_switch(
                     "cm_common_regulators_only",
@@ -1247,7 +1254,7 @@ def comparison_workspace_server(
             except Exception:
                 selected_ps = set(_PROMOTER_SET_ALIAS)
             # Keep the canonical column order regardless of checkbox click order.
-            included_ps = [ps for ps in PROMOTER_SET_ORDER if ps in selected_ps]
+            included_ps = [ps for ps in PROMOTER_SET_LEVELS if ps in selected_ps]
 
             _th_style = "padding: 6px 10px; text-align: right;"
 
@@ -1410,10 +1417,10 @@ def comparison_workspace_server(
             )
 
             ps_present = [
-                ps for ps in PROMOTER_SET_ORDER if ps in set(agg["promoter_set_id"])
+                ps for ps in PROMOTER_SET_LEVELS if ps in set(agg["promoter_set_id"])
             ]
             methods_present = [
-                m for m in BINDING_METHOD_ORDER if m in set(agg["binding_method_id"])
+                m for m in METHOD_LEVELS if m in set(agg["binding_method_id"])
             ]
             if not ps_present or not methods_present:
                 return ui.span()

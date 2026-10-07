@@ -15,6 +15,13 @@ import duckdb
 import numpy as np
 import pandas as pd
 
+from tfbpshiny.datasets import (
+    DTO_PVALUE_THRESHOLD,
+    GENE_UNIVERSE,
+    METHOD_LEVELS,
+    PROMOTER_SET_LEVELS,
+    TOP_N_ALL,
+)
 from tfbpshiny.materialize.comparison.agreement import AGREEMENT_EXCLUDED
 from tfbpshiny.utils.corr_query import get_filtered_sample_ids
 from tfbpshiny.utils.vdb_init import DEFAULT_RESPONSIVENESS_PRESETS
@@ -40,14 +47,8 @@ DTO_BINDING_ORDER: tuple[str, ...] = (
     "chec_m2025_500bp",
 )
 
-#: Empirical p-value below which a regulator counts as DTO-significant.
-DTO_PVALUE_THRESHOLD = 0.01
-
 #: The only ranking variant present for all six perturbation datasets.
 DTO_RANKING_COLUMN = "log2fc"
-
-#: Sentinel ``top_n`` meaning "every authors'-bound target, no rank cutoff".
-TOP_N_ALL = 0
 
 #: Binding datasets shown in the authors'-threshold figure, in display order. Rossi and
 #: ChEC-seq carry the authors' own peak calls. Harbison (p <= 0.001) and Calling Cards
@@ -61,9 +62,6 @@ AUTHORS_PEAK_BINDING: tuple[str, ...] = (
     "chec_m2025_peaks",
     "callingcards_500bp",
 )
-
-#: Gene universe for the random-overlap expectation, matching the materializer.
-GENE_UNIVERSE = 6000
 
 #: Datasets figure 6 compares by default: promoter enrichment over the 500 bp
 #: start-codon window, so the assays are compared on one promoter definition rather
@@ -121,15 +119,6 @@ AGREEMENT_HALF_LIFE_STEP = 10
 #: Above this many dataset pairs the figure's lines and boxes stop being separable.
 #: Selecting more is allowed; the UI says what it costs.
 AGREEMENT_PAIR_WARN = 12
-
-#: Promoter set definitions figures 7 and 8 box-plot, promoter-enrichment only. Local
-#: copy (self-contained, matching `materialize/comparison/method_promoter_model.py`'s
-#: own copy of the same 4 values) rather than importing `PROMOTER_SET_ORDER` from
-#: `modules/comparison/queries.py` -- modules stay self-contained in this app.
-PROMOTER_SET_LEVELS: tuple[str, ...] = ("kang", "mindel", "500bp", "intergenic")
-
-#: The two binding methods figure 9 box-plots.
-METHOD_LEVELS: tuple[str, ...] = ("promoter_enrichment", "peak_calling")
 
 #: Binding primaries with a peak-calling arm at every promoter set, for figure 9.
 #: Calling Cards has none (confirmed: no `callingcards_*_peaks` registry rows), so it

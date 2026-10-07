@@ -10,12 +10,27 @@ from __future__ import annotations
 
 import duckdb
 import pandas as pd
+import pytest
 
+from tfbpshiny.datasets import PERTURBATION_DATASET_COLUMNS
 from tfbpshiny.materialize.comparison.harbison_authors_bound import (
     HARBISON_PVALUE_THRESHOLD,
     harbison_authors_bound_select_sql,
 )
 from tfbpshiny.materialize.comparison.topn import TOP_N_ALL
+
+
+@pytest.fixture(autouse=True)
+def _fake_pert_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Give the synthetic ``fake_pert`` view degron's (effect, pvalue) column mapping.
+
+    Scoped to the test so the shared columns table is restored afterwards.
+
+    """
+    monkeypatch.setitem(
+        PERTURBATION_DATASET_COLUMNS, "fake_pert", ("log2FoldChange", "padj")
+    )
 
 
 def _synthetic_conn() -> duckdb.DuckDBPyConnection:
@@ -56,9 +71,6 @@ def _synthetic_conn() -> duckdb.DuckDBPyConnection:
 
 
 def _run(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
-    import tfbpshiny.materialize.comparison.topn as topn
-
-    topn.PERTURBATION_DATASET_COLUMNS["fake_pert"] = ("log2FoldChange", "padj")
     sql, params = harbison_authors_bound_select_sql(
         binding_hf_repo="R",
         binding_hf_config="hb",

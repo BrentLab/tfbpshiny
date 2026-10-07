@@ -69,21 +69,11 @@ from tfbpshiny.utils.figure import (
     matplotlib_svg_html,
 )
 from tfbpshiny.utils.perf import perf, reset_render_counts
-from tfbpshiny.utils.vdb_init import get_regulator_display_name
-
-#: Display labels for the promoter-set/method box axes, local to this module (mirrors
-#: `modules/comparison/server/workspace.py`'s own `_PROMOTER_SET_ALIAS`-style
-#: dicts, kept separate per this app's module-isolation convention).
-_PROMOTER_SET_LABELS: dict[str, str] = {
-    "kang": "Kang",
-    "mindel": "Mindel",
-    "500bp": "500 bp",
-    "intergenic": "Intergenic",
-}
-_METHOD_LABELS: dict[str, str] = {
-    "promoter_enrichment": "Promoter Enrichment",
-    "peak_calling": "Peak Calling",
-}
+from tfbpshiny.utils.vdb_init import (
+    binding_method_labels,
+    get_regulator_display_name,
+    promoter_set_labels,
+)
 
 #: Width of one panel in the three-across figure rows.
 _PANEL_WIDTH = "min-width: 420px; flex: 1 1 420px;"
@@ -115,6 +105,10 @@ def figures_workspace_server(
     session.on_flush(lambda: reset_render_counts(session.id))
 
     _labels = dataset_labels(conn)
+    # Axis labels for the promoter-set / method boxes come from the registry
+    # tables the build wrote, so they cannot drift from the Comparison page.
+    _promoter_set_labels = promoter_set_labels(conn)
+    _method_labels = binding_method_labels(conn)
 
     _reg_df = get_regulator_display_name(conn)
     _reg_labels: dict[str, str] = {}
@@ -1243,7 +1237,7 @@ def figures_workspace_server(
                 list(PROMOTER_SET_LEVELS),
                 _labels,
                 _labels,
-                _PROMOTER_SET_LABELS,
+                _promoter_set_labels,
                 PROMOTER_SET_COLORS,
                 y_title=f"% responsive in top {_read_top_n()}",
                 y_range=FIG7_RESPONSE_Y,
@@ -1272,7 +1266,7 @@ def figures_workspace_server(
                 list(PROMOTER_SET_LEVELS),
                 _labels,
                 _labels,
-                _PROMOTER_SET_LABELS,
+                _promoter_set_labels,
                 PROMOTER_SET_COLORS,
                 y_title="% of shared TFs (DTO p < 0.01)",
             )
@@ -1301,7 +1295,7 @@ def figures_workspace_server(
                     list(METHOD_LEVELS),
                     _labels,
                     _labels,
-                    _METHOD_LABELS,
+                    _method_labels,
                     METHOD_COLORS,
                     y_title=f"% responsive in top {_read_top_n()}",
                     y_range=FIG7_RESPONSE_Y,
@@ -1326,7 +1320,7 @@ def figures_workspace_server(
                         list(METHOD_LEVELS),
                         _labels,
                         _labels,
-                        _METHOD_LABELS,
+                        _method_labels,
                         METHOD_COLORS,
                         y_title="% of shared TFs (DTO p < 0.01)",
                     )
