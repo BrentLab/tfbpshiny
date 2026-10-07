@@ -108,10 +108,12 @@ styled Shiny UI elements.  Every function maps to one or more CSS classes define
 
 **Rules:**
 - No business logic or reactive code belongs here — only pure `ui.Tag` factories.
-- Module `ui.py` files import from `components` (not from each other).
-- `app.py` imports `github_badge` and `nav_button` from `components`.
-- Do **not** inline `class_="nav-btn"`, `class_="empty-state"`, etc. anywhere else in
-  the app — always go through `components.py`.
+- Module `ui.py` and `server/*.py` files import from `components` (not from each
+  other).
+- `app.py` imports `github_badge` from `components`.
+- Do **not** inline `{"class": "empty-state"}`, `{"class": "sidebar-text"}`, etc.
+  anywhere else in the app — use `empty_state(...)`, `sidebar_text(...)` and the other
+  factories. `grep -rn '"empty-state"' tfbpshiny/modules` should return nothing.
 
 **Notable exception:** `select_datasets/ui.py` builds filter-option cards directly
 because it injects a conditional "Apply to all datasets" toggle into the card header,

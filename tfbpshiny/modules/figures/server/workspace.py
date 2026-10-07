@@ -10,7 +10,7 @@ import duckdb
 import pandas as pd
 from shiny import module, reactive, render, ui
 
-from tfbpshiny.components import scroll_row, sidebar_label
+from tfbpshiny.components import empty_state, scroll_row, sidebar_label, sidebar_text
 from tfbpshiny.datasets import DEFAULT_PRESET, DEFAULT_TOP_N
 from tfbpshiny.materialize.comparison.method_promoter_model import (
     pair_methods_on_regulators,
@@ -152,8 +152,7 @@ def figures_workspace_server(
 
     def _needs_rebuild(what: str) -> ui.Tag:
         """Empty state for a figure whose data predates the current materializer."""
-        return ui.div(
-            {"class": "empty-state"},
+        return empty_state(
             ui.p(
                 ui.strong(f"{what} is not in this database."),
                 " Rebuild with ",
@@ -306,8 +305,7 @@ def figures_workspace_server(
             else " DTO tables are absent from this database, so figures 4 and 5"
             " cannot be drawn -- rebuild with `tfbpshiny materialize`."
         )
-        return ui.div(
-            {"class": "sidebar-text"},
+        return sidebar_text(
             ui.p(
                 ui.strong("TFs per figure: "),
                 f"all four binding datasets intersected with each perturbation"
@@ -355,8 +353,7 @@ def figures_workspace_server(
                     )
                 )
             if not panels:
-                return ui.div(
-                    {"class": "empty-state"},
+                return empty_state(
                     ui.p("No rank-response data for the selected TF."),
                 )
             return scroll_row(*panels, gap="lg")
@@ -437,9 +434,7 @@ def figures_workspace_server(
                     )
                 )
             if not panels:
-                return ui.div(
-                    {"class": "empty-state"}, ui.p("No data for these datasets.")
-                )
+                return empty_state(ui.p("No data for these datasets."))
             return scroll_row(*panels, gap="lg")
 
     # ------------------------------------------------------------------
@@ -447,8 +442,7 @@ def figures_workspace_server(
     # ------------------------------------------------------------------
 
     def _dto_missing() -> ui.Tag:
-        return ui.div(
-            {"class": "empty-state"},
+        return empty_state(
             ui.p(
                 ui.strong("DTO results are not in this database."),
                 " Rebuild with ",
@@ -470,7 +464,7 @@ def figures_workspace_server(
         with perf(session.id, "figures.workspace", "fig_dto_bars"):
             df = fetch_dto_significance(conn, list(DTO_BINDING_ORDER), list(PR_ORDER))
             if df.empty:
-                return ui.div({"class": "empty-state"}, ui.p("No DTO results."))
+                return empty_state(ui.p("No DTO results."))
             fig = dto_significance_bars(
                 df, _labels, list(DTO_BINDING_ORDER), list(PR_ORDER)
             )
@@ -522,7 +516,7 @@ def figures_workspace_server(
                     )
                 )
             if not panels:
-                return ui.div({"class": "empty-state"}, ui.p("No DTO results."))
+                return empty_state(ui.p("No DTO results."))
             return scroll_row(*panels, gap="lg")
 
     # ------------------------------------------------------------------
@@ -550,9 +544,7 @@ def figures_workspace_server(
             }
             frames = {k: v for k, v in frames.items() if not v.empty}
             if not frames:
-                return ui.div(
-                    {"class": "empty-state"}, ui.p("No authors'-threshold rows.")
-                )
+                return empty_state(ui.p("No authors'-threshold rows."))
             fig = authors_bound_grid(
                 frames, _labels, list(AUTHORS_PEAK_BINDING), list(PR_ORDER)
             )
@@ -703,12 +695,10 @@ def figures_workspace_server(
         """
         selected = _agreement_selection(ctype)
         if len(selected) < 2:
-            return ui.div(
-                {"class": "empty-state"},
+            return empty_state(
                 ui.p(f"{heading}: select at least two datasets to compare."),
             )
-        return ui.div(
-            {"class": "empty-state"},
+        return empty_state(
             ui.p(
                 ui.strong(f"{heading}: no overlap rows for these datasets."),
                 " Databases built before figure 6 gained its dataset selector"
@@ -776,7 +766,7 @@ def figures_workspace_server(
                 )
             )
         if not panels:
-            return ui.div({"class": "empty-state"}, ui.p("No agreement results."))
+            return empty_state(ui.p("No agreement results."))
         return ui.div(
             {
                 "style": (
@@ -884,8 +874,7 @@ def figures_workspace_server(
                 )
             )
         if not panels:
-            return ui.div(
-                {"class": "empty-state"},
+            return empty_state(
                 ui.p(f"{heading}: no target sets for these datasets."),
             )
         return ui.div(
@@ -1207,9 +1196,7 @@ def figures_workspace_server(
         with perf(session.id, "figures.workspace", "fig_promoter_boxes"):
             panels = _fig7_panels()
             if not panels:
-                return ui.div(
-                    {"class": "empty-state"}, ui.p("No data for these datasets.")
-                )
+                return empty_state(ui.p("No data for these datasets."))
             fig = binding_perturbation_box_grid(
                 panels,
                 list(DTO_BINDING_ORDER),
@@ -1238,7 +1225,7 @@ def figures_workspace_server(
         with perf(session.id, "figures.workspace", "fig_dto_significance_grid"):
             panels = _fig8_panels()
             if not panels:
-                return ui.div({"class": "empty-state"}, ui.p("No DTO results."))
+                return empty_state(ui.p("No DTO results."))
             fig = binding_perturbation_bar_grid(
                 panels,
                 list(DTO_BINDING_ORDER),
@@ -1282,11 +1269,7 @@ def figures_workspace_server(
                 )
                 blocks.append(figure_html(top_fig, filename="fig9_topn_boxes"))
             else:
-                blocks.append(
-                    ui.div(
-                        {"class": "empty-state"}, ui.p("No data for these datasets.")
-                    )
-                )
+                blocks.append(empty_state(ui.p("No data for these datasets.")))
 
             if not _dto_available:
                 blocks.append(_dto_missing())
@@ -1306,9 +1289,7 @@ def figures_workspace_server(
                     )
                     blocks.append(figure_html(bottom_fig, filename="fig9_dto_bars"))
                 else:
-                    blocks.append(
-                        ui.div({"class": "empty-state"}, ui.p("No DTO results."))
-                    )
+                    blocks.append(empty_state(ui.p("No DTO results.")))
             return ui.div(*blocks)
 
 

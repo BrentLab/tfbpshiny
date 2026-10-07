@@ -147,6 +147,18 @@ def workspace_heading(text: str) -> ui.Tag:
 # ---------------------------------------------------------------------------
 
 
+def sidebar_text(*children: Any) -> ui.Tag:
+    """
+    Explanatory prose block in the sidebar's muted body style.
+
+    CSS: ``.sidebar-text``
+
+    :param children: Paragraphs or inline tags.
+
+    """
+    return ui.div({"class": "sidebar-text"}, *children)
+
+
 def empty_state(*children: Any, compact: bool = False) -> ui.Tag:
     """
     Centred placeholder shown when there is nothing to display yet.
@@ -221,35 +233,6 @@ def dataset_row(toggle: ui.Tag, label: str, filter_button: ui.Tag) -> ui.Tag:
     )
 
 
-def dataset_list(*rows: ui.Tag) -> ui.Tag:
-    """
-    Vertical stack of ``dataset_row`` elements with a small gap between them.
-
-    CSS: ``.dataset-list``
-
-    """
-    return ui.div({"class": "dataset-list"}, *rows)
-
-
-def filter_button(id: str) -> ui.Tag:
-    """
-    Small "Filter" button at the right of each dataset row.
-
-    CSS: ``.btn-filter-dataset``
-
-    """
-    return ui.input_action_button(
-        id,
-        "Filter",
-        class_="btn btn-sm btn-outline-secondary btn-filter-dataset",
-    )
-
-
-# ---------------------------------------------------------------------------
-# Filter modal building blocks
-# ---------------------------------------------------------------------------
-
-
 def filter_option_card(title: str, *controls: ui.Tag) -> ui.Tag:
     """
     Bordered card containing a single filter control (slider, selectize, switch).
@@ -275,21 +258,6 @@ def filter_option_card(title: str, *controls: ui.Tag) -> ui.Tag:
             *controls,
         ),
     )
-
-
-def modal_section(*cards: ui.Tag) -> ui.Tag:
-    """
-    Vertical stack of ``filter_option_card`` elements inside a modal column.
-
-    Uses Bootstrap ``d-flex flex-column gap-2``.
-
-    """
-    return ui.div({"class": "d-flex flex-column gap-2"}, *cards)
-
-
-# ---------------------------------------------------------------------------
-# Intersection matrix table
-# ---------------------------------------------------------------------------
 
 
 def matrix_cell_button(
@@ -419,43 +387,6 @@ def matrix_cell(
     return ui.tags.td({"class": cls}, button)
 
 
-def pending_regulator_banner(
-    display_a: str,
-    display_b: str,
-    n_common: int,
-) -> ui.Tag:
-    """
-    Persistent inline notification shown when a regulator filter is queued.
-
-    Appears above the matrix table. Not a modal — clicking outside has no effect.
-    The Cancel button emits ``input.cancel_pending_regulator``.
-
-    CSS: ``.pending-regulator-banner``
-
-    :param display_a: Human-readable name of the first dataset.
-    :param display_b: Human-readable name of the second dataset.
-    :param n_common: Number of common regulators in the pending filter.
-
-    """
-    return ui.div(
-        {"class": "pending-regulator-banner"},
-        ui.div(
-            {"class": "pending-regulator-banner-body"},
-            ui.span(
-                {"class": "pending-regulator-banner-text"},
-                ui.strong(f"{n_common:,} common regulators"),
-                f" between {display_a} and {display_b} queued as a filter. "
-                "Click Apply in the sidebar to commit.",
-            ),
-            ui.input_action_button(
-                "cancel_pending_regulator",
-                "Cancel",
-                class_="btn btn-sm btn-outline-secondary",
-            ),
-        ),
-    )
-
-
 def matrix_table(
     header_row: ui.Tag, *body_rows: ui.Tag, scroll_y: bool = False
 ) -> ui.Tag:
@@ -552,6 +483,7 @@ def export_instructions(run_name_placeholder: str) -> ui.Tag:
 
 
 __all__ = [
+    "sidebar_text",
     # tooltips
     "tooltip",
     # typography
@@ -563,18 +495,14 @@ __all__ = [
     "github_badge",
     # dataset selection
     "dataset_row",
-    "dataset_list",
-    "filter_button",
     # filter modal
     "filter_option_card",
-    "modal_section",
     # matrix
     "matrix_cell_button",
     "matrix_header_cell",
     "matrix_row_label",
     "matrix_cell",
     "matrix_table",
-    "pending_regulator_banner",
     "scroll_row",
     # export
     "export_download_button",

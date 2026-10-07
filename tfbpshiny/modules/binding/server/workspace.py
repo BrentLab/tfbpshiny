@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from plotly.io import to_html
 from shiny import module, reactive, render, ui
 
-from tfbpshiny.components import scroll_row
+from tfbpshiny.components import empty_state, scroll_row
 from tfbpshiny.modules.binding.ui import (
     COL_PREFERENCE_CHOICES,
     COL_PREFERENCE_CHOICES_NO_LOG10,
@@ -171,8 +171,7 @@ def binding_workspace_server(
 
         """
         if not _active_pairs():
-            return ui.div(
-                {"class": "empty-state"},
+            return empty_state(
                 ui.p("Select at least two binding datasets to see correlations."),
             )
         return ui.span()
@@ -189,8 +188,7 @@ def binding_workspace_server(
         with perf(session.id, "binding.workspace", "corr_matrix_container"):
             pairs = _active_pairs()
             if not pairs:
-                return ui.div(
-                    {"class": "empty-state"},
+                return empty_state(
                     ui.p("Select at least two binding datasets to see correlations."),
                 )
             corr_data = _corr_data()

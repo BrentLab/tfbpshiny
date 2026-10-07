@@ -11,7 +11,11 @@ import pandas as pd
 from shiny import reactive, render, ui
 from shiny.types import SilentException
 
-from tfbpshiny.components import export_download_button, export_instructions
+from tfbpshiny.components import (
+    empty_state,
+    export_download_button,
+    export_instructions,
+)
 from tfbpshiny.modules.select_datasets.export import (
     EXPORT_RUN_NAME_PLACEHOLDER,
     ExportDataset,
@@ -745,10 +749,7 @@ def select_datasets_sidebar_server(
 
         if not section_tags:
             section_tags.append(
-                ui.div(
-                    {"class": "empty-state compact"},
-                    ui.p("No datasets match your search."),
-                )
+                empty_state(ui.p("No datasets match your search."), compact=True)
             )
 
         banner = (

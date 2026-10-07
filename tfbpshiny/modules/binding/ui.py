@@ -6,7 +6,7 @@ from typing import Any
 
 from shiny import module, ui
 
-from tfbpshiny.components import sidebar_label, workspace_heading
+from tfbpshiny.components import sidebar_label, sidebar_text, workspace_heading
 
 #: Full set of "Column" choices, keyed for ``col_preference``. ``log10pval``
 #: is only valid with Pearson — Spearman is rank-based, so p-value and
@@ -64,8 +64,7 @@ def binding_ui() -> ui.Tag:
         ui.div(
             {"class": "workspace-centered"},
             workspace_heading("Binding Correlation"),
-            ui.div(
-                {"class": "sidebar-text"},
+            sidebar_text(
                 ui.p(
                     "Select binding datasets in the shared sidebar and options "
                     "here. Correlations and distributions update automatically "

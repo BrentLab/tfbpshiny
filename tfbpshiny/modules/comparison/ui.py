@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from shiny import module, ui
 
-from tfbpshiny.components import sidebar_label
+from tfbpshiny.components import sidebar_label, sidebar_text
 from tfbpshiny.modules.comparison.queries import (
     METRIC_DTO,
     METRIC_LABELS,
@@ -51,8 +51,7 @@ def comparison_ui() -> ui.Tag:
         # button that used to signal pending work.
         ui.busy_indicators.use(spinners=True, pulse=True),
         ui.h1("Binding/Perturbation Comparisons"),
-        ui.div(
-            {"class": "sidebar-text"},
+        sidebar_text(
             ui.p(
                 "Compare selected binding and perturbation datasets. All comparisons"
                 " are faceted by perturbation source; values are median"

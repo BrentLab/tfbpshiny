@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from plotly.io import to_html
 from shiny import module, reactive, render, ui
 
-from tfbpshiny.components import scroll_row, sidebar_label
+from tfbpshiny.components import empty_state, scroll_row, sidebar_label
 from tfbpshiny.datasets import PRESET_NAMES
 from tfbpshiny.materialize.comparison.method_promoter_model import (
     pair_methods_on_regulators,
@@ -214,7 +214,7 @@ def _summary_table(
 
     """
     if df.empty:
-        return ui.div({"class": "empty-state"}, ui.p("No rows."))
+        return empty_state(ui.p("No rows."))
     header_cells = [
         ui.tags.th(label, style="padding: 4px 10px; text-align: right;")
         for _, label, _ in columns
@@ -459,8 +459,7 @@ def comparison_workspace_server(
         """
         if _read_metric(input) != METRIC_DTO or _dto_available:
             return None
-        return ui.div(
-            {"class": "empty-state"},
+        return empty_state(
             ui.p(
                 ui.strong("DTO results are not in this database."),
                 " The `dto` and `sample_regulator` tables are missing, which means"
@@ -1018,8 +1017,7 @@ def comparison_workspace_server(
 
         """
         if not active_binding_datasets() or not active_perturbation_datasets():
-            return ui.div(
-                {"class": "empty-state"},
+            return empty_state(
                 ui.p("Select at least one binding and one perturbation dataset."),
             )
         return ui.span()
@@ -1063,8 +1061,7 @@ def comparison_workspace_server(
             b_dbs = _cd_binding_dbs()
             p_dbs = active_perturbation_datasets()
             if not b_dbs or not p_dbs:
-                return ui.div(
-                    {"class": "empty-state"},
+                return empty_state(
                     ui.p("No datasets selected."),
                 )
 
@@ -1121,8 +1118,7 @@ def comparison_workspace_server(
         if _read_metric(input) == METRIC_DTO:
             # DTO yields one percentage per dataset pair, not a per-regulator spread,
             # so there is no distribution to draw.
-            return ui.div(
-                {"class": "empty-state"},
+            return empty_state(
                 ui.p(
                     "Distributions are only available for the Top-N metric. DTO"
                     " produces a single percentage per dataset pair rather than a"
@@ -1138,8 +1134,7 @@ def comparison_workspace_server(
             p_sel = cd_selected_perturbation()
 
             if b_sel is None and p_sel is None:
-                return ui.div(
-                    {"class": "empty-state"},
+                return empty_state(
                     ui.p(
                         "Click a row header to view distributions for a binding"
                         " dataset, or a column header to view distributions for a"
@@ -1155,8 +1150,7 @@ def comparison_workspace_server(
                 x_col = "binding_label"
 
             if sub.empty:
-                return ui.div(
-                    {"class": "empty-state"},
+                return empty_state(
                     ui.p("No data for the selected datasets."),
                 )
 
@@ -1215,13 +1209,11 @@ def comparison_workspace_server(
             agg = _cp_data()
             p_dbs = active_perturbation_datasets()
             if not p_dbs:
-                return ui.div(
-                    {"class": "empty-state"},
+                return empty_state(
                     ui.p("No perturbation datasets selected."),
                 )
             if agg.empty:
-                return ui.div(
-                    {"class": "empty-state"},
+                return empty_state(
                     ui.p("No data for the selected datasets."),
                 )
 
@@ -1338,8 +1330,7 @@ def comparison_workspace_server(
                 )
 
             if not cards:
-                return ui.div(
-                    {"class": "empty-state"},
+                return empty_state(
                     ui.p("No data for the selected combination."),
                 )
 
@@ -1370,13 +1361,11 @@ def comparison_workspace_server(
             agg = _cm_data()
             p_dbs = active_perturbation_datasets()
             if not p_dbs:
-                return ui.div(
-                    {"class": "empty-state"},
+                return empty_state(
                     ui.p("No perturbation datasets selected."),
                 )
             if agg.empty:
-                return ui.div(
-                    {"class": "empty-state"},
+                return empty_state(
                     ui.p("No data for the selected combination."),
                 )
 
@@ -1545,8 +1534,7 @@ def comparison_workspace_server(
                 )
 
             if not cards:
-                return ui.div(
-                    {"class": "empty-state"},
+                return empty_state(
                     ui.p("No data for the selected combination."),
                 )
 
@@ -1634,8 +1622,7 @@ def comparison_workspace_server(
             data = _mm_data()
             p_dbs = active_perturbation_datasets()
             if not p_dbs:
-                return ui.div(
-                    {"class": "empty-state"},
+                return empty_state(
                     ui.p("No perturbation datasets selected."),
                 )
             universe_df = _mm_target_universe()
@@ -1668,8 +1655,7 @@ def comparison_workspace_server(
                 p_label = PERTURBATION_LABEL_MAP.get(p_db, p_db)
                 if bundle is None or bundle[1].empty:
                     panels.append(
-                        ui.div(
-                            {"class": "empty-state"},
+                        empty_state(
                             ui.p(
                                 f"{p_label}: no model results for this cutoff/preset."
                                 " Rebuild with ",
@@ -1684,8 +1670,7 @@ def comparison_workspace_server(
                 summ = fit_summary.iloc[0]
                 if not summ["converged"]:
                     panels.append(
-                        ui.div(
-                            {"class": "empty-state"},
+                        empty_state(
                             ui.p(
                                 ui.strong(f"{p_label}: model did not converge."),
                                 f" {summ['note'] or ''}",

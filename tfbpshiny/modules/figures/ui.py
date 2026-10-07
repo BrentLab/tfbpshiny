@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from shiny import module, ui
 
-from tfbpshiny.components import sidebar_label, workspace_heading
+from tfbpshiny.components import sidebar_label, sidebar_text, workspace_heading
 from tfbpshiny.datasets import DEFAULT_TOP_N, PRESET_NAMES, TOP_N_CHOICES
 from tfbpshiny.modules.figures.plots import (
     DTO_VENN_LAYOUT_COST_BASED,
@@ -81,8 +81,7 @@ def figures_ui() -> ui.Tag:
         ui.div(
             {"class": "workspace-centered"},
             workspace_heading("Figures"),
-            ui.div(
-                {"class": "sidebar-text"},
+            sidebar_text(
                 ui.p(
                     "Publication figures computed live from the materialized"
                     " database. Each figure states the TF set it is drawn over;"
@@ -92,8 +91,7 @@ def figures_ui() -> ui.Tag:
             ),
             ui.output_ui("figure_status"),
             workspace_heading("1. Rank vs. response"),
-            ui.div(
-                {"class": "sidebar-text"},
+            sidebar_text(
                 ui.p(
                     "Percent of top-n binding targets that are transcriptionally"
                     " responsive, as a function of n. One panel per perturbation"
@@ -136,8 +134,7 @@ def figures_ui() -> ui.Tag:
             ui.output_ui("fig_rank_response"),
             ui.output_ui("fig_rank_response_facets"),
             workspace_heading("2. Response rate among top binding targets"),
-            ui.div(
-                {"class": "sidebar-text"},
+            sidebar_text(
                 ui.p(
                     "Distribution across TFs of the percent responsive among the"
                     " top-N binding targets. One panel per perturbation dataset,"
@@ -153,8 +150,7 @@ def figures_ui() -> ui.Tag:
             ),
             ui.output_ui("fig_topn_boxes"),
             workspace_heading("3. Authors' binding thresholds"),
-            ui.div(
-                {"class": "sidebar-text"},
+            sidebar_text(
                 ui.p(
                     "For each binding dataset, the response rate over every bound"
                     " target alongside the number of bound targets per TF. Bound"
@@ -174,8 +170,7 @@ def figures_ui() -> ui.Tag:
             ),
             ui.output_ui("fig_authors_bound"),
             workspace_heading("4. Direct target overlap significance"),
-            ui.div(
-                {"class": "sidebar-text"},
+            sidebar_text(
                 ui.p(
                     "Percent of TFs shared by a binding and perturbation dataset"
                     " whose bound and responsive target sets overlap more than"
@@ -186,8 +181,7 @@ def figures_ui() -> ui.Tag:
             ),
             ui.output_ui("fig_dto_bars"),
             workspace_heading("5. Agreement on DTO significance"),
-            ui.div(
-                {"class": "sidebar-text"},
+            sidebar_text(
                 ui.p(
                     "How many TFs are DTO-significant in one, two or all three"
                     " binding datasets. Restricted to TFs shared by all three"
@@ -217,8 +211,7 @@ def figures_ui() -> ui.Tag:
             ),
             ui.output_ui("fig_dto_venn"),
             workspace_heading("6. Agreement between datasets is modest"),
-            ui.div(
-                {"class": "sidebar-text"},
+            sidebar_text(
                 ui.p(
                     "How much two datasets of the same type agree, measured as the"
                     " overlap of their top-N target sets against the overlap chance"
@@ -260,8 +253,7 @@ def figures_ui() -> ui.Tag:
             ui.accordion(
                 ui.accordion_panel(
                     "Choose datasets to compare",
-                    ui.div(
-                        {"class": "sidebar-text"},
+                    sidebar_text(
                         ui.p(
                             "Every pair among the selected datasets is drawn. Pick"
                             " one promoter definition across assays to compare"
@@ -321,8 +313,7 @@ def figures_ui() -> ui.Tag:
             ),
             ui.output_ui("fig_agreement_perturbation"),
             workspace_heading("7. Promoter definitions, response rate"),
-            ui.div(
-                {"class": "sidebar-text"},
+            sidebar_text(
                 ui.p(
                     "Distribution across TFs of the top-N percent responsive, one"
                     " box per promoter set (Kang, Mindel, 500 bp, Intergenic),"
@@ -344,8 +335,7 @@ def figures_ui() -> ui.Tag:
             ),
             ui.output_ui("fig_promoter_boxes"),
             workspace_heading("8. Promoter definitions, DTO significance"),
-            ui.div(
-                {"class": "sidebar-text"},
+            sidebar_text(
                 ui.p(
                     "Same grid as figure 7, but each bar is the percent of that"
                     " (binding, perturbation) pair's shared TFs whose bound and"
@@ -367,8 +357,7 @@ def figures_ui() -> ui.Tag:
             ),
             ui.output_ui("fig_dto_significance_grid"),
             workspace_heading("9. Peak calling vs. promoter enrichment"),
-            ui.div(
-                {"class": "sidebar-text"},
+            sidebar_text(
                 ui.p(
                     "The same two comparisons as figures 7 and 8, but instead of"
                     " varying the promoter set (with promoter enrichment"
@@ -388,8 +377,7 @@ def figures_ui() -> ui.Tag:
             ),
             ui.output_ui("fig_method_boxes"),
             workspace_heading("10. Targets shared between datasets"),
-            ui.div(
-                {"class": "sidebar-text"},
+            sidebar_text(
                 ui.p(
                     "The targets each dataset ranks in its top N (the Top N"
                     " selector), for the featured TF as a Venn diagram on the left"
