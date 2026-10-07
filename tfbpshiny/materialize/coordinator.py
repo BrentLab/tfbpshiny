@@ -513,17 +513,27 @@ def materialize(
     """
     Run the full materialization pipeline, writing to ``output_path``.
 
-    Execution order:
-    1. Coordinating layer (registry tables, column metadata)
-    2. Metadata layer (``{db_name}_meta`` tables, regulator display names)
-    3. Comparison — HF-sourced (``dto``)
-    4. Comparison — computed (``topn_results``, ``correlations``)
+    Execution order (each phase is logged):
+    1. Coordinating layer: ``promoter_sets``, ``binding_methods``,
+       ``dataset_registry``, ``comparative_dataset_registry``,
+       ``dataset_column_metadata``.
+    2. Metadata layer: one ``{db_name}_meta`` table per dataset,
+       ``regulator_display_names``, ``sample_regulator``.
+    3. HF-sourced comparison: ``dto``.
+    4. Computed comparison tables: ``topn_results`` (including the authors'-threshold
+       rows at ``TOP_N_ALL``), ``topn_agreement``, ``topn_target_sets``,
+       ``correlations``.
+    5. Method x promoter-set model: ``method_promoter_model_topn``,
+       ``method_promoter_model_target_universe``, ``method_promoter_model_coefs``,
+       ``method_promoter_model_fit_summary``.
 
     :param output_path: Path to the output ``.duckdb`` file.
     :param vdb: VirtualDB instance (all dataset views registered).
-    :param args: Parsed CLI args with fields ``methods``, ``top_n_values``,
-        ``effect_thresholds``, ``pvalue_thresholds``, ``skip_topn``,
-        ``skip_correlations``.
+    :param args: Parsed CLI args. Fields read: ``methods`` (comma-separated
+        correlation methods), ``top_n_values``, ``effect_thresholds``,
+        ``pvalue_thresholds``, ``presets``, ``float_decimals``, ``skip_topn``,
+        ``skip_correlations``, ``skip_method_promoter_model``. ``cli.py`` sets a
+        default for every one of them.
 
     """
     conn = duckdb.connect(output_path)

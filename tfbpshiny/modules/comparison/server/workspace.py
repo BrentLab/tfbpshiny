@@ -1,4 +1,4 @@
-"""Workspace server for the Comparison module — Phase 2 DuckDB version."""
+"""Workspace server for the Comparison module."""
 
 from __future__ import annotations
 

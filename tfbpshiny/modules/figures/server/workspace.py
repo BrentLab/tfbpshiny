@@ -131,8 +131,8 @@ def figures_workspace_server(
         == 2
     )
 
-    # The whole-bound-set rows and the agreement table only exist in databases
-    # built after the Phase 2 materialization additions.
+    # The whole-bound-set rows, the agreement table and the target-set table only
+    # exist in databases built by a materializer that knew about them.
     _authors_bound_available = has_top_n(conn, TOP_N_ALL)
     _agreement_available = table_exists(conn, "topn_agreement")
     _target_sets_available = table_exists(conn, "topn_target_sets")

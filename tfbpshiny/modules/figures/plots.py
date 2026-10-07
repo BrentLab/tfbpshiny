@@ -503,7 +503,7 @@ def dto_venn_figure(
 
     plotly has no Venn primitive, so this is the one figure rendered through
     matplotlib. The caller converts it with
-    :func:`tfbpshiny.utils.figure.matplotlib_png_html`.
+    :func:`tfbpshiny.utils.figure.matplotlib_svg_html`.
 
     :param sets: db_name -> set of locus tags (significant regulators, or top-N
         targets).

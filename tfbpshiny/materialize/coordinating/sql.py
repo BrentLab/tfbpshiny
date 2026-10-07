@@ -385,7 +385,7 @@ def column_metadata_sql(vdb: VirtualDB) -> str:
     Queries VirtualDB for each dataset's column metadata, applies
     :data:`~tfbpshiny.utils.vdb_init.HIDDEN_FILTER_FIELDS`, and classifies
     columns as ``'condition'`` or ``'upstream'``.  The resulting table replaces
-    ``vdb.get_column_metadata()`` in the Phase 2 app startup.
+    ``vdb.get_column_metadata()`` at app startup.
 
     :param vdb: VirtualDB instance with all dataset views registered.
     :returns: ``CREATE TABLE`` + ``INSERT`` SQL string.

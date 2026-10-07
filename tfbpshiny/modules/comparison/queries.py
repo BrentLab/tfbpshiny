@@ -1,6 +1,5 @@
 # flake8: noqa
-"""SQL queries for the Comparison (DTO / Top-N by Binding) module — Phase 2 DuckDB
-version."""
+"""SQL queries for the Comparison (DTO / Top-N by Binding) module."""
 
 from __future__ import annotations
 

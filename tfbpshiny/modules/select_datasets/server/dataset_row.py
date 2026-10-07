@@ -1,4 +1,4 @@
-"""Dataset-row sub-module for the Select Datasets sidebar — Phase 2 DuckDB version."""
+"""Dataset-row sub-module for the Select Datasets sidebar."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Workspace server for the Select Datasets page — Phase 2 DuckDB version."""
+"""Workspace server for the Select Datasets page."""
 
 from __future__ import annotations
 

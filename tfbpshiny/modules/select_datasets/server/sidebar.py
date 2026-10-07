@@ -1,4 +1,4 @@
-"""Sidebar server for the Select Datasets page — Phase 2 DuckDB version."""
+"""Sidebar server for the Select Datasets page."""
 
 from __future__ import annotations
 
@@ -52,7 +52,8 @@ def _build_experimental_condition_field_choices(
         valid = (
             df.loc[mask, cond_col].dropna().astype(str).value_counts().index.tolist()
         )
-        # Phase 2: no level_definitions — use raw values as both key and label
+        # No level definitions in the materialized metadata: raw values serve as
+        # both key and label.
         result[cond_col] = {v: v for v in valid}
     return result
 

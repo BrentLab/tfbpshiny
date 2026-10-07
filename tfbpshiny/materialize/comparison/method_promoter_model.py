@@ -316,9 +316,8 @@ def _regulator_intersection(conn: Any, perturbation_db: str) -> set[str]:
     Restricting to this 3-way intersection keeps the regulator population fixed across
     every cell of the design, so `method`/`promoter_set`/`assay` coefficients are not
     estimated over a shifting set of TFs cell to cell (a regulator profiled by only one
-    binding assay, say, would otherwise contribute lopsided partial data). Mirrors
-    `coordinator.py`'s `_regulators_for_binding` helper; copied locally rather than
-    imported, per this module's established self-contained convention.
+    binding assay, say, would otherwise contribute lopsided partial data). Reads the
+    ``{db}_meta`` tables of the output database directly.
 
     :param conn: Output DuckDB connection (read).
     :param perturbation_db: Perturbation dataset db_name.

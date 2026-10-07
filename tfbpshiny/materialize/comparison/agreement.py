@@ -129,7 +129,8 @@ def agreement_pair_select_sql(
     Each side is ranked independently within a sample, then the top-N sets are
     intersected per regulator at every cutoff.
 
-    Ranking uses ``ROW_NUMBER()`` rather than the ``RANK()`` used by ``topn_results``.
+    Ranking uses ``ROW_NUMBER()`` rather than the average-rank tie rule used by
+    ``topn_results``.
     Set sizes must be exactly N here: the overlap is compared against an expectation of
     ``N^2 / GENE_UNIVERSE``, so a tie inflating one side's set would inflate the
     intersection and read as agreement.

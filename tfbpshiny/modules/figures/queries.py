@@ -333,9 +333,9 @@ def fetch_rank_response(
     ``topn_results`` is materialized at five cutoffs, giving a five-point cumulative
     curve per (binding dataset, regulator).
 
-    The x value is ``n``, **not** ``top_n``. The top-N SQL ranks with ``RANK()``, so a
-    tie spanning the cutoff lets more than ``top_n`` rows through -- ``n`` is the
-    number of targets actually summarised, and is the honest x coordinate.
+    The x value is ``n``, **not** ``top_n``. A tie group is in the top N only when its
+    average rank is within N, so ``n`` can fall below or above ``top_n`` -- ``n`` is
+    the number of targets actually summarised, and is the honest x coordinate.
 
     Where a regulator has several binding or perturbation samples, the median across
     them is taken so each (binding dataset, regulator, n) yields one point.
@@ -544,7 +544,7 @@ def fetch_dto_significance_for_universe(
 
     For figure 9's bottom grid: DTO significance is pre-computed entirely externally
     (no local statistics to rerun), so a regulator peak_calling never called a peak
-    for can never get a real empirical p-value -- there's nothing to impute. Instead,
+    for has no empirical p-value and no value to report; it is left out. Instead,
     a sibling promoter_enrichment/peak_calling pair shares one 3-way-intersected
     universe (see :func:`regulator_intersection`) as their common denominator, so the
     two bars are directly comparable instead of each drawing its own, unevenly-sized,
@@ -662,7 +662,7 @@ __all__ = [
 
 
 # ---------------------------------------------------------------------------
-# Figures 3 and 6 -- require the Phase 2 materialization
+# Startup probes: is the table / cutoff a figure needs present in this database?
 # ---------------------------------------------------------------------------
 
 
