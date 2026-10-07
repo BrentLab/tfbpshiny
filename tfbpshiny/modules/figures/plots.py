@@ -497,7 +497,7 @@ def dto_venn_figure(
     title: str = "",
     layout: str = DTO_VENN_LAYOUT_DEFAULT,
     colors: dict[str, str] | None = None,
-) -> Any:
+) -> tuple[Any, bool]:
     """
     Three-set Venn of regulators (or targets), as a matplotlib figure.
 
@@ -518,7 +518,9 @@ def dto_venn_figure(
         cost of the areas being an approximation rather than an exact match).
     :param colors: display label -> colour. Defaults to :data:`BINDING_COLORS`; pass
         :data:`PERTURBATION_COLORS` for perturbation datasets.
-    :returns: A ``matplotlib.figure.Figure``.
+    :returns: ``(figure, proportional)``: the ``matplotlib.figure.Figure``, and whether
+        the circle areas are proportional to the set sizes (``False`` when the
+        default layout had to fall back to equal circles).
 
     """
     import warnings
@@ -582,10 +584,7 @@ def dto_venn_figure(
             if label is not None:
                 label.set_fontsize(14)
     ax.set_title(title, fontsize=16)
-    # No longer shown in the title (a reader doesn't need it), but kept as an attribute
-    # on the returned Figure so tests can still confirm the fallback actually happened.
-    fig.dto_venn_proportional = proportional  # type: ignore[attr-defined]
-    return fig
+    return fig, proportional
 
 
 __all__ = [

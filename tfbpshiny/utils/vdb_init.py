@@ -43,38 +43,9 @@ HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
     "hughes_knockout": {"oe_passed_qc", "sgd_description"},
 }
 
-# The canonical db_name for each underlying dataset. When multiple db_names exist for
-# the same experiment called against different promoter sets (e.g. rossi vs
-# rossi_mindel), only the entry in this set is shown in the dataset selector. Alternate
-# promoter variants remain registered in VirtualDB and are accessible to analysis
-# modules once a promoter selector is wired up.
-PRIMARY_DATASETS: frozenset[str] = frozenset(
-    {
-        "callingcards_500bp",
-        "harbison",
-        "rossi_500bp",
-        "chec_m2025_500bp",
-        "hackett",
-        "hu_reimand",
-        "hughes_overexpression",
-        "hughes_knockout",
-        "kemmeren",
-        "degron",
-    }
-)
-
-# Datasets whose toggles are on by default. A superset of DEFAULT_DATASET_FILTERS
-# — datasets with no preset conditions are listed here but not in the filter dict.
-DEFAULT_ACTIVE_DATASETS: frozenset[str] = frozenset(
-    {
-        "rossi_500bp",
-        "chec_m2025_500bp",
-        "hackett",
-        "callingcards_500bp",
-        "kemmeren",
-        "degron",
-    }
-)
+# Which datasets are primary and which are on by default is recorded in the
+# materialized ``dataset_registry`` (``is_primary`` / ``is_active_default``), which the
+# selection tab reads directly; it is not restated here.
 
 # Default filter state applied on first load. The structure is identical to the
 # dict stored in the ``dataset_filters`` reactive value so it can be used as
@@ -263,8 +234,6 @@ def load_app_datasets(conn: duckdb.DuckDBPyConnection) -> AppDatasets:
 __all__ = [
     "HIDDEN_FILTER_FIELDS",
     "FIELD_TYPE_OVERRIDES",
-    "PRIMARY_DATASETS",
-    "DEFAULT_ACTIVE_DATASETS",
     "DEFAULT_DATASET_FILTERS",
     "ResponsivenessPreset",
     "DEFAULT_RESPONSIVENESS_PRESETS",

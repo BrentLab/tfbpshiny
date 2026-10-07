@@ -213,12 +213,6 @@ def _figure_5() -> None:
             sets = fq.fetch_dto_significant_sets(c.conn, list(fq.DTO_BINDING_ORDER), p)
             return {k: sorted(v) for k, v in sets.items()}
 
-        for b in fq.DTO_BINDING_ORDER:
-
-            @snap(f"fig_dto_pvalues__{b}__{p}")
-            def _pv(c: Ctx, b: str = b, p: str = p) -> Any:
-                return fq.fetch_dto_pvalues(c.conn, b, p)
-
 
 _figure_5()
 

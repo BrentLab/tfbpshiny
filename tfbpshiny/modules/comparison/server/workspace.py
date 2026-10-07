@@ -47,15 +47,6 @@ from tfbpshiny.utils.vdb_init import (
     get_responsiveness_label,
 )
 
-_PERT_ORDER = [
-    "2006 Overexpression",
-    "2006 TFKO",
-    "2007 TFKO",
-    "2014 TFKO",
-    "2020 Overexpression",
-    "2025 Degron",
-]
-
 _BINDING_ORDER = [
     "2004 ChIP-chip",
     "2021 ChIP-exo",

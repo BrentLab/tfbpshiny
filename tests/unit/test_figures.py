@@ -215,8 +215,10 @@ def test_venn_falls_back_to_equal_circles_when_layout_invalid() -> None:
         DTO_BINDING_ORDER[1]: {f"g{i}" for i in range(20, 67)},
         DTO_BINDING_ORDER[2]: {f"g{i}" for i in range(5, 63)},
     }
-    fig = dto_venn_figure(sets, LABELS, list(DTO_BINDING_ORDER), title="X")
-    assert fig.dto_venn_proportional is False
+    fig, proportional = dto_venn_figure(
+        sets, LABELS, list(DTO_BINDING_ORDER), title="X"
+    )
+    assert proportional is False
     assert fig.axes[0].get_title() == "X"
 
 
@@ -231,7 +233,9 @@ def test_venn_circles_use_the_binding_dataset_colours() -> None:
         DTO_BINDING_ORDER[1]: {f"g{i}" for i in range(25, 55)},
         DTO_BINDING_ORDER[2]: {f"g{i}" for i in range(50, 80)},
     }
-    fig = dto_venn_figure(sets, LABELS, list(DTO_BINDING_ORDER), title="X")
+    fig, proportional = dto_venn_figure(
+        sets, LABELS, list(DTO_BINDING_ORDER), title="X"
+    )
     # Patches are the first three artists in set order (A only, B only, C only
     # regions are drawn in "100", "010", "001" order is not guaranteed), so compare
     # as sets of RGB triples.
@@ -250,8 +254,10 @@ def test_venn_keeps_proportional_layout_when_valid() -> None:
         DTO_BINDING_ORDER[1]: {f"g{i}" for i in range(25, 55)},
         DTO_BINDING_ORDER[2]: {f"g{i}" for i in range(50, 80)},
     }
-    fig = dto_venn_figure(sets, LABELS, list(DTO_BINDING_ORDER), title="X")
-    assert fig.dto_venn_proportional is True
+    fig, proportional = dto_venn_figure(
+        sets, LABELS, list(DTO_BINDING_ORDER), title="X"
+    )
+    assert proportional is True
     assert fig.axes[0].get_title() == "X"
 
 
@@ -265,14 +271,14 @@ def test_venn_cost_based_layout_stays_proportional_where_default_cannot() -> Non
         DTO_BINDING_ORDER[1]: {f"g{i}" for i in range(20, 67)},
         DTO_BINDING_ORDER[2]: {f"g{i}" for i in range(5, 63)},
     }
-    fig = dto_venn_figure(
+    fig, proportional = dto_venn_figure(
         sets,
         LABELS,
         list(DTO_BINDING_ORDER),
         title="X",
         layout=DTO_VENN_LAYOUT_COST_BASED,
     )
-    assert fig.dto_venn_proportional is True
+    assert proportional is True
     assert fig.axes[0].get_title() == "X"
 
 
@@ -736,7 +742,9 @@ def test_venn_offers_a_named_svg_download() -> None:
         DTO_BINDING_ORDER[1]: {f"g{i}" for i in range(25, 55)},
         DTO_BINDING_ORDER[2]: {f"g{i}" for i in range(50, 80)},
     }
-    fig = dto_venn_figure(sets, LABELS, list(DTO_BINDING_ORDER), title="X")
+    fig, proportional = dto_venn_figure(
+        sets, LABELS, list(DTO_BINDING_ORDER), title="X"
+    )
     html = str(matplotlib_svg_html(fig, alt="venn", filename="fig5_test").tagify())
 
     assert 'download="fig5_test.svg"' in html
@@ -755,7 +763,7 @@ def test_venn_without_filename_has_no_download_link() -> None:
     from tfbpshiny.utils.figure import matplotlib_svg_html
 
     sets = {"a": {"g1"}, "b": {"g2"}, "c": {"g3"}}
-    fig = dto_venn_figure(sets, {}, ["a", "b", "c"])
+    fig, proportional = dto_venn_figure(sets, {}, ["a", "b", "c"])
     html = str(matplotlib_svg_html(fig).tagify())
     assert "Download SVG" not in html
     assert "<img" in html
@@ -1280,32 +1288,6 @@ def _dto_pvalue_db():
     return conn
 
 
-def test_fetch_dto_pvalues_takes_the_minimum_per_regulator() -> None:
-    from tfbpshiny.modules.figures.queries import fetch_dto_pvalues
-
-    df = fetch_dto_pvalues(_dto_pvalue_db(), "b1", "p1")
-    lookup = dict(zip(df["regulator_locus_tag"], df["dto_empirical_pvalue"]))
-    assert lookup == {"REG1": 0.02, "REG2": 0.3}
-
-
-def test_fetch_dto_pvalues_restricted_to_shared_universe() -> None:
-    """A regulator DTO tested but that isn't in both datasets' metadata is dropped."""
-    from tfbpshiny.modules.figures.queries import fetch_dto_pvalues
-
-    conn = _dto_pvalue_db()
-    conn.execute("INSERT INTO dto VALUES ('b1', 'p1', 'REG_UNSHARED', 'log2fc', 0.01)")
-    df = fetch_dto_pvalues(conn, "b1", "p1")
-    assert "REG_UNSHARED" not in set(df["regulator_locus_tag"])
-
-
-def test_fetch_dto_pvalues_empty_universe_does_not_raise() -> None:
-    from tfbpshiny.modules.figures.queries import fetch_dto_pvalues
-
-    conn = _dto_pvalue_db()
-    df = fetch_dto_pvalues(conn, "no_such_binding", "p1")
-    assert df.empty
-
-
 def test_fetch_dto_significance_for_universe_restricts_to_the_given_set() -> None:
     """REG2 is dropped from both numerator and denominator when it's not in the caller-
     supplied universe, even though it's DTO-tested and metadata-shared."""
@@ -1716,7 +1698,9 @@ def test_venn_accepts_a_colour_map_for_non_binding_datasets() -> None:
 
     labels = {"p1": "2014 TFKO", "p2": "2020 Overexpression", "p3": "2025 Degron"}
     sets = {"p1": {"a", "b"}, "p2": {"b", "c"}, "p3": {"c", "d"}}
-    fig = dto_venn_figure(sets, labels, ["p1", "p2", "p3"], colors=PERTURBATION_COLORS)
+    fig, proportional = dto_venn_figure(
+        sets, labels, ["p1", "p2", "p3"], colors=PERTURBATION_COLORS
+    )
     drawn = {
         tuple(round(c, 2) for c in p.get_facecolor()[:3]) for p in fig.axes[0].patches
     }

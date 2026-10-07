@@ -632,44 +632,6 @@ def fetch_dto_significant_sets(
     return out
 
 
-def fetch_dto_pvalues(
-    conn: duckdb.DuckDBPyConnection,
-    binding_db: str,
-    pr_db: str,
-    pr_ranking_column: str = DTO_RANKING_COLUMN,
-) -> pd.DataFrame:
-    """
-    Per-regulator best DTO empirical p-value, for figures 8 and 9's box plots.
-
-    Extracted from the same ``regulator_locus_tag, min(dto_empirical_pvalue) ...
-    GROUP BY regulator_locus_tag`` sub-pattern :func:`fetch_dto_significant_sets`
-    already uses, minus its ``HAVING`` threshold filter and set-membership collapse --
-    this keeps the actual p-value, not just significant-or-not.
-
-    :param conn: Read-only DuckDB connection.
-    :param binding_db: Binding db_name.
-    :param pr_db: Perturbation db_name.
-    :param pr_ranking_column: DTO ranking variant.
-    :returns: Columns ``regulator_locus_tag``, ``dto_empirical_pvalue``, restricted to
-        regulators shared by ``binding_db`` and ``pr_db`` (the same metadata-level
-        universe :func:`fetch_dto_significant_sets` restricts to).
-
-    """
-    universe = set(regulator_intersection(conn, [binding_db, pr_db]))
-    if not universe:
-        return pd.DataFrame(columns=["regulator_locus_tag", "dto_empirical_pvalue"])
-    df = conn.execute(
-        """
-        SELECT regulator_locus_tag, min(dto_empirical_pvalue) AS dto_empirical_pvalue
-        FROM dto
-        WHERE binding_db = ? AND perturbation_db = ? AND pr_ranking_column = ?
-        GROUP BY regulator_locus_tag
-        """,
-        [binding_db, pr_db, pr_ranking_column],
-    ).df()
-    return df[df["regulator_locus_tag"].isin(universe)].reset_index(drop=True)
-
-
 __all__ = [
     "AUTHORS_PEAK_BINDING",
     "BINDING_ORDER",
@@ -699,7 +661,6 @@ __all__ = [
     "PROMOTER_SET_LEVELS",
     "PR_ORDER",
     "dataset_labels",
-    "fetch_dto_pvalues",
     "fetch_dto_significance",
     "fetch_dto_significance_for_universe",
     "fetch_dto_significant_sets",

@@ -521,7 +521,7 @@ def figures_workspace_server(
                 sets = fetch_dto_significant_sets(conn, list(DTO_BINDING_ORDER), p)
                 if not any(sets.values()):
                     continue
-                mpl_fig = dto_venn_figure(
+                mpl_fig, _ = dto_venn_figure(
                     sets,
                     _labels,
                     list(DTO_BINDING_ORDER),
@@ -878,7 +878,7 @@ def figures_workspace_server(
         panels = []
         sets = fetch_target_sets(conn, datasets, tf, top_n, filters) if tf else {}
         if any(sets.values()):
-            mpl_fig = dto_venn_figure(
+            mpl_fig, _ = dto_venn_figure(
                 sets,
                 _labels,
                 datasets,

@@ -69,7 +69,6 @@ warn_unused_configs = true
 
 [tool.vulture]
 paths = ["tfbpshiny"]
-exclude = ["tfbpshiny/deprecated/"]
 # Shiny registers these by decoration alone -- vulture can't see the framework-side
 # call, so it flags every reactive/render/module function as unused without this.
 ignore_decorators = [
