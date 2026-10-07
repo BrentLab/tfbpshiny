@@ -23,7 +23,11 @@ from tfbpshiny.datasets import (
     TOP_N_ALL,
 )
 from tfbpshiny.materialize.comparison.agreement import AGREEMENT_EXCLUDED
-from tfbpshiny.utils.corr_query import get_filtered_sample_ids
+from tfbpshiny.utils.corr_query import (
+    get_filtered_sample_ids,
+    per_dataset_sample_clause,
+    sample_filter_clause,
+)
 from tfbpshiny.utils.vdb_init import DEFAULT_RESPONSIVENESS_PRESETS
 
 #: Binding datasets shown in the figures, in display order. These are the *primary*
@@ -124,83 +128,6 @@ AGREEMENT_PAIR_WARN = 12
 #: Calling Cards has none (confirmed: no `callingcards_*_peaks` registry rows), so it
 #: is excluded here rather than shown as an empty row.
 METHOD_COMPARISON_BINDING: tuple[str, ...] = ("rossi_500bp", "chec_m2025_500bp")
-
-
-def _sample_filter_clause(
-    conn: duckdb.DuckDBPyConnection,
-    db_name: str,
-    filters: dict | None,
-    column: str,
-) -> tuple[str, list]:
-    """
-    Build a SQL fragment restricting ``column`` to the samples passing ``filters``.
-
-    Without this, a dataset's samples are pooled indiscriminately -- Hackett would
-    contribute all 1,543 timepoint samples rather than the 193 at the default 45 min
-    timepoint, which materially changes every figure that medians across samples.
-
-    Returns ``("", [])`` when the dataset has no filter, so callers can splice the
-    fragment in unconditionally.
-
-    :param conn: Read-only DuckDB connection.
-    :param db_name: Dataset whose ``{db_name}_meta`` supplies the sample ids.
-    :param filters: Filter spec for this dataset, or ``None``.
-    :param column: SQL expression yielding the sample id to constrain.
-    :returns: ``(sql_fragment, params)``.
-
-    """
-    if not filters:
-        return "", []
-    ids = get_filtered_sample_ids(conn, db_name, filters)
-    if not ids:
-        # An empty allow-list means nothing passes; make that explicit rather than
-        # silently dropping the restriction.
-        return " AND FALSE", []
-    return f" AND {column} IN ({', '.join(['?'] * len(ids))})", ids
-
-
-def _per_dataset_sample_clause(
-    conn: duckdb.DuckDBPyConnection,
-    db_names: list[str],
-    filters: dict,
-    db_column: str,
-    sample_column: str,
-) -> tuple[str, list]:
-    """
-    Build SQL restricting each of several datasets to its own filtered samples.
-
-    For queries that mix datasets in one result set (a binding series per dataset, or
-    both sides of a pair), where a single ``IN (...)`` would be wrong: each dataset has a
-    different sample allow-list. A row passes if it belongs to a dataset *without* a
-    filter, or its sample is in that dataset's allow-list, so unfiltered datasets are
-    untouched. A filtered dataset whose allow-list is empty contributes no rows.
-
-    :param conn: Read-only DuckDB connection.
-    :param db_names: Datasets that appear in the query.
-    :param filters: Per-dataset filter specs keyed by db_name (variants already
-        expanded -- see ``utils.corr_query.expand_filters_to_variants``).
-    :param db_column: SQL expression yielding the row's dataset db_name.
-    :param sample_column: SQL expression yielding the row's sample id.
-    :returns: ``(sql_fragment, params)``, each condition prefixed ``AND``; empty when no
-        listed dataset has a filter.
-
-    """
-    parts: list[str] = []
-    params: list = []
-    for db in dict.fromkeys(db_names):
-        spec = filters.get(db)
-        if not spec:
-            continue
-        ids = get_filtered_sample_ids(conn, db, spec)
-        if not ids:
-            parts.append(f" AND {db_column} <> ?")
-            params.append(db)
-            continue
-        placeholders = ", ".join(["?"] * len(ids))
-        parts.append(f" AND ({db_column} <> ? OR {sample_column} IN ({placeholders}))")
-        params.append(db)
-        params.extend(ids)
-    return "".join(parts), params
 
 
 def scoring_clause(
@@ -352,14 +279,14 @@ def fetch_rank_response(
     if not binding_dbs or not regulators:
         return pd.DataFrame()
     filters = filters or {}
-    p_clause, p_params = _sample_filter_clause(
+    p_clause, p_params = sample_filter_clause(
         conn,
         pr_db,
         filters.get(pr_db),
         "split_part(t.perturbation_source_sample, ';', 3)",
     )
     s_clause, s_params = scoring_clause(pr_db, preset_name)
-    b_clause, b_params = _per_dataset_sample_clause(
+    b_clause, b_params = per_dataset_sample_clause(
         conn,
         binding_dbs,
         filters,
@@ -418,14 +345,14 @@ def fetch_topn_percent_responsive(
     if not binding_dbs or not regulators:
         return pd.DataFrame()
     filters = filters or {}
-    p_clause, p_params = _sample_filter_clause(
+    p_clause, p_params = sample_filter_clause(
         conn,
         pr_db,
         filters.get(pr_db),
         "split_part(t.perturbation_source_sample, ';', 3)",
     )
     s_clause, s_params = scoring_clause(pr_db, preset_name)
-    b_clause, b_params = _per_dataset_sample_clause(
+    b_clause, b_params = per_dataset_sample_clause(
         conn,
         binding_dbs,
         filters,
@@ -730,14 +657,14 @@ def fetch_authors_bound(
     if not binding_dbs:
         return pd.DataFrame()
     filters = filters or {}
-    p_clause, p_params = _sample_filter_clause(
+    p_clause, p_params = sample_filter_clause(
         conn,
         pr_db,
         filters.get(pr_db),
         "split_part(t.perturbation_source_sample, ';', 3)",
     )
     s_clause, s_params = scoring_clause(pr_db, preset_name)
-    b_clause, b_params = _per_dataset_sample_clause(
+    b_clause, b_params = per_dataset_sample_clause(
         conn,
         binding_dbs,
         filters,
@@ -842,10 +769,10 @@ def fetch_agreement(
     if len(db_names) < 2:
         return pd.DataFrame()
     filters = filters or {}
-    a_clause, a_params = _per_dataset_sample_clause(
+    a_clause, a_params = per_dataset_sample_clause(
         conn, db_names, filters, "da.db_name", "split_part(g.source_sample_a, ';', 3)"
     )
-    b_clause, b_params = _per_dataset_sample_clause(
+    b_clause, b_params = per_dataset_sample_clause(
         conn, db_names, filters, "db.db_name", "split_part(g.source_sample_b, ';', 3)"
     )
     ph = ", ".join(["?"] * len(db_names))
@@ -933,10 +860,10 @@ def fetch_shared_targets(
     for db_a, db_b in itertools.combinations(sorted(db_names), 2):
         if db_a not in labels or db_b not in labels:
             continue
-        fa, pa = _sample_filter_clause(
+        fa, pa = sample_filter_clause(
             conn, db_a, filters.get(db_a), "split_part(source_sample, ';', 3)"
         )
-        fb, pb = _sample_filter_clause(
+        fb, pb = sample_filter_clause(
             conn, db_b, filters.get(db_b), "split_part(source_sample, ';', 3)"
         )
         sql = f"""
@@ -1008,7 +935,7 @@ def fetch_target_sets(
     filters = filters or {}
     out: dict[str, set[str]] = {}
     for db in db_names:
-        clause, params = _sample_filter_clause(
+        clause, params = sample_filter_clause(
             conn, db, filters.get(db), "split_part(source_sample, ';', 3)"
         )
         prefix = _target_set_prefix(conn, db)

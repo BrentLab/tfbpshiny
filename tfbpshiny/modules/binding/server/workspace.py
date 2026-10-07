@@ -17,22 +17,17 @@ from tfbpshiny.modules.binding.ui import (
 )
 from tfbpshiny.utils.corr_query import fetch_corr_pairs
 from tfbpshiny.utils.correlation_matrix import build_correlation_matrix_ui
+from tfbpshiny.utils.inputs import read_input
 from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.vdb_init import get_regulator_display_name
 
 
 def _read_corr_type(input: Any) -> str:
-    try:
-        return str(input.corr_type())
-    except Exception:
-        return "spearman"
+    return read_input(input, "corr_type", "spearman", str)
 
 
 def _read_col_preference(input: Any) -> str:
-    try:
-        return str(input.col_preference())
-    except Exception:
-        return "log10pval"
+    return read_input(input, "col_preference", "log10pval", str)
 
 
 @module.server
@@ -230,10 +225,7 @@ def binding_workspace_server(
             return ui.span()
         choices = {r: _sym_lookup.get(r, r) for r in all_regs}
         choices = dict(sorted(choices.items(), key=lambda kv: kv[1].lower()))
-        try:
-            cur = str(input.selected_reg_box())
-        except Exception:
-            cur = ""
+        cur = read_input(input, "selected_reg_box", "", str)
         default = cur if cur in choices else next(iter(choices))
         return ui.input_selectize(
             "selected_reg_box", "Highlight regulator", choices=choices, selected=default
@@ -256,10 +248,7 @@ def binding_workspace_server(
         with perf(session.id, "binding.workspace", "pair_box_container"):
             corr_data = _corr_data()
             method = _read_corr_type(input).capitalize()
-            try:
-                selected_reg = str(input.selected_reg_box())
-            except Exception:
-                selected_reg = ""
+            selected_reg = read_input(input, "selected_reg_box", "", str)
 
             plots: list[ui.Tag] = []
             for db_a, db_b in pairs:

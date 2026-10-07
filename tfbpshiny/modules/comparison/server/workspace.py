@@ -39,6 +39,7 @@ from tfbpshiny.modules.comparison.queries import (
     fetch_method_promoter_target_universe,
     fetch_topn_results,
 )
+from tfbpshiny.utils.inputs import read_input
 from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.topn_matrix import build_topn_matrix_ui
 from tfbpshiny.utils.vdb_init import (
@@ -121,65 +122,40 @@ def _inputs_ready(input: Any, *names: str) -> bool:
     :returns: ``True`` when all are available.
 
     """
-    for name in names:
-        try:
-            if getattr(input, name)() is None:
-                return False
-        except Exception:
-            return False
-    return True
+    return all(read_input(input, name, None) is not None for name in names)
 
 
 def _read_metric(input: Any) -> str:
-    try:
-        return str(input.metric())
-    except Exception:
-        return METRIC_TOPN
+    return read_input(input, "metric", METRIC_TOPN, str)
 
 
 def _read_dto_ranking(input: Any) -> str:
-    try:
-        return str(input.dto_ranking_column())
-    except Exception:
-        return DEFAULT_DTO_RANKING_COLUMN
+    return read_input(input, "dto_ranking_column", DEFAULT_DTO_RANKING_COLUMN, str)
 
 
 def _read_top_n(input: Any) -> int:
-    try:
-        return int(input.top_n())
-    except Exception:
-        return DEFAULT_TOP_N
+    return read_input(input, "top_n", DEFAULT_TOP_N, int)
 
 
 def _read_full_overlap(input: Any) -> bool:
-    try:
-        return bool(input.require_intersecting_floor())
-    except Exception:
-        return True
+    return read_input(input, "require_intersecting_floor", True, bool)
 
 
 def _read_common_regulators_only(input: Any) -> bool:
-    try:
-        return bool(input.cm_common_regulators_only())
-    except Exception:
-        return False
-
-
-def _read_preset(input: Any) -> dict[str, tuple[float, float]]:
-    try:
-        name = str(input.responsiveness_preset())
-    except Exception:
-        name = DEFAULT_RESPONSIVENESS_PRESET
-    return DEFAULT_RESPONSIVENESS_PRESETS.get(
-        name, DEFAULT_RESPONSIVENESS_PRESETS[DEFAULT_RESPONSIVENESS_PRESET]
-    )
+    return read_input(input, "cm_common_regulators_only", False, bool)
 
 
 def _read_preset_name(input: Any) -> str:
-    try:
-        return str(input.responsiveness_preset())
-    except Exception:
-        return DEFAULT_RESPONSIVENESS_PRESET
+    return read_input(
+        input, "responsiveness_preset", DEFAULT_RESPONSIVENESS_PRESET, str
+    )
+
+
+def _read_preset(input: Any) -> dict[str, tuple[float, float]]:
+    return DEFAULT_RESPONSIVENESS_PRESETS.get(
+        _read_preset_name(input),
+        DEFAULT_RESPONSIVENESS_PRESETS[DEFAULT_RESPONSIVENESS_PRESET],
+    )
 
 
 def _cell_style(val: float) -> str:

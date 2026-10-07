@@ -11,6 +11,7 @@ import pandas as pd
 from shiny import module, reactive, render, ui
 
 from tfbpshiny.components import scroll_row, sidebar_label
+from tfbpshiny.datasets import DEFAULT_PRESET, DEFAULT_TOP_N
 from tfbpshiny.materialize.comparison.method_promoter_model import (
     pair_methods_on_regulators,
 )
@@ -68,6 +69,7 @@ from tfbpshiny.utils.figure import (
     figure_html,
     matplotlib_svg_html,
 )
+from tfbpshiny.utils.inputs import read_input
 from tfbpshiny.utils.perf import perf, reset_render_counts
 from tfbpshiny.utils.vdb_init import (
     binding_method_labels,
@@ -247,22 +249,13 @@ def figures_workspace_server(
         Falls back to Relaxed, which every build has.
 
         """
-        try:
-            return str(input.scoring())
-        except Exception:
-            return "Relaxed"
+        return read_input(input, "scoring", DEFAULT_PRESET, str)
 
     def _read_top_n() -> int:
-        try:
-            return int(input.box_top_n())
-        except Exception:
-            return 25
+        return read_input(input, "box_top_n", DEFAULT_TOP_N, int)
 
     def _read_dto_venn_layout() -> str:
-        try:
-            return str(input.dto_venn_layout())
-        except Exception:
-            return DTO_VENN_LAYOUT_DEFAULT
+        return read_input(input, "dto_venn_layout", DTO_VENN_LAYOUT_DEFAULT, str)
 
     # ------------------------------------------------------------------
     # Sidebar
@@ -336,9 +329,8 @@ def figures_workspace_server(
         :trigger: ``_rank_response`` / ``input.featured_tf``.
 
         """
-        try:
-            tf = str(input.featured_tf())
-        except Exception:
+        tf = read_input(input, "featured_tf", None, str)
+        if tf is None:
             return ui.span()
         data = _rank_response()
         with perf(session.id, "figures.workspace", "fig_rank_response"):
@@ -377,10 +369,7 @@ def figures_workspace_server(
         :trigger: ``input.show_facets`` / ``_rank_response``.
 
         """
-        try:
-            if not bool(input.show_facets()):
-                return ui.span()
-        except Exception:
+        if not read_input(input, "show_facets", False, bool):
             return ui.span()
         data = _rank_response()
         sets = _tf_sets()
@@ -648,10 +637,7 @@ def figures_workspace_server(
 
         """
         choices = _agreement_choices.get(ctype, {})
-        try:
-            chosen = list(getattr(input, f"agreement_{ctype}")() or [])
-        except Exception:
-            chosen = []
+        chosen: list[str] = list(read_input(input, f"agreement_{ctype}", [], list))
         if not chosen:
             chosen = list(_agreement_defaults[ctype])
         return [d for d in chosen if d in choices]
@@ -752,10 +738,7 @@ def figures_workspace_server(
         heading = _AGREEMENT_HEADINGS[ctype]
         if not _agreement_available:
             return _needs_rebuild("The dataset-agreement table")
-        try:
-            tf = str(input.featured_tf())
-        except Exception:
-            tf = ""
+        tf = read_input(input, "featured_tf", "", str)
         half_life = _read_half_life(ctype)
         df = _agreement().get(ctype, pd.DataFrame())
         if df.empty:
@@ -864,10 +847,7 @@ def figures_workspace_server(
         datasets = _shared_datasets(ctype)
         top_n = _read_top_n()
         filters = dataset_filters()
-        try:
-            tf = str(input.featured_tf())
-        except Exception:
-            tf = ""
+        tf = read_input(input, "featured_tf", "", str)
         palette = BINDING_COLORS if ctype == "binding" else PERTURBATION_COLORS
         panels = []
         sets = fetch_target_sets(conn, datasets, tf, top_n, filters) if tf else {}

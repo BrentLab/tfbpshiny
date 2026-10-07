@@ -217,4 +217,104 @@ def fetch_corr_pairs(
     return result
 
 
-__all__ = ["get_filtered_sample_ids", "fetch_corr_pairs"]
+def sample_in_clause(column: str, ids: list[str] | None) -> tuple[str, list]:
+    """
+    SQL fragment restricting ``column`` to an already-resolved sample allow-list.
+
+    :param column: SQL expression yielding the sample id to constrain.
+    :param ids: The allowed sample ids; ``None`` means the dataset has no filter, so no
+        restriction is emitted.
+    :returns: ``(sql_fragment, params)``. ``("", [])`` for no filter; ``(" AND FALSE",
+        [])`` for an empty allow-list, so that "nothing passes" is explicit rather than
+        the restriction silently dropping away.
+
+    """
+    if ids is None:
+        return "", []
+    if not ids:
+        return " AND FALSE", []
+    return f" AND {column} IN ({', '.join(['?'] * len(ids))})", list(ids)
+
+
+def sample_filter_clause(
+    conn: duckdb.DuckDBPyConnection,
+    db_name: str,
+    filters: dict | None,
+    column: str,
+) -> tuple[str, list]:
+    """
+    Build a SQL fragment restricting ``column`` to the samples passing ``filters``.
+
+    Without this, a dataset's samples are pooled indiscriminately -- Hackett would
+    contribute all 1,543 timepoint samples rather than the 193 at the default 45 min
+    timepoint, which materially changes every figure that medians across samples.
+
+    Returns ``("", [])`` when the dataset has no filter, so callers can splice the
+    fragment in unconditionally.
+
+    :param conn: Read-only DuckDB connection.
+    :param db_name: Dataset whose ``{db_name}_meta`` supplies the sample ids.
+    :param filters: Filter spec for this dataset, or ``None``.
+    :param column: SQL expression yielding the sample id to constrain.
+    :returns: ``(sql_fragment, params)``.
+
+    """
+    if not filters:
+        return "", []
+    return sample_in_clause(column, get_filtered_sample_ids(conn, db_name, filters))
+
+
+def per_dataset_sample_clause(
+    conn: duckdb.DuckDBPyConnection,
+    db_names: list[str],
+    filters: dict,
+    db_column: str,
+    sample_column: str,
+) -> tuple[str, list]:
+    """
+    Build SQL restricting each of several datasets to its own filtered samples.
+
+    For queries that mix datasets in one result set (a binding series per dataset, or
+    both sides of a pair), where a single ``IN (...)`` would be wrong: each dataset
+    has a different sample allow-list. A row passes if it belongs to a dataset
+    *without* a filter, or its sample is in that dataset's allow-list, so unfiltered
+    datasets are untouched. A filtered dataset whose allow-list is empty contributes
+    no rows.
+
+    :param conn: Read-only DuckDB connection.
+    :param db_names: Datasets that appear in the query.
+    :param filters: Per-dataset filter specs keyed by db_name (variants already
+        expanded -- see :func:`expand_filters_to_variants`).
+    :param db_column: SQL expression yielding the row's dataset db_name.
+    :param sample_column: SQL expression yielding the row's sample id.
+    :returns: ``(sql_fragment, params)``, each condition prefixed ``AND``; empty when no
+        listed dataset has a filter.
+
+    """
+    parts: list[str] = []
+    params: list = []
+    for db in dict.fromkeys(db_names):
+        spec = filters.get(db)
+        if not spec:
+            continue
+        ids = get_filtered_sample_ids(conn, db, spec)
+        if not ids:
+            parts.append(f" AND {db_column} <> ?")
+            params.append(db)
+            continue
+        placeholders = ", ".join(["?"] * len(ids))
+        passes = f"{db_column} <> ? OR {sample_column} IN ({placeholders})"
+        parts.append(f" AND ({passes})")
+        params.append(db)
+        params.extend(ids)
+    return "".join(parts), params
+
+
+__all__ = [
+    "expand_filters_to_variants",
+    "fetch_corr_pairs",
+    "get_filtered_sample_ids",
+    "per_dataset_sample_clause",
+    "sample_filter_clause",
+    "sample_in_clause",
+]

@@ -13,12 +13,12 @@ import duckdb
 import pandas as pd
 
 from tfbpshiny.modules.figures.queries import (
-    _per_dataset_sample_clause,
     fetch_agreement,
     fetch_authors_bound,
     fetch_rank_response,
     fetch_topn_percent_responsive,
 )
+from tfbpshiny.utils.corr_query import per_dataset_sample_clause
 
 NORMAL = {"treatment": {"type": "categorical", "value": ["Normal"]}}
 
@@ -108,7 +108,7 @@ def test_a_filtered_dataset_with_no_passing_samples_contributes_no_rows() -> Non
 
 
 def test_per_dataset_clause_is_empty_when_nothing_is_filtered() -> None:
-    clause, params = _per_dataset_sample_clause(_conn(), ["b1", "b2"], {}, "x", "y")
+    clause, params = per_dataset_sample_clause(_conn(), ["b1", "b2"], {}, "x", "y")
     assert clause == "" and params == []
 
 

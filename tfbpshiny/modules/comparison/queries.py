@@ -19,8 +19,13 @@ from tfbpshiny.datasets import (
     PROMOTER_SET_LEVELS,
     TOP_N_CHOICES,
 )
-from tfbpshiny.utils.corr_query import get_filtered_sample_ids
+from tfbpshiny.utils.corr_query import (
+    get_filtered_sample_ids,
+    sample_filter_clause,
+    sample_in_clause,
+)
 
+logger = logging.getLogger("shiny")
 _perf_logger = logging.getLogger("shiny.perf")
 
 # ---------------------------------------------------------------------------
@@ -304,19 +309,23 @@ def fetch_topn_results(
                 .df()
                 .iloc[0]
             )
-        except (IndexError, Exception):
+        except (IndexError, duckdb.Error):
+            logger.warning(
+                "fetch_topn_results: %s or %s is not in dataset_registry", b_db, p_db
+            )
             continue
         b_prefix = f"{row_b['hf_repo']};{row_b['hf_config']};"
         p_prefix = f"{row_p['hf_repo']};{row_p['hf_config']};"
 
-        b_ids = get_filtered_sample_ids(conn, b_db, filters.get(b_db))
-        p_ids = get_filtered_sample_ids(conn, p_db, filters.get(p_db))
-
-        if not b_ids or not p_ids:
-            continue
-
-        phs_b = ", ".join(["?"] * len(b_ids))
-        phs_p = ", ".join(["?"] * len(p_ids))
+        b_clause, b_params = sample_filter_clause(
+            conn, b_db, filters.get(b_db), "split_part(binding_source_sample, ';', 3)"
+        )
+        p_clause, p_params = sample_filter_clause(
+            conn,
+            p_db,
+            filters.get(p_db),
+            "split_part(perturbation_source_sample, ';', 3)",
+        )
         floor_clause = "AND n >= ?" if require_full_overlap else ""
         sql = f"""
         SELECT
@@ -330,24 +339,25 @@ def fetch_topn_results(
           AND pvalue_threshold = ?
           AND binding_source_sample LIKE ?
           AND perturbation_source_sample LIKE ?
-          AND split_part(binding_source_sample, ';', 3) IN ({phs_b})
-          AND split_part(perturbation_source_sample, ';', 3) IN ({phs_p})
+          {b_clause}
+          {p_clause}
           {floor_clause}
         """
         params: list[Any] = (
             [top_n, effect_threshold, pvalue_threshold, b_prefix + "%", p_prefix + "%"]
-            + b_ids
-            + p_ids
+            + b_params
+            + p_params
             + ([top_n] if require_full_overlap else [])
         )
         try:
             df = conn.execute(sql, params).df()
-            if not df.empty:
-                df["binding_db"] = b_db
-                df["perturbation_db"] = p_db
-                frames.append(df)
-        except Exception:
-            pass
+        except duckdb.Error:
+            logger.exception("fetch_topn_results: %s x %s", b_db, p_db)
+            continue
+        if not df.empty:
+            df["binding_db"] = b_db
+            df["perturbation_db"] = p_db
+            frames.append(df)
         elapsed = round((time.perf_counter() - t_pair) * 1000, 2)
         _perf_logger.info(
             json.dumps(
@@ -357,8 +367,6 @@ def fetch_topn_results(
                     "kind": "data",
                     "b_db": b_db,
                     "p_db": p_db,
-                    "n_b_ids": len(b_ids),
-                    "n_p_ids": len(p_ids),
                     "elapsed_ms": elapsed,
                 }
             )
@@ -385,6 +393,22 @@ METRIC_LABELS: dict[str, str] = {
 #: Hughes sets exist only as `log2fc`, while Kemmeren, Hu and Degron carry both.
 DTO_RANKING_COLUMNS: tuple[str, ...] = ("log2fc", "pvalue")
 DEFAULT_DTO_RANKING_COLUMN = "log2fc"
+
+
+def _allowed_sample_ids(
+    conn: duckdb.DuckDBPyConnection, db_name: str, filters: dict[str, Any]
+) -> list[str] | None:
+    """
+    The sample allow-list for one dataset, or ``None`` when it has no filter.
+
+    Resolved once per dataset so the same list can constrain several tables (see
+    :func:`~tfbpshiny.utils.corr_query.sample_in_clause`).
+
+    """
+    spec = filters.get(db_name)
+    if not spec:
+        return None
+    return get_filtered_sample_ids(conn, db_name, spec)
 
 
 def fetch_dto_results(
@@ -428,23 +452,27 @@ def fetch_dto_results(
     frames: list[dict[str, Any]] = []
     for b_db, p_db in pairs:
         t_pair = time.perf_counter()
-        b_ids = get_filtered_sample_ids(conn, b_db, filters.get(b_db))
-        p_ids = get_filtered_sample_ids(conn, p_db, filters.get(p_db))
-        if not b_ids or not p_ids:
+        b_ids = _allowed_sample_ids(conn, b_db, filters)
+        p_ids = _allowed_sample_ids(conn, p_db, filters)
+        if b_ids == [] or p_ids == []:
+            # A filter that lets no sample through: nothing to count.
             continue
 
-        phs_b = ", ".join(["?"] * len(b_ids))
-        phs_p = ", ".join(["?"] * len(p_ids))
+        # The same allow-list constrains two tables with different column names.
+        b_reg_clause, b_reg_params = sample_in_clause("sample_id", b_ids)
+        p_reg_clause, p_reg_params = sample_in_clause("sample_id", p_ids)
+        b_dto_clause, b_dto_params = sample_in_clause("binding_sample_id", b_ids)
+        p_dto_clause, p_dto_params = sample_in_clause("perturbation_sample_id", p_ids)
         sql = f"""
         WITH b_reg AS (
             SELECT DISTINCT regulator_locus_tag
             FROM sample_regulator
-            WHERE db_name = ? AND sample_id IN ({phs_b})
+            WHERE db_name = ? {b_reg_clause}
         ),
         p_reg AS (
             SELECT DISTINCT regulator_locus_tag
             FROM sample_regulator
-            WHERE db_name = ? AND sample_id IN ({phs_p})
+            WHERE db_name = ? {p_reg_clause}
         ),
         shared AS (
             SELECT regulator_locus_tag FROM b_reg
@@ -457,8 +485,8 @@ def fetch_dto_results(
             FROM dto
             WHERE binding_db = ? AND perturbation_db = ?
               AND pr_ranking_column = ?
-              AND binding_sample_id IN ({phs_b})
-              AND perturbation_sample_id IN ({phs_p})
+              {b_dto_clause}
+              {p_dto_clause}
             GROUP BY regulator_locus_tag
         )
         SELECT
@@ -473,17 +501,18 @@ def fetch_dto_results(
         """
         params: list[Any] = (
             [b_db]
-            + b_ids
+            + b_reg_params
             + [p_db]
-            + p_ids
+            + p_reg_params
             + [b_db, p_db, pr_ranking_column]
-            + b_ids
-            + p_ids
+            + b_dto_params
+            + p_dto_params
             + [pvalue_threshold]
         )
         try:
             row = conn.execute(sql, params).df().iloc[0]
-        except Exception:
+        except duckdb.Error:
+            logger.exception("fetch_dto_results: %s x %s", b_db, p_db)
             continue
 
         n_intersect = int(row["n_intersect"])
@@ -550,51 +579,52 @@ def fetch_dto_results_method_intersected(
 
     frames: list[dict[str, Any]] = []
     for pe_db, pc_db, p_db in cells:
-        pe_ids = get_filtered_sample_ids(conn, pe_db, filters.get(pe_db))
-        pc_ids = get_filtered_sample_ids(conn, pc_db, filters.get(pc_db))
-        p_ids = get_filtered_sample_ids(conn, p_db, filters.get(p_db))
-        if not pe_ids or not pc_ids or not p_ids:
+        pe_ids = _allowed_sample_ids(conn, pe_db, filters)
+        pc_ids = _allowed_sample_ids(conn, pc_db, filters)
+        p_ids = _allowed_sample_ids(conn, p_db, filters)
+        if pe_ids == [] or pc_ids == [] or p_ids == []:
             continue
 
-        phs_pe = ", ".join(["?"] * len(pe_ids))
-        phs_pc = ", ".join(["?"] * len(pc_ids))
-        phs_p = ", ".join(["?"] * len(p_ids))
+        pe_reg_clause, pe_reg_params = sample_in_clause("sample_id", pe_ids)
+        pc_reg_clause, pc_reg_params = sample_in_clause("sample_id", pc_ids)
+        p_reg_clause, p_reg_params = sample_in_clause("sample_id", p_ids)
         universe_df = conn.execute(
             f"""
             WITH pe_reg AS (
                 SELECT DISTINCT regulator_locus_tag FROM sample_regulator
-                WHERE db_name = ? AND sample_id IN ({phs_pe})
+                WHERE db_name = ? {pe_reg_clause}
             ),
             pc_reg AS (
                 SELECT DISTINCT regulator_locus_tag FROM sample_regulator
-                WHERE db_name = ? AND sample_id IN ({phs_pc})
+                WHERE db_name = ? {pc_reg_clause}
             ),
             p_reg AS (
                 SELECT DISTINCT regulator_locus_tag FROM sample_regulator
-                WHERE db_name = ? AND sample_id IN ({phs_p})
+                WHERE db_name = ? {p_reg_clause}
             )
             SELECT regulator_locus_tag FROM pe_reg
             INTERSECT SELECT regulator_locus_tag FROM pc_reg
             INTERSECT SELECT regulator_locus_tag FROM p_reg
             """,
-            [pe_db, *pe_ids, pc_db, *pc_ids, p_db, *p_ids],
+            [pe_db, *pe_reg_params, pc_db, *pc_reg_params, p_db, *p_reg_params],
         ).df()
         universe = universe_df["regulator_locus_tag"].tolist()
         n_intersect = len(universe)
         if n_intersect == 0:
             continue
         phs_u = ", ".join(["?"] * n_intersect)
+        p_dto_clause, p_dto_params = sample_in_clause("perturbation_sample_id", p_ids)
 
         for b_db, b_ids in ((pe_db, pe_ids), (pc_db, pc_ids)):
-            phs_b = ", ".join(["?"] * len(b_ids))
+            b_dto_clause, b_dto_params = sample_in_clause("binding_sample_id", b_ids)
             sql = f"""
             WITH tested AS (
                 SELECT regulator_locus_tag, min(dto_empirical_pvalue) AS best_pvalue
                 FROM dto
                 WHERE binding_db = ? AND perturbation_db = ?
                   AND pr_ranking_column = ?
-                  AND binding_sample_id IN ({phs_b})
-                  AND perturbation_sample_id IN ({phs_p})
+                  {b_dto_clause}
+                  {p_dto_clause}
                   AND regulator_locus_tag IN ({phs_u})
                 GROUP BY regulator_locus_tag
             )
@@ -605,14 +635,17 @@ def fetch_dto_results_method_intersected(
             """
             params: list[Any] = (
                 [b_db, p_db, pr_ranking_column]
-                + b_ids
-                + p_ids
+                + b_dto_params
+                + p_dto_params
                 + universe
                 + [pvalue_threshold]
             )
             try:
                 row = conn.execute(sql, params).df().iloc[0]
-            except Exception:
+            except duckdb.Error:
+                logger.exception(
+                    "fetch_dto_results_method_intersected: %s x %s", b_db, p_db
+                )
                 continue
             n_significant = int(row["n_significant"])
             frames.append(
