@@ -16,9 +16,10 @@ import pandas as pd
 import pytest
 
 from tfbpshiny.datasets import PERTURBATION_DATASET_COLUMNS
-from tfbpshiny.materialize.comparison.callingcards_authors_bound import (
+from tfbpshiny.materialize.comparison.authors_bound import (
+    AUTHORS_BOUND_CONFIGS,
     CALLINGCARDS_LOG_POISSON_THRESHOLD,
-    callingcards_authors_bound_select_sql,
+    authors_bound_select_sql,
 )
 from tfbpshiny.materialize.comparison.topn import TOP_N_ALL
 
@@ -74,7 +75,8 @@ def _synthetic_conn() -> duckdb.DuckDBPyConnection:
 def _run(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     # `fake_pert` resolves to the synthetic table; its column mapping is registered
     # by the autouse fixture above.
-    sql, params = callingcards_authors_bound_select_sql(
+    sql, params = authors_bound_select_sql(
+        AUTHORS_BOUND_CONFIGS["callingcards_500bp"],
         binding_hf_repo="R",
         binding_hf_config="cc",
         perturbation_view="fake_pert",

@@ -66,6 +66,7 @@ def target_sets_select_sql(
     rank_asc: bool,
     comparison_type: str,
     max_n: int = TARGET_SET_MAX_N,
+    drop_null_scores: bool = False,
 ) -> str:
     """
     Return a SELECT producing ``topn_target_sets`` rows for one dataset.
@@ -84,6 +85,10 @@ def target_sets_select_sql(
     :param rank_asc: Whether a smaller value ranks better.
     :param comparison_type: ``'binding'`` or ``'perturbation'``.
     :param max_n: Deepest rank to keep.
+    :param drop_null_scores: Rank only rows with a non-NULL score. Required for the
+        dense peak-calling datasets, which list every promoter with a NULL score where
+        no peak qualified; without it a short list is padded with no-peak promoters
+        (see ``agreement.py``'s ``drop_null_scores_a``).
     :returns: SELECT SQL (no parameters).
 
     """
@@ -91,6 +96,7 @@ def target_sets_select_sql(
     expr = f"ABS({rank_col})" if comparison_type == "perturbation" else rank_col
     prefix = f"{hf_repo};{hf_config};".replace("'", "''")
     ctype = comparison_type.replace("'", "''")
+    where = f"WHERE {rank_col} IS NOT NULL" if drop_null_scores else ""
     return f"""
     WITH dedup AS (
         SELECT CAST({sample_col} AS VARCHAR) AS sample_id,
@@ -98,6 +104,7 @@ def target_sets_select_sql(
                target_locus_tag,
                {expr} AS rank_value
         FROM {view}
+        {where}
         QUALIFY ROW_NUMBER() OVER (
             PARTITION BY {sample_col}, regulator_locus_tag, target_locus_tag
             ORDER BY {expr} {direction}

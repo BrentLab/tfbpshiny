@@ -23,6 +23,7 @@ from tfbpshiny.materialize.comparison.method_promoter_model import (
     _regulator_intersection,
     _resolve_cell,
     build_method_promoter_panel,
+    default_filters,
     fit_method_promoter_model,
     method_promoter_model_schema_sql,
     method_promoter_model_topn_schema_sql,
@@ -453,7 +454,7 @@ def test_allowed_sample_ids_propagates_primary_filter_to_variant(monkeypatch) ->
         ]
     )
     for db in ("rossi_500bp", "rossi_mindel"):
-        ids = _allowed_sample_ids(conn, registry, db)
+        ids = _allowed_sample_ids(conn, default_filters(conn, registry), db)
         assert ids is not None
         assert set(ids) == {"1", "2"}
 
@@ -461,7 +462,9 @@ def test_allowed_sample_ids_propagates_primary_filter_to_variant(monkeypatch) ->
 def test_allowed_sample_ids_returns_none_when_no_default_filter() -> None:
     registry = pd.DataFrame([{"db_name": "kemmeren", "primary_db_name": None}])
     conn = duckdb.connect()
-    assert _allowed_sample_ids(conn, registry, "kemmeren") is None
+    assert (
+        _allowed_sample_ids(conn, default_filters(conn, registry), "kemmeren") is None
+    )
 
 
 def test_panel_respects_default_sample_filter(monkeypatch) -> None:
@@ -588,7 +591,9 @@ def test_rossi_and_chec_default_filters_apply_and_give_one_sample_per_regulator(
         df = _assay_meta(db, [("keep", "REG0", None), ("drop", "REG0", other)])
         conn.register(f"_{db}", df)
         conn.execute(f'CREATE TABLE "{db}_meta" AS SELECT * FROM _{db}')
-        assert _allowed_sample_ids(conn, _registry_df(), db) == ["keep"]
+        assert _allowed_sample_ids(conn, default_filters(conn, _registry_df()), db) == [
+            "keep"
+        ]
 
 
 # --- regulator intersection -------------------------------------------------------

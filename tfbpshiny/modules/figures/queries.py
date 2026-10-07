@@ -57,8 +57,8 @@ DTO_RANKING_COLUMN = "log2fc"
 #: Binding datasets shown in the authors'-threshold figure, in display order. Rossi and
 #: ChEC-seq carry the authors' own peak calls. Harbison (p <= 0.001) and Calling Cards
 #: (Poisson p < 1e-4) have only a per-target p-value, so each is given an explicit,
-#: named threshold -- see ``materialize/comparison/harbison_authors_bound.py`` and
-#: ``callingcards_authors_bound.py``. Materialize writes all of them into
+#: named threshold -- see ``materialize/comparison/authors_bound.py``. Materialize
+#: writes all of them into
 #: ``topn_results`` at the same ``TOP_N_ALL`` sentinel, so they read through one query.
 AUTHORS_PEAK_BINDING: tuple[str, ...] = (
     "harbison",

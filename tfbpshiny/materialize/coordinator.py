@@ -24,7 +24,6 @@ from tfbpshiny.datasets import (
     BINDING_DATASET_COLUMNS,
     PERTURBATION_CORRELATION_COLUMNS,
     PERTURBATION_DATASET_COLUMNS,
-    PRESET_NAMES,
 )
 from tfbpshiny.materialize.comparison.agreement import (
     AGREEMENT_EXCLUDED,
@@ -32,9 +31,9 @@ from tfbpshiny.materialize.comparison.agreement import (
     agreement_rank_column,
     agreement_schema_sql,
 )
-from tfbpshiny.materialize.comparison.callingcards_authors_bound import (
-    CALLINGCARDS_BINDING_VIEW,
-    callingcards_authors_bound_select_sql,
+from tfbpshiny.materialize.comparison.authors_bound import (
+    AUTHORS_BOUND_CONFIGS,
+    authors_bound_select_sql,
 )
 from tfbpshiny.materialize.comparison.correlations import (
     correlation_pair_select_sql,
@@ -46,15 +45,12 @@ from tfbpshiny.materialize.comparison.dto import (
     dto_schema_sql,
     dto_select_sql,
 )
-from tfbpshiny.materialize.comparison.harbison_authors_bound import (
-    HARBISON_BINDING_VIEW,
-    harbison_authors_bound_select_sql,
-)
 from tfbpshiny.materialize.comparison.method_promoter_model import (
     ASSAY_PRIMARIES,
     COEFS_COLUMNS,
     FIT_SUMMARY_COLUMNS,
     build_method_promoter_panel,
+    default_filters,
     fit_method_promoter_model,
     method_promoter_model_schema_sql,
     method_promoter_model_target_universe_schema_sql,
@@ -91,10 +87,7 @@ from tfbpshiny.materialize.metadata.sql import (
     meta_select_sql,
     regulator_display_names_select_sql,
 )
-from tfbpshiny.materialize.rounding import (
-    DEFAULT_FLOAT_DECIMALS,
-    NO_ROUNDING,
-)
+from tfbpshiny.materialize.rounding import NO_ROUNDING
 from tfbpshiny.utils.vdb_init import DEFAULT_RESPONSIVENESS_PRESETS
 
 logger = logging.getLogger("shiny")
@@ -102,14 +95,14 @@ logger = logging.getLogger("shiny")
 _DEFAULT_REGULATORS_PER_CHUNK = 400
 
 
-def _exec_static(conn: duckdb.DuckDBPyConnection, sql: str, label: str) -> None:
+def exec_static(conn: duckdb.DuckDBPyConnection, sql: str, label: str) -> None:
     """Execute a SQL block (possibly multi-statement) against the output connection."""
     t0 = time.monotonic()
     conn.execute(sql)
     logger.info("  %-40s  %.2fs", label, time.monotonic() - t0)
 
 
-def _vdb_to_table(
+def vdb_to_table(
     vdb: VirtualDB,
     output_conn: duckdb.DuckDBPyConnection,
     select_sql: str,
@@ -118,6 +111,7 @@ def _vdb_to_table(
     label: str,
     mode: str = "create",
     columns: list[str] | None = None,
+    drop_nan_rows: bool = False,
 ) -> int:
     """
     Execute a SELECT against VirtualDB and write the result to the output connection.
@@ -136,17 +130,20 @@ def _vdb_to_table(
         Leave as ``None`` to insert positionally, which is what every other caller
         wants -- some SELECTs contain unaliased expressions whose DataFrame column
         names are the expression text, not the target column name.
+    :param drop_nan_rows: Drop rows containing a NaN/NULL before writing. Only the
+        ``correlations`` caller wants this; for every other table a NULL is data.
     :returns: Number of rows written.
     :rtype: int
 
     """
     t0 = time.monotonic()
     df = vdb.query(select_sql, **params)
-    # DuckDB corr() can return NaN (a valid IEEE 754 float, not SQL NULL) for
-    # zero-variance inputs.  The pandas→Arrow→DuckDB round-trip converts those
-    # NaN floats to SQL NULL, which violates NOT NULL constraints.  Drop them
-    # here so the SQL-level filter (`NOT isnan`) and this both agree.
-    df = df.dropna(how="any")
+    if drop_nan_rows:
+        # DuckDB corr() can return NaN (a valid IEEE 754 float, not SQL NULL) for
+        # zero-variance inputs.  The pandas→Arrow→DuckDB round-trip converts those
+        # NaN floats to SQL NULL, which violates NOT NULL constraints.  Drop them
+        # here so the SQL-level filter (`NOT isnan`) and this both agree.
+        df = df.dropna(how="any")
     row_count = len(df)
     if row_count == 0:
         logger.debug("  %-40s  (0 rows, skipped)", label)
@@ -175,6 +172,31 @@ def _vdb_to_table(
         time.monotonic() - t0,
     )
     return row_count
+
+
+def _stage_table(
+    vdb: VirtualDB, name: str, select_sql: str, params: dict[str, Any]
+) -> None:
+    """
+    Create (or replace) a staging table on VirtualDB's own connection.
+
+    Staging an intermediate next to the source views lets the per-pair queries join
+    it without a round trip through pandas. labretriever exposes no public DDL entry
+    point, so this and :func:`_drop_table` are the only two places materialize
+    touches its private connection.
+
+    :param vdb: VirtualDB instance.
+    :param name: Table name to create.
+    :param select_sql: SELECT whose result becomes the table.
+    :param params: Named parameters for the SELECT.
+
+    """
+    vdb._conn.execute(f"CREATE OR REPLACE TABLE {name} AS {select_sql}", params)
+
+
+def _drop_table(vdb: VirtualDB, name: str) -> None:
+    """Drop a staging table created by :func:`_stage_table`, if it exists."""
+    vdb._conn.execute(f"DROP TABLE IF EXISTS {name}")
 
 
 def _topn_plan(
@@ -231,7 +253,7 @@ def _batches(regulators: list[str], chunk: int) -> list[tuple[str, ...]]:
     ] or [()]
 
 
-def _topn_staged(
+def stage_topn(
     vdb: VirtualDB,
     conn: duckdb.DuckDBPyConnection,
     binding_views: list[str],
@@ -275,7 +297,7 @@ def _topn_staged(
             table = f"_mat_pert_{p_db}"
             p_sql, p_params = perturbation_stage_sql(p_db)
             t0 = time.monotonic()
-            vdb._conn.execute(f"CREATE OR REPLACE TABLE {table} AS {p_sql}", p_params)
+            _stage_table(vdb, table, p_sql, p_params)
             pert_tables[p_db] = table
             logger.info("  %-40s  %.2fs", f"stage B {p_db}", time.monotonic() - t0)
 
@@ -293,9 +315,7 @@ def _topn_staged(
                 no_signal_value=b_cfg.get("no_signal_value"),
             )
             t0 = time.monotonic()
-            vdb._conn.execute(
-                f"CREATE OR REPLACE TABLE _mat_binding AS {b_sql}", b_params
-            )
+            _stage_table(vdb, "_mat_binding", b_sql, b_params)
             logger.info("  %-40s  %.2fs", f"stage A {b_db}", time.monotonic() - t0)
 
             # Hoisted out of the perturbation loop: it does not depend on p_db.
@@ -331,7 +351,7 @@ def _topn_staged(
                             round_decimals=round_decimals,
                         )
                         units += 1
-                        pair_rows += _vdb_to_table(
+                        pair_rows += vdb_to_table(
                             vdb,
                             conn,
                             sql,
@@ -346,16 +366,16 @@ def _topn_staged(
                         pair_rows,
                     )
             finally:
-                vdb._conn.execute("DROP TABLE IF EXISTS _mat_binding")
+                _drop_table(vdb, "_mat_binding")
     finally:
         # Never leave intermediates on the long-lived vdb connection.
         for table in pert_tables.values():
-            vdb._conn.execute(f"DROP TABLE IF EXISTS {table}")
-        vdb._conn.execute("DROP TABLE IF EXISTS _mat_binding")
+            _drop_table(vdb, table)
+        _drop_table(vdb, "_mat_binding")
     return units
 
 
-def _method_promoter_topn_staged(
+def stage_method_promoter_topn(
     vdb: VirtualDB,
     conn: duckdb.DuckDBPyConnection,
     registry_df: pd.DataFrame,
@@ -369,7 +389,7 @@ def _method_promoter_topn_staged(
     Fill ``method_promoter_model_topn``, ranking each of the 16 cells over its assay's
     cross-promoter-set target intersection rather than its own full target list (see
     ``method_promoter_model.py``'s module docstring for why). Structured exactly like
-    :func:`_topn_staged` -- perturbation datasets staged once and reused, one binding
+    :func:`stage_topn` -- perturbation datasets staged once and reused, one binding
     intermediate resident at a time -- restricted to the 16 (assay, promoter_set,
     method) cells this model needs, and with each binding stage additionally filtered to
     its assay's intersected target universe.
@@ -418,7 +438,7 @@ def _method_promoter_topn_staged(
             table = f"_mat_mpm_pert_{p_db}"
             p_sql, p_params = perturbation_stage_sql(p_db)
             t0 = time.monotonic()
-            vdb._conn.execute(f"CREATE OR REPLACE TABLE {table} AS {p_sql}", p_params)
+            _stage_table(vdb, table, p_sql, p_params)
             pert_tables[p_db] = table
             logger.info("  %-40s  %.2fs", f"stage B {p_db}", time.monotonic() - t0)
 
@@ -447,9 +467,7 @@ def _method_promoter_topn_staged(
                 no_signal_value=b_cfg.get("no_signal_value"),
             )
             t0 = time.monotonic()
-            vdb._conn.execute(
-                f"CREATE OR REPLACE TABLE _mat_mpm_binding AS {b_sql}", b_params
-            )
+            _stage_table(vdb, "_mat_mpm_binding", b_sql, b_params)
             logger.info("  %-40s  %.2fs", f"stage A {b_db}", time.monotonic() - t0)
 
             batches = _batches(_regulators_for_binding(vdb, b_db), chunk)
@@ -481,7 +499,7 @@ def _method_promoter_topn_staged(
                             round_decimals=round_decimals,
                         )
                         units += 1
-                        pair_rows += _vdb_to_table(
+                        pair_rows += vdb_to_table(
                             vdb,
                             conn,
                             sql,
@@ -497,11 +515,11 @@ def _method_promoter_topn_staged(
                         pair_rows,
                     )
             finally:
-                vdb._conn.execute("DROP TABLE IF EXISTS _mat_mpm_binding")
+                _drop_table(vdb, "_mat_mpm_binding")
     finally:
         for table in pert_tables.values():
-            vdb._conn.execute(f"DROP TABLE IF EXISTS {table}")
-        vdb._conn.execute("DROP TABLE IF EXISTS _mat_mpm_binding")
+            _drop_table(vdb, table)
+        _drop_table(vdb, "_mat_mpm_binding")
     return units
 
 
@@ -544,13 +562,13 @@ def materialize(
         # 1. Coordinating layer
         # ------------------------------------------------------------------
         logger.info("=== Phase 1: Coordinating layer ===")
-        _exec_static(conn, promoter_sets_sql(), "promoter_sets")
-        _exec_static(conn, binding_methods_sql(), "binding_methods")
-        _exec_static(conn, dataset_registry_sql(), "dataset_registry")
-        _exec_static(conn, comparative_registry_sql(), "comparative_dataset_registry")
+        exec_static(conn, promoter_sets_sql(), "promoter_sets")
+        exec_static(conn, binding_methods_sql(), "binding_methods")
+        exec_static(conn, dataset_registry_sql(), "dataset_registry")
+        exec_static(conn, comparative_registry_sql(), "comparative_dataset_registry")
 
         col_meta_sql = column_metadata_sql(vdb)
-        _exec_static(conn, col_meta_sql, "dataset_column_metadata")
+        exec_static(conn, col_meta_sql, "dataset_column_metadata")
 
         # ------------------------------------------------------------------
         # 2. Metadata layer
@@ -559,16 +577,13 @@ def materialize(
         datasets = vdb.get_datasets()
         meta_db_names: list[str] = []
 
+        vdb_views = set(vdb.tables())
         for db_name in datasets:
             meta_view = f"{db_name}_meta"
-            row = vdb._conn.execute(
-                "SELECT view_name FROM duckdb_views() WHERE view_name = ?",
-                [meta_view],
-            ).fetchone()
-            if row is None:
+            if meta_view not in vdb_views:
                 continue
             meta_db_names.append(db_name)
-            _vdb_to_table(
+            vdb_to_table(
                 vdb,
                 conn,
                 meta_select_sql(db_name),
@@ -583,7 +598,7 @@ def materialize(
             for db in meta_db_names
             if "regulator_locus_tag" in vdb.get_fields(f"{db}_meta")
         ]
-        _vdb_to_table(
+        vdb_to_table(
             vdb,
             conn,
             regulator_display_names_select_sql(reg_names),
@@ -596,7 +611,7 @@ def materialize(
         # (db_name, sample_id) -> regulator_locus_tag, over every meta table that has
         # a regulator column. Consumed by the DTO phase below (which ships only
         # composite identifiers) and by the Comparison module's DTO denominator.
-        _exec_static(conn, sample_regulator_sql(reg_names), "sample_regulator")
+        exec_static(conn, sample_regulator_sql(reg_names), "sample_regulator")
 
         # ------------------------------------------------------------------
         # 3. Comparison — HF-sourced (DTO)
@@ -606,17 +621,14 @@ def materialize(
         # `__dto_parquet` + `dto_expanded` and never creates a bare `dto` view, so this
         # must look for the expanded one. Looking for 'dto' here silently skipped the
         # whole phase on every build.
-        dto_view = vdb._conn.execute(
-            "SELECT view_name FROM duckdb_views() WHERE view_name = 'dto_expanded'"
-        ).fetchone()
-        if dto_view is None:
+        if "dto_expanded" not in vdb.tables():
             raise RuntimeError(
                 "dto_expanded view not found in VirtualDB. The DTO dataset must be "
                 "declared with a `links:` block in the collection YAML for "
                 "labretriever to build it."
             )
-        _exec_static(conn, dto_schema_sql(), "dto (schema)")
-        dto_rows = _vdb_to_table(
+        exec_static(conn, dto_schema_sql(), "dto (schema)")
+        dto_rows = vdb_to_table(
             vdb,
             conn,
             dto_select_sql(),
@@ -628,7 +640,7 @@ def materialize(
         )
         if dto_rows == 0:
             raise RuntimeError("dto_expanded returned no rows")
-        _exec_static(conn, dto_resolve_regulators_sql(), "dto (regulators)")
+        exec_static(conn, dto_resolve_regulators_sql(), "dto (regulators)")
         unresolved = conn.execute(
             "SELECT count(*) FROM dto WHERE regulator_locus_tag IS NULL"
         ).fetchone()[0]
@@ -649,7 +661,10 @@ def materialize(
         pvalue_thresholds: list[float] = args.pvalue_thresholds
         methods: list[str] = [m.strip() for m in args.methods.split(",")]
         chunk = _DEFAULT_REGULATORS_PER_CHUNK
-        round_decimals: int = getattr(args, "float_decimals", DEFAULT_FLOAT_DECIMALS)
+        round_decimals: int = args.float_decimals
+        # cli.py defaults this to every preset; the authors'-threshold rows and the
+        # method x promoter-set model use the same list as the top-N fill.
+        preset_names: list[str] = list(args.presets)
         logger.info(
             "  computed floats rounded to %s",
             (
@@ -660,7 +675,7 @@ def materialize(
         )
 
         # ---- topn_results ----
-        _exec_static(conn, topn_schema_sql(), "topn_results (schema)")
+        exec_static(conn, topn_schema_sql(), "topn_results (schema)")
 
         if not args.skip_topn:
             binding_views = [db for db in datasets if db in BINDING_TOPN_CONFIGS]
@@ -668,7 +683,7 @@ def materialize(
                 db for db in datasets if db in PERTURBATION_TOPN_DATASETS
             ]
             t_topn = time.monotonic()
-            n_units = _topn_staged(
+            n_units = stage_topn(
                 vdb,
                 conn,
                 binding_views,
@@ -676,7 +691,7 @@ def materialize(
                 top_n_values,
                 effect_thresholds,
                 pvalue_thresholds,
-                getattr(args, "presets", None),
+                preset_names,
                 chunk,
                 round_decimals,
             )
@@ -688,86 +703,49 @@ def materialize(
         else:
             logger.info("  topn_results skipped (--skip-topn)")
 
-        # ---- calling cards authors'-threshold rows (figure 3) ----
-        # Adds TOP_N_ALL rows for callingcards_500bp using a Poisson-pvalue threshold
-        # instead of a rank cutoff -- see callingcards_authors_bound.py for why this
-        # cannot go through the same BINDING_TOPN_CONFIGS path as rossi_peaks/
-        # chec_m2025_peaks. Depends only on topn_results existing (schema above), not
-        # on the ordinary topn phase having run, but is gated the same way since it
-        # is conceptually part of populating that table.
-        if not args.skip_topn and CALLINGCARDS_BINDING_VIEW in datasets:
-            cc_hf = DATASET_HF_COORDS.get(CALLINGCARDS_BINDING_VIEW, ("", ""))
-            preset_names = getattr(args, "presets", None) or list(PRESET_NAMES)
-            for perturbation_db in sorted(
-                db for db in datasets if db in PERTURBATION_TOPN_DATASETS
-            ):
-                pert_hf = DATASET_HF_COORDS.get(perturbation_db, ("", ""))
-                threshold_pairs: list[tuple[float, float]] = []
-                for preset_name in preset_names:
-                    preset = DEFAULT_RESPONSIVENESS_PRESETS.get(preset_name, {})
-                    pair = preset.get(perturbation_db, preset.get("*"))
-                    if pair is not None and pair not in threshold_pairs:
-                        threshold_pairs.append(pair)
-                for effect_threshold, pvalue_threshold in threshold_pairs:
-                    sql, params = callingcards_authors_bound_select_sql(
-                        binding_hf_repo=cc_hf[0],
-                        binding_hf_config=cc_hf[1],
-                        perturbation_view=perturbation_db,
-                        pert_hf_repo=pert_hf[0],
-                        pert_hf_config=pert_hf[1],
-                        effect_threshold=effect_threshold,
-                        pvalue_threshold=pvalue_threshold,
-                        round_decimals=round_decimals,
+        # ---- authors'-threshold rows (figure 3) ----
+        # TOP_N_ALL rows for the datasets that ship only a per-target p-value
+        # (Calling Cards, Harbison): "bound" is a named threshold rather than a rank
+        # cutoff. See authors_bound.py for why this cannot go through the shared
+        # BINDING_TOPN_CONFIGS path. Depends only on topn_results existing (schema
+        # above), not on the ordinary topn phase having run, but is gated the same
+        # way since it is conceptually part of populating that table.
+        if not args.skip_topn:
+            for binding_view, bound_cfg in AUTHORS_BOUND_CONFIGS.items():
+                if binding_view not in datasets:
+                    continue
+                b_hf = DATASET_HF_COORDS.get(binding_view, ("", ""))
+                for perturbation_db in sorted(
+                    db for db in datasets if db in PERTURBATION_TOPN_DATASETS
+                ):
+                    pert_hf = DATASET_HF_COORDS.get(perturbation_db, ("", ""))
+                    # The presets' pairs only; the CLI threshold axes are not crossed
+                    # in here.
+                    _, threshold_pairs = _topn_plan(
+                        binding_view, perturbation_db, [], [], [], preset_names
                     )
-                    _vdb_to_table(
-                        vdb,
-                        conn,
-                        sql,
-                        params,
-                        "topn_results",
-                        f"cc_authors_bound {perturbation_db} "
-                        f"({effect_threshold}, {pvalue_threshold})",
-                        mode="insert",
-                    )
-
-        # ---- harbison authors'-threshold rows (figure 3) ----
-        # Same shape as the Calling Cards block above: TOP_N_ALL rows for harbison,
-        # "bound" meaning pvalue <= HARBISON_PVALUE_THRESHOLD rather than a rank
-        # cutoff. See harbison_authors_bound.py.
-        if not args.skip_topn and HARBISON_BINDING_VIEW in datasets:
-            hb_hf = DATASET_HF_COORDS.get(HARBISON_BINDING_VIEW, ("", ""))
-            preset_names = getattr(args, "presets", None) or list(PRESET_NAMES)
-            for perturbation_db in sorted(
-                db for db in datasets if db in PERTURBATION_TOPN_DATASETS
-            ):
-                pert_hf = DATASET_HF_COORDS.get(perturbation_db, ("", ""))
-                threshold_pairs = []
-                for preset_name in preset_names:
-                    preset = DEFAULT_RESPONSIVENESS_PRESETS.get(preset_name, {})
-                    pair = preset.get(perturbation_db, preset.get("*"))
-                    if pair is not None and pair not in threshold_pairs:
-                        threshold_pairs.append(pair)
-                for effect_threshold, pvalue_threshold in threshold_pairs:
-                    sql, params = harbison_authors_bound_select_sql(
-                        binding_hf_repo=hb_hf[0],
-                        binding_hf_config=hb_hf[1],
-                        perturbation_view=perturbation_db,
-                        pert_hf_repo=pert_hf[0],
-                        pert_hf_config=pert_hf[1],
-                        effect_threshold=effect_threshold,
-                        pvalue_threshold=pvalue_threshold,
-                        round_decimals=round_decimals,
-                    )
-                    _vdb_to_table(
-                        vdb,
-                        conn,
-                        sql,
-                        params,
-                        "topn_results",
-                        f"harbison_authors_bound {perturbation_db} "
-                        f"({effect_threshold}, {pvalue_threshold})",
-                        mode="insert",
-                    )
+                    for effect_threshold, pvalue_threshold in threshold_pairs:
+                        sql, params = authors_bound_select_sql(
+                            bound_cfg,
+                            binding_hf_repo=b_hf[0],
+                            binding_hf_config=b_hf[1],
+                            perturbation_view=perturbation_db,
+                            pert_hf_repo=pert_hf[0],
+                            pert_hf_config=pert_hf[1],
+                            effect_threshold=effect_threshold,
+                            pvalue_threshold=pvalue_threshold,
+                            round_decimals=round_decimals,
+                        )
+                        vdb_to_table(
+                            vdb,
+                            conn,
+                            sql,
+                            params,
+                            "topn_results",
+                            f"authors_bound {binding_view}×{perturbation_db} "
+                            f"({effect_threshold}, {pvalue_threshold})",
+                            mode="insert",
+                        )
 
         # ---- topn_agreement ----
         # Same-datatype top-N set overlap, for the "agreement between datasets"
@@ -775,7 +753,7 @@ def materialize(
         # figure's dataset selector lets a reader compare promoter sets and calling
         # methods as well as assays, and which slice is interesting is a read-time
         # question. Only AGREEMENT_EXCLUDED is held back -- see its docstring.
-        _exec_static(conn, agreement_schema_sql(), "topn_agreement (schema)")
+        exec_static(conn, agreement_schema_sql(), "topn_agreement (schema)")
 
         if not args.skip_topn:
             # Iterated by type rather than by (type, config map): the perturbation
@@ -850,7 +828,7 @@ def materialize(
                             is not None
                         ),
                     )
-                    _vdb_to_table(
+                    vdb_to_table(
                         vdb,
                         conn,
                         sql,
@@ -865,7 +843,7 @@ def materialize(
         # ---- topn_target_sets ----
         # The ranked target lists behind figure 10's Venn and its overlap boxes. See
         # target_sets.py for why topn_agreement cannot serve.
-        _exec_static(conn, target_sets_schema_sql(), "topn_target_sets (schema)")
+        exec_static(conn, target_sets_schema_sql(), "topn_target_sets (schema)")
 
         if not args.skip_topn:
             for ctype, set_views in (
@@ -882,16 +860,27 @@ def materialize(
                         rank_col, rank_asc = agreement_rank_column(
                             view, cfg["rank_col"], cfg["rank_asc"]
                         )
+                        # Dense peak tables score no-peak promoters NULL; never
+                        # let those pad a short list (see agreement.py).
+                        drop_nulls = cfg.get("no_signal_value") is not None
                     else:
                         sample_col = "sample_id"
                         rank_col, rank_asc = agreement_rank_column(
                             view, PERTURBATION_CORRELATION_COLUMNS[view][0], False
                         )
-                    _vdb_to_table(
+                        drop_nulls = False
+                    vdb_to_table(
                         vdb,
                         conn,
                         target_sets_select_sql(
-                            view, hf[0], hf[1], sample_col, rank_col, rank_asc, ctype
+                            view,
+                            hf[0],
+                            hf[1],
+                            sample_col,
+                            rank_col,
+                            rank_asc,
+                            ctype,
+                            drop_null_scores=drop_nulls,
                         ),
                         {},
                         "topn_target_sets",
@@ -902,7 +891,7 @@ def materialize(
             logger.info("  topn_target_sets skipped (--skip-topn)")
 
         # ---- correlations ----
-        _exec_static(conn, correlations_schema_sql(), "correlations (schema)")
+        exec_static(conn, correlations_schema_sql(), "correlations (schema)")
 
         if not args.skip_correlations:
             # Binding × binding pairs (lexicographic order, each pair once)
@@ -930,7 +919,7 @@ def materialize(
                         comparison_type="binding",
                         round_decimals=round_decimals,
                     )
-                    _vdb_to_table(
+                    vdb_to_table(
                         vdb,
                         conn,
                         sql,
@@ -938,6 +927,7 @@ def materialize(
                         "correlations",
                         f"corr(binding) {view_a}×{view_b} [{method}]",
                         mode="insert",
+                        drop_nan_rows=True,
                     )
 
             # Perturbation × perturbation pairs
@@ -965,7 +955,7 @@ def materialize(
                         comparison_type="perturbation",
                         round_decimals=round_decimals,
                     )
-                    _vdb_to_table(
+                    vdb_to_table(
                         vdb,
                         conn,
                         sql,
@@ -973,6 +963,7 @@ def materialize(
                         "correlations",
                         f"corr(perturbation) {view_a}×{view_b} [{method}]",
                         mode="insert",
+                        drop_nan_rows=True,
                     )
         else:
             logger.info("  correlations skipped (--skip-correlations)")
@@ -981,23 +972,23 @@ def materialize(
         # 5. Method x promoter-set model
         # ------------------------------------------------------------------
         logger.info("=== Phase 5: Method x promoter-set model ===")
-        _exec_static(
+        exec_static(
             conn,
             method_promoter_model_schema_sql(),
             "method_promoter_model (schema)",
         )
-        _exec_static(
+        exec_static(
             conn,
             method_promoter_model_topn_schema_sql(),
             "method_promoter_model_topn (schema)",
         )
-        _exec_static(
+        exec_static(
             conn,
             method_promoter_model_target_universe_schema_sql(),
             "method_promoter_model_target_universe (schema)",
         )
 
-        if not getattr(args, "skip_method_promoter_model", False):
+        if not args.skip_method_promoter_model:
             registry_df = conn.execute(
                 "SELECT db_name, hf_repo, hf_config, primary_db_name,"
                 " promoter_set_id, binding_method_id FROM dataset_registry"
@@ -1005,10 +996,10 @@ def materialize(
             perturbation_dbs = sorted(
                 db for db in datasets if db in PERTURBATION_TOPN_DATASETS
             )
-            preset_names = getattr(args, "presets", None) or list(PRESET_NAMES)
+            mpm_filters = default_filters(conn, registry_df)
 
             t_mpm_topn = time.monotonic()
-            n_mpm_units = _method_promoter_topn_staged(
+            n_mpm_units = stage_method_promoter_topn(
                 vdb,
                 conn,
                 registry_df,
@@ -1033,7 +1024,12 @@ def materialize(
                         preset = DEFAULT_RESPONSIVENESS_PRESETS.get(preset_name, {})
                         t0 = time.monotonic()
                         panel = build_method_promoter_panel(
-                            conn, registry_df, perturbation_db, top_n, preset
+                            conn,
+                            registry_df,
+                            perturbation_db,
+                            top_n,
+                            preset,
+                            filters=mpm_filters,
                         )
                         coefs, summary = fit_method_promoter_model(panel)
                         stamps = {
@@ -1089,3 +1085,10 @@ def materialize(
 
     finally:
         conn.close()
+
+
+# Names before the public rename; kept for one release so notebooks that imported them
+# keep running.
+_exec_static = exec_static
+_vdb_to_table = vdb_to_table
+_method_promoter_topn_staged = stage_method_promoter_topn

@@ -29,7 +29,7 @@ CC_TARGET_BLACKLIST: tuple[str, ...] = (
 
 #: Harbison dedup CTE: aggregate to one row per (binding_sample, regulator, target)
 #: keeping the minimum p-value, restricted to YPD condition.
-_HARBISON_DEDUP_CTE = """
+HARBISON_DEDUP_CTE = """
     SELECT
         CAST(sample_id AS VARCHAR) AS binding_sample_id,
         regulator_locus_tag,
@@ -80,7 +80,7 @@ BINDING_TOPN_CONFIGS: dict[str, dict[str, Any]] = {
         rank_col="pvalue",
         rank_asc=True,
         target_blacklist=(),
-        binding_dedup_cte=_HARBISON_DEDUP_CTE,
+        binding_dedup_cte=HARBISON_DEDUP_CTE,
     ),
     "chec_m2025": dict(
         binding_sample_col="sample_id",
@@ -330,7 +330,7 @@ def responsive_expr(
     Build a SQL expression evaluating to 1 (responsive) or 0.
 
     Public (not `materialize/comparison/`-local) because
-    ``callingcards_authors_bound.py`` reuses it directly rather than reimplementing
+    ``authors_bound.py`` reuses it directly rather than reimplementing
     the same threshold logic a second time -- this is the one place responsiveness is
     decided.
 
@@ -701,3 +701,7 @@ def topn_pair_select_sql_v2(
         AND s.perturbation_sample_id = ic.perturbation_sample_id
     """
     return sql, params
+
+
+# Name before the public rename; kept for one release.
+_HARBISON_DEDUP_CTE = HARBISON_DEDUP_CTE

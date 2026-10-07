@@ -13,9 +13,10 @@ import pandas as pd
 import pytest
 
 from tfbpshiny.datasets import PERTURBATION_DATASET_COLUMNS
-from tfbpshiny.materialize.comparison.harbison_authors_bound import (
+from tfbpshiny.materialize.comparison.authors_bound import (
+    AUTHORS_BOUND_CONFIGS,
     HARBISON_PVALUE_THRESHOLD,
-    harbison_authors_bound_select_sql,
+    authors_bound_select_sql,
 )
 from tfbpshiny.materialize.comparison.topn import TOP_N_ALL
 
@@ -71,7 +72,8 @@ def _synthetic_conn() -> duckdb.DuckDBPyConnection:
 
 
 def _run(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
-    sql, params = harbison_authors_bound_select_sql(
+    sql, params = authors_bound_select_sql(
+        AUTHORS_BOUND_CONFIGS["harbison"],
         binding_hf_repo="R",
         binding_hf_config="hb",
         perturbation_view="fake_pert",

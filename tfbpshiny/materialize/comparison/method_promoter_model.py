@@ -47,6 +47,7 @@ from tfbpshiny.datasets import METHOD_LEVELS, PROMOTER_SET_LEVELS
 from tfbpshiny.utils.corr_query import (
     expand_filters_to_variants,
     get_filtered_sample_ids,
+    sample_in_clause,
 )
 from tfbpshiny.utils.vdb_init import DEFAULT_DATASET_FILTERS
 
@@ -282,28 +283,39 @@ def promoter_set_target_universe(
     return frozenset(set.intersection(*universes)) if universes else frozenset()
 
 
-def _allowed_sample_ids(
-    conn: Any, registry_df: pd.DataFrame, db_name: str
-) -> list[str] | None:
+def default_filters(conn: Any, registry_df: pd.DataFrame) -> dict[str, Any]:
     """
-    Resolve the sample_ids the app's default filters allow for one dataset.
+    The app's default sample filters, expanded to every dataset variant.
 
     ``DEFAULT_DATASET_FILTERS`` is keyed by *primary* db_name; a variant takes its
     primary's filter via :func:`~tfbpshiny.utils.corr_query.expand_filters_to_variants`,
     the same expansion the live analysis modules apply, so a variant is filtered on the
-    same metadata the selection tab shows for its primary.
+    same metadata the selection tab shows for its primary. Two catalog queries; compute
+    it once per build and pass it to :func:`build_method_promoter_panel`.
 
     :param conn: Output DuckDB connection (read); needs ``dataset_registry`` and the
         ``{db}_meta`` tables.
     :param registry_df: ``dataset_registry`` rows (``db_name``, ``primary_db_name``).
-    :param db_name: The concrete dataset whose ``{db_name}_meta`` table to query.
-    :returns: ``None`` if this dataset has no applicable default filter (no
-        restriction), else the (possibly empty) list of allowed sample_ids.
+    :returns: Filter spec keyed by every db_name that has one.
 
     """
-    filter_spec = expand_filters_to_variants(
-        conn, DEFAULT_DATASET_FILTERS, registry_df
-    ).get(db_name)
+    return expand_filters_to_variants(conn, DEFAULT_DATASET_FILTERS, registry_df)
+
+
+def _allowed_sample_ids(
+    conn: Any, filters: dict[str, Any], db_name: str
+) -> list[str] | None:
+    """
+    Resolve the sample_ids ``filters`` allow for one dataset.
+
+    :param conn: Output DuckDB connection (read); needs the ``{db}_meta`` tables.
+    :param filters: Expanded filter spec, from :func:`default_filters`.
+    :param db_name: The concrete dataset whose ``{db_name}_meta`` table to query.
+    :returns: ``None`` if this dataset has no applicable filter (no restriction), else
+        the (possibly empty) list of allowed sample_ids.
+
+    """
+    filter_spec = filters.get(db_name)
     if not filter_spec:
         return None
     return get_filtered_sample_ids(conn, db_name, filter_spec)
@@ -370,6 +382,7 @@ def build_method_promoter_panel(
     perturbation_db: str,
     top_n: int,
     preset: dict[str, tuple[float, float]],
+    filters: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
     """
     Assemble the 16-cell (method x promoter_set x assay) panel for one model fit.
@@ -397,6 +410,8 @@ def build_method_promoter_panel(
     :param top_n: Materialized cutoff.
     :param preset: Per-dataset responsiveness thresholds; see
         :data:`~tfbpshiny.utils.vdb_init.DEFAULT_RESPONSIVENESS_PRESETS`.
+    :param filters: Expanded sample filters from :func:`default_filters`; computed
+        here when not given. The coordinator passes one dict to all 60 panels.
     :returns: DataFrame with columns ``regulator_locus_tag``, ``method``,
         ``promoter_set``, ``assay``, ``n``, ``n_responsive``, ``n_non_responsive``,
         ``n_intersecting_targets``, ``responsive_ratio``. Empty if no cells resolve, the
@@ -412,9 +427,14 @@ def build_method_promoter_panel(
         return pd.DataFrame()
     p_prefix = f"{p_row.iloc[0]['hf_repo']};{p_row.iloc[0]['hf_config']};"
 
-    p_ids = _allowed_sample_ids(conn, registry_df, perturbation_db)
+    if filters is None:
+        filters = default_filters(conn, registry_df)
+    p_ids = _allowed_sample_ids(conn, filters, perturbation_db)
     if p_ids is not None and not p_ids:
         return pd.DataFrame()
+    p_clause, p_params = sample_in_clause(
+        "split_part(perturbation_source_sample, ';', 3)", p_ids
+    )
 
     allowed_regulators = _regulator_intersection(conn, perturbation_db)
     if not allowed_regulators:
@@ -427,12 +447,15 @@ def build_method_promoter_panel(
                 b_db = _resolve_cell(registry_df, assay_primary, promoter_set, method)
                 if b_db is None:
                     continue
-                b_ids = _allowed_sample_ids(conn, registry_df, b_db)
+                b_ids = _allowed_sample_ids(conn, filters, b_db)
                 if b_ids is not None and not b_ids:
                     continue
+                b_clause, b_params = sample_in_clause(
+                    "split_part(binding_source_sample, ';', 3)", b_ids
+                )
                 b_row = registry_df[registry_df["db_name"] == b_db].iloc[0]
                 b_prefix = f"{b_row['hf_repo']};{b_row['hf_config']};"
-                sql = """
+                sql = f"""
                 SELECT
                     regulator_locus_tag, n, n_responsive, n_intersecting_targets
                 FROM method_promoter_model_topn
@@ -441,6 +464,8 @@ def build_method_promoter_panel(
                   AND pvalue_threshold = ?
                   AND binding_source_sample LIKE ?
                   AND perturbation_source_sample LIKE ?
+                  {b_clause}
+                  {p_clause}
                 """
                 params: list[Any] = [
                     top_n,
@@ -448,21 +473,9 @@ def build_method_promoter_panel(
                     pvalue_threshold,
                     b_prefix + "%",
                     p_prefix + "%",
+                    *b_params,
+                    *p_params,
                 ]
-                if b_ids is not None:
-                    placeholders = ", ".join(["?"] * len(b_ids))
-                    sql += (
-                        f" AND split_part(binding_source_sample, ';', 3)"
-                        f" IN ({placeholders})"
-                    )
-                    params.extend(b_ids)
-                if p_ids is not None:
-                    placeholders = ", ".join(["?"] * len(p_ids))
-                    sql += (
-                        f" AND split_part(perturbation_source_sample, ';', 3)"
-                        f" IN ({placeholders})"
-                    )
-                    params.extend(p_ids)
                 df = conn.execute(sql, params).df()
                 if df.empty:
                     continue
