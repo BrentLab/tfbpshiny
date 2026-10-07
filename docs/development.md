@@ -4,259 +4,159 @@
 
 TFBPShiny is a Shiny for Python (Core, not Express) application that serves as a
 browser-based explorer for transcription factor binding and perturbation data from
-the Brent Lab yeast collection. Data is stored as Parquet files on HuggingFace and
-accessed through a DuckDB-backed abstraction layer called VirtualDB (from the
-`labretriever` package).
+the Brent Lab yeast collection. The source data are Parquet files on HuggingFace; the
+app itself never reads them. Instead a one-off command line step, `tfbpshiny
+materialize`, pulls every dataset through `labretriever.VirtualDB`, runs every
+cross-dataset analysis the app can show, and writes the results to a single DuckDB
+file, `brentlab_yeast.duckdb`. The app opens that file read-only and every page is a
+set of SQL reads against it.
 
-The application is structured around five pages — Home, Dataset Selection, Binding,
-Perturbation, and Comparison — each implemented as a self-contained Shiny module with
-its own UI, sidebar server, and workspace server.
+The application has six pages — Home, Dataset selection, Binding, Perturbation,
+Binding/Perturbation Comparisons, and Figures — each a self-contained Shiny module
+with its own `ui.py` and `server/` package.
+
+```
+HuggingFace parquet  --VirtualDB-->  tfbpshiny materialize  -->  brentlab_yeast.duckdb
+                                                                        |
+                                                 tfbpshiny launch  <----+  (read-only)
+```
 
 ---
 
-## Data Layer: labretriever and VirtualDB
+## Data Layer
 
-### What VirtualDB is
+### The materialized database
+
+`tfbpshiny/materialize/` builds the database. The entry point is
+`coordinator.materialize(output_path, vdb, args)`, which runs five logged phases:
+
+1. **Coordinating layer** — `promoter_sets`, `binding_methods`, `dataset_registry`,
+   `comparative_dataset_registry`, `dataset_column_metadata`. Static registry tables
+   generated from Python constants plus the VirtualDB column metadata. The registry's
+   `is_primary` / `is_active_default` columns say which datasets the selection tab
+   shows and which start switched on.
+2. **Metadata layer** — one `{db_name}_meta` table per dataset (one row per sample,
+   copied verbatim from the VirtualDB `_meta` view), `regulator_display_names`, and
+   `sample_regulator` (`(db_name, sample_id) -> regulator_locus_tag`).
+3. **HF-sourced comparison** — the `dto` table, copied from the comparative dataset's
+   `dto_expanded` view and joined to `sample_regulator` to recover the regulator.
+4. **Computed comparison tables** — `topn_results` (per binding sample × perturbation
+   sample × top-N cutoff × responsiveness threshold pair; also the authors'-criteria
+   rows at `top_n = 0` for the peak-calling datasets and Harbison), `topn_agreement`,
+   `topn_target_sets`, and `correlations`. Each is filled pair by pair through
+   VirtualDB in regulator batches.
+5. **Method × promoter-set model** — `method_promoter_model_topn`,
+   `method_promoter_model_target_universe`, `method_promoter_model_coefs`,
+   `method_promoter_model_fit_summary`: the pooled OLS comparing peak calling with
+   promoter enrichment across promoter definitions.
+
+Every table, its columns and the SQL that generates it are described in
+[materialized_db_schema.md](materialized_db_schema.md). The read-side SQL the app runs
+against those tables is catalogued in [sql_operations.md](sql_operations.md).
+
+Build it with:
+
+```bash
+poetry run python -m tfbpshiny materialize \
+    --config tfbpshiny/brentlab_yeast_collection.yaml \
+    --output brentlab_yeast.duckdb
+```
+
+A full build takes roughly fifteen to twenty minutes; `--skip-topn`,
+`--skip-correlations` and `--skip-method-promoter-model` trim it while iterating on a
+single phase. The default output path is the one `tfbpshiny launch` looks for, so a
+rebuild is picked up on the next app start. Computed floats are rounded
+(`--float-decimals`, default ~1e-9) so two builds of the same data can be diffed;
+`scripts/snapshot_db.py` / `scripts/diff_snapshots.py` fingerprint every table for
+exactly that purpose.
+
+The database file is gitignored (`brentlab_yeast*.duckdb`); it is a build artifact,
+not source.
+
+### What VirtualDB is, and where it is used
 
 `VirtualDB` (from the `labretriever` package) is a DuckDB-backed in-memory database
-that exposes multiple Parquet datasets as named SQL views. The application initializes
-one VirtualDB instance at startup and passes it to every module that needs data access.
-All SQL queries run against this single shared DuckDB connection.
+that exposes the HuggingFace Parquet datasets as named SQL views: `<db_name>` for the
+target-level data and `<db_name>_meta` for one row per sample with the derived columns
+the collection YAML's property mappings define. The configuration is
+`tfbpshiny/brentlab_yeast_collection.yaml`, which pins a HuggingFace revision per
+repository so a build is reproducible.
 
-The configuration lives in `brentlab_yeast_collection.yaml` at the repository root.
-It declares eleven dataset configs across nine HuggingFace repositories:
+VirtualDB is used **only** by `tfbpshiny materialize` and by the analysis notebooks
+under `tmp/`. Its initialization is slow — one `snapshot_download()` per dataset
+config, each contacting HuggingFace even on a warm cache — which is the reason the
+app does not initialize it at runtime. `HF_HOME` controls where the downloads land;
+`HF_TOKEN` (or `--token`) is needed only for private repositories.
 
-| db_name               | Data type    | Repository                         |
-|-----------------------|--------------|------------------------------------|
-| callingcards          | binding      | BrentLab/callingcards              |
-| harbison              | binding      | BrentLab/harbison_2004             |
-| rossi                 | binding      | BrentLab/rossi_2021                |
-| chec_m2025            | binding      | BrentLab/mahendrawada_2025         |
-| hu_reimand            | perturbation | BrentLab/hu_2007_reimand_2010      |
-| degron                | perturbation | BrentLab/mahendrawada_2025         |
-| hughes_overexpression | perturbation | BrentLab/hughes_2006               |
-| hughes_knockout       | perturbation | BrentLab/hughes_2006               |
-| kemmeren              | perturbation | BrentLab/kemmeren_2014             |
-| hackett               | perturbation | BrentLab/hackett_2020              |
-| dto                   | comparative  | BrentLab/yeast_comparative_analysis|
+### Dataset-level configuration in code
 
-Each dataset is accessible as a SQL view named `<db_name>` (raw data) and
-`<db_name>_meta` (one row per sample, with derived columns from property mappings
-defined in the YAML).
+Per-dataset facts the app needs that are not in the database live in
+`tfbpshiny/utils/vdb_init.py`:
 
-### What VirtualDB.__init__ does and why it is slow
-
-`VirtualDB.__init__` performs four sequential phases:
-
-1. **`_load_datacards()`** — Fetches the HuggingFace DataCard (README.md) for each
-   of the nine repositories via `DatasetCard.load`, which internally calls
-   `hf_hub_download`. On a warm restart the README.md files are already in the
-   HuggingFace Hub local cache (`$HF_HOME/hub`), so no full download occurs. Whether
-   `hf_hub_download` still makes a HEAD request to check the ETag before serving from
-   cache is not currently verified — setting `HF_HUB_OFFLINE=1` or passing
-   `local_files_only=True` would suppress any network check entirely.
-
-2. **`_update_cache()`** — Calls `snapshot_download()` from `huggingface_hub` once
-   per dataset config (eleven calls). Even when all Parquet files are already cached
-   locally, `snapshot_download()` contacts HuggingFace to check for revision updates.
-   On a warm restart with no data changes this is eleven unnecessary network roundtrips.
-
-3. **`_register_all_views()`** — Creates DuckDB views for every dataset. The
-   `CREATE VIEW` statements are lazy (no Parquet scan at creation), but `DESCRIBE`
-   calls inside `_register_meta_view()` force schema inference, which reads the
-   first row group of each Parquet file from disk.
-
-4. **`_build_column_metadata()`** — Builds a Python dict of per-column metadata from
-   the DataCards. No network or SQL; this is fast.
-
-### Post-VirtualDB initialization in the app
-
-`initialize_data()` in `tfbpshiny/utils/vdb_init.py` calls `VirtualDB(config)` and
-then does three additional setup steps:
-
-- **`ensure_hackett_analysis_set()`** — Runs a multi-CTE SQL query to build a filtered
-  table of Hackett samples using a tiered priority scheme (ZEV-P > GEV-P > GEV-M),
-  then rewrites the `hackett` and `hackett_meta` views to include only those samples.
-  Three SQL statements total.
-
-- **`_build_regulator_display_names()`** — Unions `SELECT DISTINCT
-  regulator_locus_tag, regulator_symbol` across all datasets that have a
-  `regulator_locus_tag` column (roughly ten datasets), then creates a
-  `regulator_display_names` lookup table with formatted `"SYMBOL (LOCUS_TAG)"`
-  display strings.
-
-- **Column metadata classification** — Pure Python loop over `vdb.get_column_metadata()`
-  results, partitioning columns into `condition_cols` and `upstream_cols` for each
-  dataset. Fast.
-
-`initialize_data()` returns a `(VirtualDB, AppDatasets)` tuple. `AppDatasets` is a
-dataclass holding `condition_cols` and `upstream_cols` — the pre-computed column
-classifications that inform the filter UI in the Dataset Selection module.
+- `DEFAULT_DATASET_FILTERS` — the sample filters applied on first load. They are
+  keyed by the primary dataset the selection tab shows; the promoter-set and
+  peak-calling variants of a primary inherit its filter via
+  `utils.corr_query.expand_filters_to_variants`. The filters are chosen so that every
+  dataset has exactly one sample per regulator.
+- `DEFAULT_RESPONSIVENESS_PRESETS` — the `Relaxed` / `Stringent` (effect, p-value)
+  threshold pairs per perturbation dataset. `materialize` stores a `topn_results`
+  row for each pair a preset resolves to, so the app's preset selector is a filter,
+  not a recomputation.
+- `HIDDEN_FILTER_FIELDS`, `FIELD_TYPE_OVERRIDES` — which metadata columns the filter
+  UI hides, and how it types the ones it shows.
+- `load_app_datasets(conn)` — reads `dataset_column_metadata` into the
+  condition/upstream column lists the selection tab builds its filter cards from.
 
 ---
 
-## Reactivity Strategy
+## App Startup and Reactivity
 
-### Startup: background thread + reactive signal
+### Startup
 
-VirtualDB initialization blocks for several seconds (network + disk). To avoid a
-blank screen while this happens, `app.py` runs `initialize_data()` in a daemon thread
-and delivers the result back to the Shiny reactive graph once it completes:
+`tfbpshiny/app.py` is small. At import time it declares the six module UIs once and
+assembles `ui.page_navbar`. `app_server` then, per browser session:
 
-```python
-# In app_server():
-_init_result: reactive.Value[tuple[VirtualDB, AppDatasets] | None] = reactive.value(None)
-_loop = asyncio.get_event_loop()
+1. opens `duckdb.connect(TFBPSHINY_DB_PATH, read_only=True)` (the path is set by
+   `python -m tfbpshiny launch --db-path`, defaulting to
+   `tfbpshiny/brentlab_yeast.duckdb`);
+2. runs `utils.schema_check.warn_if_stale_topn_schema`, which logs a warning if the
+   file was built by an older materializer;
+3. calls `load_app_datasets(conn)`;
+4. registers the home-card navigation effects and every module server, directly and
+   unconditionally — there is no deferred registration and no loading state, because
+   opening a DuckDB file is instantaneous.
 
-def _run_init() -> None:
-    result = initialize_data(virtualdb_config, hf_token)
+Opening a new connection per session (rather than sharing one) is what makes the
+read-only file safe under concurrent users.
 
-    async def _deliver() -> None:
-        async with reactive_lock():
-            _init_result.set(result)
-            await reactive_flush()
+### Shared reactive state
 
-    _loop.call_soon_threadsafe(asyncio.create_task, _deliver())
+`select_datasets_server` returns three reactives that every other module consumes:
+`active_binding_datasets`, `active_perturbation_datasets` (lists of `db_name`) and
+`dataset_filters` (the committed per-dataset filter dict). `app.py` wraps the last in
+`analysis_filters`, a `reactive.calc` that applies `expand_filters_to_variants` so the
+analysis modules can look a filter up by whatever dataset variant they resolved.
+Modules receive `analysis_filters` under the parameter name `dataset_filters`; it is a
+drop-in because they only ever call it.
 
-threading.Thread(target=_run_init, daemon=True).start()
-```
+### Navigation
 
-The `_deliver` coroutine acquires Shiny's reactive lock before calling `.set()` and
-flushes inside the lock — matching the pattern used by Shiny's own `ExtendedTask`
-internally. This is necessary because `reactive.Value.set()` only invalidates
-dependents; it does not wake the session's event loop. The explicit flush inside the
-lock is what causes Shiny to push the updated UI to the browser.
+Pages are `ui.nav_panel`s of one `page_navbar` (`id="main_nav"`), so Shiny owns the
+active tab; the home page's card links call `ui.update_navset("main_nav", ...)`. A
+module's outputs are only computed while its panel is visible, which is Shiny's
+default for hidden outputs, so there is no explicit gating of expensive calcs.
 
-While `_init_result` is `None`, the home page renders immediately and any other module
-shows "Loading data, please wait...". The navbar is fully functional throughout.
+### Where the work happens
 
-### Module server registration: lazy, once
-
-All module servers (select_datasets, binding, perturbation, comparison) are registered
-inside a single `@reactive.effect` that depends on `_init_result`:
-
-```python
-@reactive.effect
-def _register_modules() -> None:
-    result = _init_result()
-    if result is None:
-        return
-    vdb, app_datasets = result
-    # ... call all module server functions here
-```
-
-This effect fires exactly once — when `_init_result` transitions from `None` to the
-actual data. Module servers are never called with a `None` vdb.
-
-### Navigation: active_module reactive value
-
-A single `reactive.Value[str]` called `active_module` tracks which page is currently
-displayed. It starts as `"home"` and is updated by nav button click effects:
-
-```python
-@reactive.effect
-@reactive.event(input.binding, ignore_init=True)
-def _nav_binding() -> None:
-    active_module.set("binding")
-```
-
-The `sidebar_region` and `workspace_region` render functions read `active_module()` and
-return the appropriate UI for the current page, or a loading message if `_init_result`
-is still `None`.
-
-### Lazy calc execution: req() guards
-
-Shiny's `@reactive.calc` is eager — it re-runs whenever any of its reactive
-dependencies change, regardless of whether any render function is currently reading it.
-Without guards, registering all module servers on startup would trigger all expensive
-computations (correlation matrices, cross-dataset counts) immediately, even for modules
-the user has never visited.
-
-Each expensive workspace calc guards itself with `req()`:
-
-```python
-# In binding/server/workspace.py
-@debounce(0.3)
-@reactive.calc
-def _all_corr_data() -> dict[tuple[str, str], pd.DataFrame]:
-    if active_module is not None:
-        req(active_module() == "binding")
-    # ... expensive DuckDB correlation queries
-```
-
-The same pattern applies in `perturbation/server/workspace.py` (`req(active_module() == "perturbation")`),
-`comparison/server/workspace.py` (`req(active_module() == "comparison")`), and
-`select_datasets/server/workspace.py` (`req(active_module() == "selection")`).
-
-`req()` raises `SilentException` when the condition is `False`, aborting the calc
-silently and marking it for re-evaluation the next time it is called. When the user
-navigates to a module, `active_module` changes, which invalidates the guarded calc and
-causes it to run — this time passing the check and doing the actual work.
-
-The `if active_module is not None` wrapper preserves compatibility with `page_test.py`
-standalone test pages, which call module servers directly without passing `active_module`.
-
-`active_module` is passed as an optional keyword argument to each workspace server
-function. The sidebar server functions do not need it because their computations are
-cheaper (dropdown population, toggle state) and are already gated by the filter modal
-being open.
-
-### Data flow summary
-
-```
-Browser connects
-    |
-    +-- home_ui() renders immediately (static HTML)
-    |
-    +-- background thread: initialize_data()
-            |
-            +-- VirtualDB(config)          [~5-30s depending on cache/network]
-            +-- ensure_hackett_analysis_set()
-            +-- _build_regulator_display_names()
-            |
-            +-- _deliver() fires reactive flush
-                    |
-                    +-- _register_modules() fires
-                    |       |
-                    |       +-- select_datasets_sidebar_server()
-                    |       +-- select_datasets_workspace_server()
-                    |       +-- binding_sidebar_server()
-                    |       +-- binding_workspace_server()
-                    |       +-- perturbation_sidebar_server()
-                    |       +-- perturbation_workspace_server()
-                    |       +-- comparison_sidebar_server()
-                    |       +-- comparison_workspace_server()
-                    |
-                    +-- sidebar_region re-renders (shows nav controls)
-                    +-- workspace_region re-renders (shows home page or current module)
-
-User clicks "Binding"
-    |
-    +-- active_module.set("binding")
-    +-- sidebar_region re-renders (binding sidebar UI)
-    +-- workspace_region re-renders (binding workspace UI)
-    +-- _all_corr_data() req() check passes -> DuckDB correlation queries run
-```
+Every analysis the app shows was computed at materialize time; the server code
+restricts rows to the filtered samples, aggregates (medians, fractions, set
+intersections) and draws. The one place a page does non-trivial SQL is
+`figures/queries.py`, where several figures join `topn_results` against the registry
+to resolve dataset variants. Nothing on the read side touches target-level data.
 
 ---
 
 ## Known Challenges
-
-### VirtualDB init speed
-
-The dominant cost at startup is the eleven `snapshot_download()` calls in
-`_update_cache()`. On a warm restart (all Parquet files already cached in the Docker
-volume) these still contact HuggingFace to check for revision updates. There is no
-`local_files_only=True` flag currently threaded through to `snapshot_download()`.
-Adding one to labretriever would allow the production container to skip network
-checks entirely after the first cold start.
-
-The DataCard fetches in `_load_datacards()` go through `hf_hub_download`, which uses
-the HuggingFace Hub local cache, so the README.md files are not re-downloaded on warm
-restarts. Whether a HEAD request is made to check for updates is unverified. Each
-`DatasetCard.load` call logs its elapsed time at DEBUG level; a time under ~0.1s
-indicates a local cache hit, while a time over ~0.5s indicates a network fetch.
-To enable this, start the app with `--log-level DEBUG`.
 
 ### DuckDB multi-threading and correlation edge cases
 
@@ -340,7 +240,6 @@ Create it locally and copy it to the instance:
 ```bash
 DOCKER_ENV=true
 HF_TOKEN=<your_huggingface_token>       # optional; only for private HF datasets
-VIRTUALDB_CONFIG=/path/to/config.yaml   # optional; defaults to bundled config
 TRAEFIK_DASHBOARD_PASSWORD_HASH=myusername:$$2y$$05$$...  # see below
 ```
 
@@ -412,40 +311,32 @@ stack above. The two deployments are independent and can run in parallel.
 - `rsconnect-python` installed: `pip install rsconnect-python`
 - A HuggingFace token if any datasets are private
 
-### 1. Download the HuggingFace data locally
+### 1. Build the database locally
 
-The parquet files must be bundled with the deployment so the app never hits the
-network on startup. Run `launch` once with a cache directory inside the project:
+The app never touches the network, so the materialized database must travel with the
+bundle. Build it at the repository root (the path `shinyapps_entry.py` points at):
 
 ```bash
-HF_TOKEN=<your_token> poetry run python -m tfbpshiny launch --cache-dir ./hf_cache --skip-initialize=false
+HF_TOKEN=<your_token> poetry run python -m tfbpshiny materialize \
+    --config tfbpshiny/brentlab_yeast_collection.yaml \
+    --output brentlab_yeast.duckdb
 ```
 
-**Note**: name the directory `hf_cache` — it is already in `.gitignore`.
-
-This downloads all dataset parquet files into `hf_cache/` (~1.2 GB) and verifies
-every view is readable. The directory will be included in the rsconnect upload bundle
-automatically.
-
-Re-run this command any time the upstream datasets are updated.
+Re-run this any time the upstream datasets or the materialize code change. The file
+is gitignored, but rsconnect does not read `.gitignore`, so it is included in the
+upload bundle automatically.
 
 ### 2. Entry point
 
 `shinyapps_entry.py` in the project root is the shinyapps.io entry point. It sets
-`HF_CACHE_DIR` to the bundled `hf_cache/` directory before importing the Shiny app
-object, so no CLI flag is needed at runtime. No changes are required — the file is
+`TFBPSHINY_DB_PATH` to the bundled `brentlab_yeast.duckdb` before importing the Shiny
+app object, so no CLI flag is needed at runtime. No changes are required — the file is
 already in the repository.
 
 ### 3. Set environment variables in the dashboard
 
-In the shinyapps.io application dashboard under **Settings > Environment**, add:
-
-| Variable | Value |
-|---|---|
-| `HF_TOKEN` | your HuggingFace token (if datasets are private) |
-
-Do not add `HF_CACHE_DIR` here — `shinyapps_entry.py` sets it from a path relative
-to the bundle, which is more reliable than a hardcoded absolute path.
+Nothing is required: the app reads no secrets and makes no network requests at
+runtime.
 
 ### 4. Deploy
 
@@ -463,7 +354,7 @@ poetry export --without-hashes --without dev -f requirements.txt -o requirements
 
 Regenerate this file after any change to dependencies in `pyproject.toml`.
 
-Make sure the local cache is up to date, then deploy:
+Make sure the database is up to date, then deploy:
 
 ```bash
 rsconnect add \
@@ -482,6 +373,7 @@ CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
     --exclude "docs" \
     --exclude "tmp" \
     --exclude "data" \
+    --exclude "scripts" \
     --exclude ".github" \
     --exclude ".vscode" \
     --exclude ".mypy_cache" \
@@ -496,34 +388,11 @@ CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
 
 rsconnect does not read `.gitignore`; it bundles everything it finds unless told
 otherwise. The `--exclude` flags above strip deployment-irrelevant directories.
-`hf_cache/` is intentionally not excluded — it is the bundled dataset cache and must
-travel with the app. The first deploy uploads ~1.2 GB; set `CONNECT_REQUEST_TIMEOUT`
-(seconds) high enough to cover the upload — 3600 (one hour) is safe.
+`brentlab_yeast.duckdb` is intentionally not excluded — it is the data and must travel
+with the app. Set `CONNECT_REQUEST_TIMEOUT` (seconds) high enough to cover the upload;
+3600 (one hour) is safe.
 
 ### Updating the data
 
-When upstream datasets change, re-run step 1 and redeploy:
-
-```bash
-HF_TOKEN=<your_token> poetry run python -m tfbpshiny launch --cache-dir ./hf_cache --skip-initialize=false
-
-CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
-    --name <nickname> \
-    --entrypoint shinyapps_entry:app \
-    --exclude "terraform" \
-    --exclude "compose" \
-    --exclude "tests" \
-    --exclude "docs" \
-    --exclude "tmp" \
-    --exclude "data" \
-    --exclude ".github" \
-    --exclude ".vscode" \
-    --exclude ".mypy_cache" \
-    --exclude ".pytest_cache" \
-    --exclude ".claude" \
-    --exclude ".venv" \
-    --exclude "mkdocs.yml" \
-    --exclude "mkdocs_requirements.txt" \
-    --exclude "production.yml" \
-    --exclude "*.log"
-```
+When upstream datasets change, re-run step 1 and redeploy with the same
+`rsconnect deploy` command as step 4.

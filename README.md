@@ -29,17 +29,21 @@ source tfbpshiny_env/bin/activate
 python -m pip install tfbpshiny
 ```
 
-### Run the app:
+### Build the database, then run the app:
 
-This will download the necessary datasets from huggingface into a cache directory
-that is created in your current working directory. By default, it is called
-`./tfbpshiny_hf_cache`. When you run the app again, if you launch it from the same
-location it will verify that the cache is up to date, and use it, without
-re-downloading. You can also specify a custom cache directory with `--cache-dir`.
+The app reads a single pre-built DuckDB file. Build it once (this pulls every dataset
+from HuggingFace and runs the cross-dataset analyses; about fifteen minutes), then
+launch:
 
 ```bash
-python -m tfbpshiny launch
+python -m tfbpshiny materialize \
+    --config tfbpshiny/brentlab_yeast_collection.yaml \
+    --output brentlab_yeast.duckdb
+python -m tfbpshiny launch --db-path brentlab_yeast.duckdb
 ```
+
+Re-run `materialize` whenever the upstream datasets change. See
+[docs/development.md](docs/development.md) for what the build produces.
 
 To install the latest development version from GitHub, use:
 
@@ -92,19 +96,16 @@ Then download the matching version and update the `src` in `tfbpshiny/app.py`.
 
 ### Environment variables
 
-Create a `.env` file in the repo root to override defaults:
-
-```bash
-# Optional — only needed for private HuggingFace datasets
-HF_TOKEN=<your_huggingface_token>
-
-# Optional — override the VirtualDB config path
-VIRTUALDB_CONFIG=/path/to/custom_config.yaml
-```
+`HF_TOKEN` is read by `materialize` (or pass `--token`) and is only needed for
+private HuggingFace datasets. `HF_HOME` controls where the downloads are cached. The
+app itself reads `TFBPSHINY_DB_PATH`, which `launch --db-path` sets for you.
 
 ### Running the app
 
 ```bash
+poetry run python -m tfbpshiny materialize \
+    --config tfbpshiny/brentlab_yeast_collection.yaml \
+    --output tfbpshiny/brentlab_yeast.duckdb   # once; the launch default path
 poetry run python -m tfbpshiny --log-level DEBUG launch \
     --port 8010 --host 127.0.0.1 --debug
 ```

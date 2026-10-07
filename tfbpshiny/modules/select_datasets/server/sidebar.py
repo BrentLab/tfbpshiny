@@ -79,7 +79,6 @@ def select_datasets_sidebar_server(
     :param conn: Read-only DuckDB connection to the materialized database.
     :param app_datasets: Pre-loaded per-dataset column classification.
     :param logger: Application logger.
-    :param active_module: Optional reactive tracking the active nav module.
 
     """
     # Build dataset lookup from the materialized dataset_registry table.
