@@ -80,7 +80,6 @@ from tfbpshiny.materialize.comparison.topn import (
     TOP_N_ALL,
     binding_stage_sql,
     perturbation_stage_sql,
-    topn_pair_select_sql,
     topn_pair_select_sql_v2,
     topn_schema_sql,
 )
@@ -183,48 +182,6 @@ def _vdb_to_table(
     return row_count
 
 
-def _topn_variants(
-    binding_db: str,
-    perturbation_db: str,
-    top_n_values: list[int],
-    effect_thresholds: list[float],
-    pvalue_thresholds: list[float],
-    preset_names: list[str] | None = None,
-) -> list[tuple[int, float, float]]:
-    """
-    Enumerate the (top_n, effect, pvalue) variants to materialize for a pair.
-
-    Two things are layered on top of the plain cross product:
-
-    * **Preset thresholds.** Each named preset contributes the *own* ``(effect,
-      pvalue)`` pair of this perturbation dataset, rather than cross-producting global
-      lists. Relaxed and Stringent together need only 1-2 pairs per dataset, where the
-      cross product of their four distinct pairs would materialize eight. Both presets
-      are materialized by default so the app's selector can toggle between them --
-      a preset with no rows silently shows nothing.
-    * **Whole-bound-set rows.** Peak datasets additionally get ``TOP_N_ALL``, where the
-      authors' peak call is the threshold and no rank cutoff applies.
-
-    :param binding_db: Binding dataset name.
-    :param perturbation_db: Perturbation dataset name.
-    :param top_n_values: Rank cutoffs from the CLI.
-    :param effect_thresholds: Effect cutoffs from the CLI.
-    :param pvalue_thresholds: P-value cutoffs from the CLI.
-    :param preset_names: Responsiveness presets whose thresholds to include.
-    :returns: Distinct variants, in a stable order.
-
-    """
-    cutoffs, threshold_pairs = _topn_plan(
-        binding_db,
-        perturbation_db,
-        top_n_values,
-        effect_thresholds,
-        pvalue_thresholds,
-        preset_names,
-    )
-    return [(top_n, e, pv) for top_n in cutoffs for e, pv in threshold_pairs]
-
-
 def _topn_plan(
     binding_db: str,
     perturbation_db: str,
@@ -237,8 +194,7 @@ def _topn_plan(
     Return the cutoffs and threshold pairs to materialize for one pair, unexpanded.
 
     The staged path emits every combination from a single query, so it wants the two
-    axes rather than their cross product. :func:`_topn_variants` expands this for the
-    legacy path, keeping one definition of what gets materialized.
+    axes rather than their cross product.
 
     :param binding_db: Binding dataset name.
     :param perturbation_db: Perturbation dataset name.
@@ -246,7 +202,7 @@ def _topn_plan(
     :param effect_thresholds: Effect cutoffs from the CLI.
     :param pvalue_thresholds: P-value cutoffs from the CLI.
     :param preset_names: Responsiveness presets whose thresholds to include.
-    :returns: ``(cutoffs, threshold_pairs)``, each in a stable order.
+    :returns:``(cutoffs, threshold_pairs)``, each in a stable order.
 
     """
     threshold_pairs: list[tuple[float, float]] = [
@@ -554,89 +510,6 @@ def _method_promoter_topn_staged(
     return units
 
 
-def _topn_legacy(
-    vdb: VirtualDB,
-    conn: duckdb.DuckDBPyConnection,
-    binding_views: list[str],
-    perturbation_views: list[str],
-    top_n_values: list[int],
-    effect_thresholds: list[float],
-    pvalue_thresholds: list[float],
-    preset_names: list[str] | None,
-    chunk: int,
-    round_decimals: int,
-) -> int:
-    """
-    Fill ``topn_results`` one variant at a time (pre-staging behaviour).
-
-    Kept behind ``--legacy-topn`` purely so a build from this commit can be diffed
-    against a staged build from the same commit. Delete once that diff is on record.
-
-    :param vdb: VirtualDB instance (data source).
-    :param conn: Output DuckDB connection.
-    :param binding_views: Binding dataset names to process.
-    :param perturbation_views: Perturbation dataset names to process.
-    :param top_n_values: Rank cutoffs from the CLI.
-    :param effect_thresholds: Effect cutoffs from the CLI.
-    :param pvalue_thresholds: P-value cutoffs from the CLI.
-    :param preset_names: Responsiveness presets whose thresholds to include.
-    :param chunk: Regulators per batch.
-    :param round_decimals: Decimal places kept for ``responsive_ratio``.
-    :returns: Number of query units executed.
-
-    """
-    units = 0
-    for b_db, p_db in itertools.product(binding_views, perturbation_views):
-        b_cfg = BINDING_TOPN_CONFIGS[b_db]
-        b_hf_repo, b_hf_config = DATASET_HF_COORDS.get(b_db, ("", ""))
-        p_hf_repo, p_hf_config = DATASET_HF_COORDS.get(p_db, ("", ""))
-        batches = _batches(_regulators_for_binding(vdb, b_db), chunk)
-
-        for top_n, eff_thresh, pval_thresh in _topn_variants(
-            b_db,
-            p_db,
-            top_n_values,
-            effect_thresholds,
-            pvalue_thresholds,
-            preset_names=preset_names,
-        ):
-            pair_label = f"topn {b_db}×{p_db} n={top_n} ({eff_thresh},{pval_thresh})"
-            pair_rows = 0
-            for batch_idx, batch in enumerate(batches):
-                sql, params = topn_pair_select_sql(
-                    binding_view=b_db,
-                    binding_hf_repo=b_hf_repo,
-                    binding_hf_config=b_hf_config,
-                    perturbation_view=p_db,
-                    pert_hf_repo=p_hf_repo,
-                    pert_hf_config=p_hf_config,
-                    binding_sample_col=b_cfg["binding_sample_col"],
-                    rank_col=b_cfg["rank_col"],
-                    rank_asc=b_cfg["rank_asc"],
-                    target_blacklist=b_cfg.get("target_blacklist", ()),
-                    binding_dedup_cte=b_cfg.get("binding_dedup_cte", ""),
-                    no_signal_value=b_cfg.get("no_signal_value"),
-                    top_n=top_n,
-                    effect_threshold=eff_thresh,
-                    pvalue_threshold=pval_thresh,
-                    regulator_subset=batch,
-                    param_prefix=f"bp{batch_idx}",
-                    round_decimals=round_decimals,
-                )
-                units += 1
-                pair_rows += _vdb_to_table(
-                    vdb,
-                    conn,
-                    sql,
-                    params,
-                    "topn_results",
-                    f"{pair_label} batch {batch_idx + 1}/{len(batches)}",
-                    mode="insert",
-                )
-            logger.info("  %-40s  total %d rows", pair_label, pair_rows)
-    return units
-
-
 def materialize(
     output_path: str,
     vdb: VirtualDB,
@@ -790,32 +663,18 @@ def materialize(
                 db for db in datasets if db in PERTURBATION_TOPN_DATASETS
             ]
             t_topn = time.monotonic()
-            if getattr(args, "legacy_topn", False):
-                n_units = _topn_legacy(
-                    vdb,
-                    conn,
-                    binding_views,
-                    perturbation_views,
-                    top_n_values,
-                    effect_thresholds,
-                    pvalue_thresholds,
-                    getattr(args, "presets", None),
-                    chunk,
-                    round_decimals,
-                )
-            else:
-                n_units = _topn_staged(
-                    vdb,
-                    conn,
-                    binding_views,
-                    perturbation_views,
-                    top_n_values,
-                    effect_thresholds,
-                    pvalue_thresholds,
-                    getattr(args, "presets", None),
-                    chunk,
-                    round_decimals,
-                )
+            n_units = _topn_staged(
+                vdb,
+                conn,
+                binding_views,
+                perturbation_views,
+                top_n_values,
+                effect_thresholds,
+                pvalue_thresholds,
+                getattr(args, "presets", None),
+                chunk,
+                round_decimals,
+            )
             logger.info(
                 "  topn_results: %d query units in %.1fs",
                 n_units,

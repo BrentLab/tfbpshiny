@@ -1,11 +1,11 @@
-"""Unit tests for the top-N materialization variant planner."""
+"""Unit tests for the top-N materialization planner, ``coordinator._topn_plan``."""
 
 from __future__ import annotations
 
 import pytest
 
 from tfbpshiny.materialize.comparison.topn import TOP_N_ALL
-from tfbpshiny.materialize.coordinator import _topn_variants
+from tfbpshiny.materialize.coordinator import _topn_plan
 from tfbpshiny.utils.vdb_init import DEFAULT_RESPONSIVENESS_PRESETS
 
 BOTH = ["Relaxed", "Stringent"]
@@ -19,8 +19,9 @@ PR_DATASETS = [
 ]
 
 
-def _threshold_pairs(variants) -> set[tuple[float, float]]:
-    return {(e, p) for _, e, p in variants}
+def _pairs(binding: str, pr_db: str, effects, pvalues, presets=None) -> set:
+    _, threshold_pairs = _topn_plan(binding, pr_db, [25], effects, pvalues, presets)
+    return set(threshold_pairs)
 
 
 @pytest.mark.parametrize("pr_db", PR_DATASETS)
@@ -32,8 +33,7 @@ def test_both_presets_are_materialized(pr_db: str) -> None:
     was never materialized silently renders nothing.
 
     """
-    variants = _topn_variants("rossi", pr_db, [25], [0.0], [0.05], preset_names=BOTH)
-    stored = _threshold_pairs(variants)
+    stored = _pairs("rossi", pr_db, [0.0], [0.05], BOTH)
     for name in BOTH:
         preset = DEFAULT_RESPONSIVENESS_PRESETS[name]
         want = preset.get(pr_db, preset["*"])
@@ -50,8 +50,7 @@ def test_presets_do_not_depend_on_threshold_flags(pr_db: str) -> None:
     correct until someone changed a default.
 
     """
-    variants = _topn_variants("rossi", pr_db, [25], [2.5], [0.2], preset_names=BOTH)
-    stored = _threshold_pairs(variants)
+    stored = _pairs("rossi", pr_db, [2.5], [0.2], BOTH)
     for name in BOTH:
         preset = DEFAULT_RESPONSIVENESS_PRESETS[name]
         assert preset.get(pr_db, preset["*"]) in stored
@@ -66,13 +65,10 @@ def test_per_dataset_resolution_beats_the_cross_product() -> None:
 
     """
     for pr_db in PR_DATASETS:
-        variants = _topn_variants(
-            "rossi", pr_db, [25], [0.0], [0.05], preset_names=BOTH
-        )
-        assert len(_threshold_pairs(variants)) <= 2
+        assert len(_pairs("rossi", pr_db, [0.0], [0.05], BOTH)) <= 2
 
 
-def test_every_variant_carries_a_threshold_pair() -> None:
+def test_every_threshold_pair_is_a_pair_of_floats() -> None:
     """
     Responsiveness is decided by thresholds and nothing else.
 
@@ -80,23 +76,18 @@ def test_every_variant_carries_a_threshold_pair() -> None:
     way to score a row; this asserts no such variant survives.
 
     """
-    variants = _topn_variants(
-        "rossi", "degron", [10, 25], [0.0], [0.05], preset_names=BOTH
-    )
-    assert variants, "planner emitted nothing"
-    for v in variants:
-        assert len(v) == 3, f"unexpected variant shape: {v}"
-        top_n, effect, pvalue = v
+    cutoffs, pairs = _topn_plan("rossi", "degron", [10, 25], [0.0], [0.05], BOTH)
+    assert cutoffs == (10, 25)
+    assert pairs, "planner emitted nothing"
+    for effect, pvalue in pairs:
         assert isinstance(effect, float) and isinstance(pvalue, float)
 
 
-def test_variant_order_is_independent_of_preset_order() -> None:
+def test_plan_is_independent_of_preset_order() -> None:
     """Listing presets in either order must plan the same work."""
-    a = _topn_variants("rossi", "degron", [25], [0.0], [0.05], preset_names=BOTH)
-    b = _topn_variants(
-        "rossi", "degron", [25], [0.0], [0.05], preset_names=list(reversed(BOTH))
-    )
-    assert sorted(a) == sorted(b)
+    a = _topn_plan("rossi", "degron", [25], [0.0], [0.05], BOTH)
+    b = _topn_plan("rossi", "degron", [25], [0.0], [0.05], list(reversed(BOTH)))
+    assert a[0] == b[0] and set(a[1]) == set(b[1])
 
 
 def test_only_peak_datasets_get_the_all_targets_sentinel() -> None:
@@ -107,13 +98,12 @@ def test_only_peak_datasets_get_the_all_targets_sentinel() -> None:
     which is exactly what figure 3 needs to avoid.
 
     """
-    peaks = _topn_variants("rossi_peaks", "degron", [25], [0.0], [0.05])
-    enrich = _topn_variants("rossi", "degron", [25], [0.0], [0.05])
-    assert any(top_n == TOP_N_ALL for top_n, *_ in peaks)
-    assert not any(top_n == TOP_N_ALL for top_n, *_ in enrich)
+    peaks, _ = _topn_plan("rossi_peaks", "degron", [25], [0.0], [0.05])
+    enrich, _ = _topn_plan("rossi", "degron", [25], [0.0], [0.05])
+    assert TOP_N_ALL in peaks
+    assert TOP_N_ALL not in enrich
 
 
 def test_no_presets_leaves_only_the_cli_thresholds() -> None:
     """Passing no presets falls back to exactly what the flags specify."""
-    variants = _topn_variants("rossi", "degron", [25], [1.5], [0.01])
-    assert _threshold_pairs(variants) == {(1.5, 0.01)}
+    assert _pairs("rossi", "degron", [1.5], [0.01]) == {(1.5, 0.01)}

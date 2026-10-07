@@ -1,7 +1,6 @@
 """
 SQL generators for the ``topn_results`` comparison table.
 
-Adapted from ``modules/comparison/queries.py::topn_responsive_ratio``.
 Functions return SQL strings (no side effects) so they can be called from a
 Jupyter notebook to inspect the query before running the full pipeline.
 The coordinator is the only code that calls ``.execute()``.
@@ -284,12 +283,12 @@ PERTURBATION_DATASET_COLUMNS: dict[str, tuple[str, str]] = {
 TIE_RULES: tuple[str, ...] = ("rank", "avg_rank")
 
 
-def _check_tie_rule(tie_rule: str) -> None:
+def check_tie_rule(tie_rule: str) -> None:
     if tie_rule not in TIE_RULES:
         raise ValueError(f"tie_rule must be one of {TIE_RULES}, got {tie_rule!r}")
 
 
-def _cutoff_rank_expr(tie_rule: str, partition: str, order_by: str, score: str) -> str:
+def cutoff_rank_expr(tie_rule: str, partition: str, order_by: str, score: str) -> str:
     """
     SQL for the quantity compared with ``top_n`` to decide membership of the top N.
 
@@ -394,253 +393,16 @@ def responsive_expr(
     )
 
 
-def topn_pair_select_sql(
-    binding_view: str,
-    binding_hf_repo: str,
-    binding_hf_config: str,
-    perturbation_view: str,
-    pert_hf_repo: str,
-    pert_hf_config: str,
-    binding_sample_col: str,
-    rank_col: str,
-    rank_asc: bool,
-    target_blacklist: tuple[str, ...],
-    binding_dedup_cte: str,
-    top_n: int,
-    effect_threshold: float,
-    pvalue_threshold: float,
-    regulator_subset: tuple[str, ...] = (),
-    param_prefix: str = "p",
-    round_decimals: int = DEFAULT_FLOAT_DECIMALS,
-    tie_rule: str = "avg_rank",
-    no_signal_value: float | None = None,
-) -> tuple[str, dict[str, Any]]:
-    """
-    Return a SELECT that produces ``topn_results``-shaped rows for one pair.
-
-    The SELECT includes composite ``source_sample`` IDs, analysis parameters,
-    and result columns — ready for the coordinator to wrap in
-    ``INSERT INTO topn_results``.  Adapted from
-    ``modules/comparison/queries.py::topn_responsive_ratio``.
-
-    No user-level filters are applied; the query covers all samples in both
-    datasets (subject to harbison YPD dedup when applicable).
-
-    The result includes ``n_intersecting_targets``: the count of distinct targets
-    shared by that specific binding/perturbation sample pair for that regulator,
-    uncapped by ``top_n`` (unlike ``n``, which is capped at ``top_n``). This lets
-    consumers require a regulator/sample-pair to have had at least ``top_n``
-    candidate targets before the top-N cutoff was applied.
-
-    :param binding_view: Binding dataset name (DuckDB view/table name).
-    :param binding_hf_repo: HuggingFace repo for the binding dataset.
-    :param binding_hf_config: HuggingFace config for the binding dataset.
-    :param perturbation_view: Perturbation dataset name.
-    :param pert_hf_repo: HuggingFace repo for the perturbation dataset.
-    :param pert_hf_config: HuggingFace config for the perturbation dataset.
-    :param binding_sample_col: Column in the binding view for sample identifier.
-    :param rank_col: Column used to rank binding hits.
-    :param rank_asc: If ``True``, lower values rank better (p-values).
-    :param target_blacklist: Target locus tags excluded from ranking.
-    :param binding_dedup_cte: Optional CTE body SQL replacing the default
-        binding SELECT (used for Harbison YPD dedup).
-    :param top_n: Number of top binding targets to keep per binding sample.
-    :param effect_threshold: Minimum absolute effect size to count as responsive.
-    :param pvalue_threshold: Maximum p-value to count as responsive.
-    :param regulator_subset: If non-empty, restrict both CTEs to these
-        ``regulator_locus_tag`` values (for chunked execution).
-    :param param_prefix: Namespace prefix for SQL parameters.
-    :param round_decimals: Decimal places kept for ``responsive_ratio``.
-    :param tie_rule: How ties decide membership of the top N; see :data:`TIE_RULES`.
-    :param no_signal_value: If given, a NULL ranking score is replaced by this value
-        (see :func:`binding_stage_sql`).
-    :returns: ``(sql, params)`` tuple.
-    :rtype: tuple[str, dict]
-
-    """
-    _check_tie_rule(tie_rule)
-    params: dict[str, Any] = {}
-    rank_dir = "ASC" if rank_asc else "DESC"
-
-    reg_in_clause = ""
-    if regulator_subset:
-        reg_ph = ", ".join(
-            f"$reg_{param_prefix}_{i}" for i in range(len(regulator_subset))
-        )
-        for i, reg in enumerate(regulator_subset):
-            params[f"reg_{param_prefix}_{i}"] = reg
-        reg_in_clause = f"regulator_locus_tag IN ({reg_ph})"
-
-    # Build the binding CTE body.
-    if binding_dedup_cte:
-        binding_cte_body = binding_dedup_cte
-    else:
-        blacklist_clauses: list[str] = []
-        if target_blacklist:
-            ph = ", ".join(
-                f"$bl_{param_prefix}_{i}" for i in range(len(target_blacklist))
-            )
-            blacklist_clauses.append(f"target_locus_tag NOT IN ({ph})")
-            for i, tag in enumerate(target_blacklist):
-                params[f"bl_{param_prefix}_{i}"] = tag
-        binding_extra = (
-            "WHERE " + " AND ".join(blacklist_clauses) if blacklist_clauses else ""
-        )
-        rank_select = (
-            f"COALESCE({rank_col}, {float(no_signal_value)!r}) AS {rank_col}"
-            if no_signal_value is not None
-            else rank_col
-        )
-        binding_cte_body = f"""
-        SELECT
-            CAST({binding_sample_col} AS VARCHAR) AS binding_sample_id,
-            regulator_locus_tag,
-            target_locus_tag,
-            {rank_select}
-        FROM {binding_view}
-        {binding_extra}
-        """
-
-    if reg_in_clause:
-        binding_cte_body = (
-            f"SELECT * FROM ({binding_cte_body}) AS _binding_batch"
-            f" WHERE {reg_in_clause}"
-        )
-
-    # Perturbation responsive expression (uses $params for thresholds).
-    responsive_case = responsive_expr(
-        perturbation_view,
-        effect_threshold,
-        pvalue_threshold,
-        param_prefix,
-        params,
-    )
-
-    pert_clauses: list[str] = []
-    if reg_in_clause:
-        pert_clauses.append(f"p.{reg_in_clause}")
-    pert_filter_where = f"WHERE {' AND '.join(pert_clauses)}" if pert_clauses else ""
-
-    top_n_key = f"{param_prefix}_top_n"
-    params[top_n_key] = top_n
-
-    # TOP_N_ALL keeps every bound target. Used for the peak datasets, where the
-    # authors' peak call already *is* the threshold and ranking would discard part of
-    # their answer. `n` then carries the size of the authors' bound set.
-    rank_cutoff_clause = "" if top_n == TOP_N_ALL else f"WHERE rnk <= ${top_n_key}"
-    cutoff_rank = _cutoff_rank_expr(
-        tie_rule,
-        "b.binding_sample_id",
-        f"b.{rank_col} {rank_dir}",
-        f"b.{rank_col}",
-    )
-
-    # Escaped literal strings for composite ID construction (no user input).
-    b_prefix = f"{binding_hf_repo};{binding_hf_config};".replace("'", "''")
-    p_prefix = f"{pert_hf_repo};{pert_hf_config};".replace("'", "''")
-
-    # Literal values for the analysis-parameter columns.
-    rank_col_safe = rank_col.replace("'", "''")
-    rank_asc_sql = "TRUE" if rank_asc else "FALSE"
-    ratio_expr = round_expr(
-        "SUM(pert.is_responsive)::DOUBLE / COUNT(*)", round_decimals
-    )
-
-    sql = f"""
-    WITH binding AS (
-        {binding_cte_body}
-    ),
-    perturbation AS (
-        SELECT
-            CAST(p.sample_id AS VARCHAR) AS perturbation_sample_id,
-            p.regulator_locus_tag,
-            p.target_locus_tag,
-            {responsive_case} AS is_responsive
-        FROM {perturbation_view} p
-        {pert_filter_where}
-    ),
-    intersecting_counts AS (
-        SELECT
-            b.binding_sample_id,
-            b.regulator_locus_tag,
-            pert.perturbation_sample_id,
-            COUNT(DISTINCT b.target_locus_tag) AS n_intersecting_targets
-        FROM binding b
-        JOIN perturbation pert
-            ON  b.regulator_locus_tag = pert.regulator_locus_tag
-            AND b.target_locus_tag    = pert.target_locus_tag
-        WHERE b.regulator_locus_tag != b.target_locus_tag
-        GROUP BY b.binding_sample_id, b.regulator_locus_tag, pert.perturbation_sample_id
-    ),
-    intersecting_targets AS (
-        SELECT DISTINCT b.regulator_locus_tag, b.target_locus_tag
-        FROM binding b
-        INNER JOIN perturbation pert
-            ON  b.regulator_locus_tag = pert.regulator_locus_tag
-            AND b.target_locus_tag    = pert.target_locus_tag
-    ),
-    binding_ranked AS (
-        SELECT
-            b.binding_sample_id,
-            b.regulator_locus_tag,
-            b.target_locus_tag,
-            b.{rank_col},
-            {cutoff_rank} AS rnk
-        FROM binding b
-        INNER JOIN intersecting_targets it
-            ON  b.regulator_locus_tag = it.regulator_locus_tag
-            AND b.target_locus_tag    = it.target_locus_tag
-        WHERE b.regulator_locus_tag != b.target_locus_tag
-    ),
-    top_n_binding AS (
-        SELECT binding_sample_id, regulator_locus_tag, target_locus_tag
-        FROM binding_ranked
-        {rank_cutoff_clause}
-    ),
-    summary AS (
-        SELECT
-            b.binding_sample_id,
-            b.regulator_locus_tag,
-            pert.perturbation_sample_id,
-            COUNT(*)                               AS n,
-            SUM(pert.is_responsive)::INTEGER       AS n_responsive,
-            {ratio_expr}                           AS responsive_ratio
-        FROM top_n_binding b
-        JOIN perturbation pert
-            ON  b.regulator_locus_tag = pert.regulator_locus_tag
-            AND b.target_locus_tag    = pert.target_locus_tag
-        GROUP BY b.binding_sample_id, b.regulator_locus_tag, pert.perturbation_sample_id
-    )
-    SELECT
-        '{b_prefix}' || s.binding_sample_id         AS binding_source_sample,
-        '{p_prefix}' || s.perturbation_sample_id    AS perturbation_source_sample,
-        s.regulator_locus_tag,
-        ${top_n_key}::INTEGER                       AS top_n,
-        '{rank_col_safe}'                           AS rank_col,
-        {rank_asc_sql}                              AS rank_asc,
-        {effect_threshold!r}::DOUBLE                AS effect_threshold,
-        {pvalue_threshold!r}::DOUBLE                AS pvalue_threshold,
-        s.n,
-        s.n_responsive,
-        s.responsive_ratio,
-        COALESCE(ic.n_intersecting_targets, 0)::INTEGER AS n_intersecting_targets
-    FROM summary s
-    LEFT JOIN intersecting_counts ic
-        ON  s.binding_sample_id      = ic.binding_sample_id
-        AND s.regulator_locus_tag    = ic.regulator_locus_tag
-        AND s.perturbation_sample_id = ic.perturbation_sample_id
-    """
-    return sql, params
-
-
 # ---------------------------------------------------------------------------
 # Staged SQL generators
 # ---------------------------------------------------------------------------
 #
-# :func:`topn_pair_select_sql` above rescans both parquet sources for every
+# The original per-variant query rescanned both parquet sources for every
 # ``(top_n, effect, pvalue)`` variant of every pair -- ~1170 full scans for a complete
-# build, with Rossi's 8.7 M-row config re-read some 60 times. The three functions below
-# split that into a scan phase and a compute phase:
+# build, with Rossi's 8.7 M-row config re-read some 60 times. It survives only as the
+# oracle in ``tests/unit/_legacy_topn_oracle.py``, which the equivalence tests run
+# against :func:`topn_pair_select_sql_v2`. The three functions below split the work
+# into a scan phase and a compute phase:
 #
 #   A. :func:`binding_stage_sql`       -- once per binding dataset      (23 scans)
 #   B. :func:`perturbation_stage_sql`  -- once per perturbation dataset  (6 scans)
@@ -665,7 +427,7 @@ def binding_stage_sql(
     """
     Return a SELECT materializing one binding dataset's ranked-input rows (stage A).
 
-    Applies exactly what the ``binding`` CTE of :func:`topn_pair_select_sql` applies --
+    Applies exactly what the ``binding`` CTE of the per-variant query applies --
     projection, target blacklist, and the Harbison YPD dedup where configured -- and
     nothing that depends on a perturbation dataset or on any threshold.
 
@@ -794,9 +556,10 @@ def topn_pair_select_sql_v2(
     Return a SELECT producing every variant of one pair at once (stage C).
 
     Reads the stage A and stage B tables, never parquet. Ranking, the
-    intersecting-target restriction and the aggregation are identical to
-    :func:`topn_pair_select_sql`; the difference is that all ``top_n`` cutoffs and all
-    threshold pairs are emitted from a single scan-and-rank instead of one query each.
+    intersecting-target restriction and the aggregation are identical to the
+    per-variant query (``tests/unit/_legacy_topn_oracle.py``); the difference is that
+    all ``top_n`` cutoffs and all threshold pairs are emitted from a single
+    scan-and-rank instead of one query each.
 
     ``TOP_N_ALL`` is handled inline by the cutoff join rather than as a separate query:
     ``c.top_n = 0`` keeps every ranked row, which is what the sentinel means.
@@ -820,7 +583,7 @@ def topn_pair_select_sql_v2(
     :rtype: tuple[str, dict]
 
     """
-    _check_tie_rule(tie_rule)
+    check_tie_rule(tie_rule)
     if not top_n_values or not threshold_pairs:
         raise ValueError("top_n_values and threshold_pairs must both be non-empty")
 
@@ -857,7 +620,7 @@ def topn_pair_select_sql_v2(
     ratio_expr = round_expr(
         f"SUM({responsive_expr})::DOUBLE / COUNT(*)", round_decimals
     )
-    cutoff_rank = _cutoff_rank_expr(
+    cutoff_rank = cutoff_rank_expr(
         tie_rule,
         "b.binding_sample_id",
         f"b.rank_value {rank_dir}",

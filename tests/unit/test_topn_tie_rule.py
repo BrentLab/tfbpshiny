@@ -18,10 +18,10 @@ import duckdb
 import pandas as pd
 import pytest
 
+from tests.unit._legacy_topn_oracle import topn_pair_select_sql
 from tfbpshiny.materialize.comparison.topn import (
     binding_stage_sql,
     perturbation_stage_sql,
-    topn_pair_select_sql,
     topn_pair_select_sql_v2,
 )
 

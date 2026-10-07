@@ -185,17 +185,6 @@ def register_subparser(
         ),
     )
     p.add_argument(
-        "--legacy-topn",
-        action="store_true",
-        default=False,
-        help=(
-            "Compute topn_results one (top_n, effect, pvalue) variant at a time, as "
-            "builds did before the scan was hoisted out of the variant loop. Far "
-            "slower; kept only so a build from this commit can be diffed against the "
-            "staged one to prove they agree."
-        ),
-    )
-    p.add_argument(
         "--skip-correlations",
         action="store_true",
         default=False,

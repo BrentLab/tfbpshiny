@@ -64,7 +64,8 @@ def callingcards_authors_bound_select_sql(
     Return a SELECT producing ``topn_results``-shaped rows for Calling Cards' authors'
     threshold, for one perturbation dataset.
 
-    Structurally mirrors ``topn.py::topn_pair_select_sql``: an ``intersecting_targets``
+    Structurally mirrors ``topn.py::topn_pair_select_sql_v2``: an
+    ``intersecting_targets``
     restriction (only score a target if it is also measured by the perturbation
     dataset), a per-sample summary, and a left join back to the full (unthresholded)
     intersecting-target count -- the same ``n_intersecting_targets`` semantics every
