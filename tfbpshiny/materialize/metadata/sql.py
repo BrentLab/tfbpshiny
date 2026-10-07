@@ -4,6 +4,7 @@ SQL generators for the metadata layer of the materialized DuckDB schema.
 Functions return SELECT SQL strings suitable for wrapping in
 ``CREATE TABLE {name} AS {sql}`` by the coordinator.  Each can be called
 independently in a Jupyter notebook to inspect what would be materialized.
+
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ def meta_select_sql(db_name: str) -> str:
 
         CREATE TABLE {db_name}_meta AS {meta_select_sql(db_name)}
 
-    :param db_name: Dataset name (e.g. ``'callingcards'``).
+    :param db_name: Dataset name (e.g. ``'callingcards_kang'``).
     :returns: ``SELECT * FROM {db_name}_meta`` SQL string.
     :rtype: str
 

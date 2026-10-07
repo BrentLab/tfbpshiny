@@ -40,6 +40,52 @@ PERTURBATION_COLORS: dict[str, str] = {
     "2025 Degron": "#91D1C2",
 }
 
+#: Colour cycle for figures that plot *pairs* of datasets (figure 6's overlap
+#: agreement) rather than one dataset per series. Deliberately avoids every hue family
+#: already claimed by BINDING_COLORS/PERTURBATION_COLORS (purple, red-orange, teal,
+#: light blue, navy, salmon, mint) -- reusing those, even approximately, risks a reader
+#: mistaking a pair's colour for one specific dataset's, since a pair isn't "the
+#: dataset that happens to be tinted red" the way a single-series figure's line is. An
+#: earlier version of this palette (ColorBrewer Dark2) still clashed: its teal and
+#: purple-blue read as near-duplicates of the ChEC-seq and ChIP-chip dataset colours. A
+#: later revision of *this* palette paired an olive and a true green that, despite
+#: being 40 degrees apart on the wheel, still read as "both green" at line/marker
+#: sizes -- replaced with a plain blue, the one common hue family the rest of this
+#: palette hadn't used yet.
+#: Cycles if more than 8 pairs are selected; figure 6 already warns above
+#: AGREEMENT_PAIR_WARN pairs that the plot becomes hard to read regardless.
+PAIR_COLORS: tuple[str, ...] = (
+    "#C9A227",
+    "#1F77B4",
+    "#2CA02C",
+    "#C2185B",
+    "#8B0000",
+    "#8B5A2B",
+    "#5A5A5A",
+    "#222222",
+)
+
+#: Colour per promoter set definition, keyed by ``promoter_set_id`` (figures 7 & 8's
+#: box axis). No existing app-wide promoter-set colour convention to reuse -- these
+#: never appear alongside BINDING_COLORS/PAIR_COLORS in the same panel (figures 7/8
+#: exclude Harbison, the one dataset colour with a similar purple), so a fresh
+#: qualitative set is fine.
+PROMOTER_SET_COLORS: dict[str, str] = {
+    "kang": "#377EB8",
+    "mindel": "#4DAF4A",
+    "500bp": "#984EA3",
+    "intergenic": "#FF7F00",
+}
+
+#: Colour per binding method (figure 9's box axis). Matches the exact hex values
+#: ``modules/comparison/queries.py``'s ``BINDING_METHOD_COLORS`` already uses for
+#: Promoter Enrichment/Peak Calling, defined fresh here (not imported) per this app's
+#: module-isolation convention -- keep the two in sync if either changes.
+METHOD_COLORS: dict[str, str] = {
+    "promoter_enrichment": "#4DBBD5",
+    "peak_calling": "#E64B35",
+}
+
 
 def apply_figure_style(
     fig: go.Figure,
@@ -62,26 +108,35 @@ def apply_figure_style(
     :returns: The same figure, for chaining.
 
     """
+    # Text defaults to plotly's own dark blue-grey, not true black -- set every font
+    # color explicitly rather than rely on that or on inheritance from `layout.font`,
+    # since a more specific font dict (e.g. an axis's own `tickfont`) does not
+    # reliably pick up an unset color from a less specific one.
     fig.update_layout(
-        font=dict(size=FONT_SIZE),
+        font=dict(size=FONT_SIZE, color="black"),
         title=(
-            dict(text=title, font=dict(size=TITLE_SIZE)) if title is not None else None
+            dict(text=title, font=dict(size=TITLE_SIZE, color="black"))
+            if title is not None
+            else None
         ),
         showlegend=showlegend,
-        legend=dict(font=dict(size=FONT_SIZE)),
+        legend=dict(font=dict(size=FONT_SIZE, color="black")),
         margin=dict(l=70, r=30, t=60 if title else 30, b=60),
         plot_bgcolor="white",
         height=height,
     )
     axis_kwargs: dict[str, Any] = dict(
-        title_font=dict(size=AXIS_TITLE_SIZE),
-        tickfont=dict(size=FONT_SIZE),
+        title_font=dict(size=AXIS_TITLE_SIZE, color="black"),
+        tickfont=dict(size=FONT_SIZE, color="black"),
         showline=True,
         linecolor="#444",
-        gridcolor="#eee",
     )
-    fig.update_xaxes(**axis_kwargs)
-    fig.update_yaxes(**axis_kwargs)
+    # Vertical guide lines (x-axis gridlines) are dropped across every figure: with
+    # several series per panel they add visual clutter without carrying information
+    # the axis ticks don't already give. Horizontal gridlines (y-axis) are kept --
+    # they help read a value off a shared scale across panels.
+    fig.update_xaxes(**axis_kwargs, showgrid=False)
+    fig.update_yaxes(**axis_kwargs, gridcolor="#eee")
     if x_title is not None:
         fig.update_xaxes(title_text=x_title)
     if y_title is not None:
@@ -121,7 +176,7 @@ def inside_legend(
         bgcolor="rgba(255,255,255,0.82)",
         bordercolor="#bbb",
         borderwidth=1,
-        font=dict(size=FONT_SIZE - 2),
+        font=dict(size=FONT_SIZE - 2, color="black"),
     )
 
 
@@ -212,7 +267,10 @@ __all__ = [
     "AXIS_TITLE_SIZE",
     "BINDING_COLORS",
     "FONT_SIZE",
+    "METHOD_COLORS",
+    "PAIR_COLORS",
     "PERTURBATION_COLORS",
+    "PROMOTER_SET_COLORS",
     "TITLE_SIZE",
     "apply_figure_style",
     "figure_html",

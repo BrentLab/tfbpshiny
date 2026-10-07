@@ -262,7 +262,7 @@ def fetch_topn_results(
     filters: dict[str, Any],
     top_n: int,
     preset: dict[str, tuple[float, float]],
-    require_intersecting_floor: bool = True,
+    require_full_overlap: bool = True,
 ) -> pd.DataFrame:
     """
     Fetch pre-computed topn_results for all (binding, perturbation) pairs.
@@ -278,10 +278,12 @@ def fetch_topn_results(
         what was materialized).
     :param preset: Per-dataset responsiveness thresholds; see
         :data:`~tfbpshiny.utils.vdb_init.DEFAULT_RESPONSIVENESS_PRESETS`.
-    :param require_intersecting_floor: When True (default), only include rows
-        where ``n_intersecting_targets >= top_n`` -- i.e. exclude regulator/
-        sample-pairs whose raw target overlap was smaller than the requested
-        top_n cutoff.
+    :param require_full_overlap: When True (default), only include rows whose top-N
+        list is complete, ``n >= top_n``. ``n`` is the number of targets that passed the
+        tie rule (a tie group counts only if its *average* rank is within N), so this
+        removes a regulator whose list is short -- too few scored targets, or a large
+        tie group around rank N that the rule excluded. Turn it off to keep short
+        lists, which are then scored over the ``n`` they have.
     :returns: DataFrame with columns from topn_results plus ``pair_key``
         (``"{b_db}__{p_db}"``).
 
@@ -325,9 +327,7 @@ def fetch_topn_results(
 
         phs_b = ", ".join(["?"] * len(b_ids))
         phs_p = ", ".join(["?"] * len(p_ids))
-        floor_clause = (
-            "AND n_intersecting_targets >= ?" if require_intersecting_floor else ""
-        )
+        floor_clause = "AND n >= ?" if require_full_overlap else ""
         sql = f"""
         SELECT
             regulator_locus_tag,
@@ -348,7 +348,7 @@ def fetch_topn_results(
             [top_n, effect_threshold, pvalue_threshold, b_prefix + "%", p_prefix + "%"]
             + b_ids
             + p_ids
-            + ([top_n] if require_intersecting_floor else [])
+            + ([top_n] if require_full_overlap else [])
         )
         try:
             df = conn.execute(sql, params).df()
@@ -526,3 +526,191 @@ def fetch_dto_results(
         )
 
     return pd.DataFrame(frames)
+
+
+def fetch_dto_results_method_intersected(
+    conn: duckdb.DuckDBPyConnection,
+    cells: list[tuple[str, str, str]],
+    filters: dict[str, Any],
+    pr_ranking_column: str = DEFAULT_DTO_RANKING_COLUMN,
+    pvalue_threshold: float = DTO_PVALUE_THRESHOLD,
+) -> pd.DataFrame:
+    """
+    Like :func:`fetch_dto_results`, but for the Compare Analysis Methods tab: DTO
+    significance is pre-computed entirely externally, so a regulator peak_calling never
+    called a peak for can never get a real empirical p-value. As in the top-N tables,
+    such a regulator is left out rather than scored as zero: each sibling
+    ``(promoter_enrichment, peak_calling)`` pair at the same promoter set shares one
+    3-way-intersected regulator universe (promoter_enrichment regs x peak_calling regs x
+    perturbation regs) as their common denominator, so the two bars stay directly
+    comparable rather than each drawing its own, unevenly-sized, pairwise intersection
+    with the perturbation dataset.
+
+    :param conn: Read-only DuckDB connection.
+    :param cells: ``(pe_db, pc_db, p_db)`` triples -- both binding variants must be
+        resolved by the caller; there is no fallback to a plain pairwise intersection
+        here (see :func:`fetch_dto_results` for that).
+    :param filters: Active filter dict keyed by dataset name.
+    :param pr_ranking_column: Which DTO ranking variant to read.
+    :param pvalue_threshold: Empirical p-value cutoff.
+    :returns: Two rows per cell (one per method) with ``binding_db``,
+        ``perturbation_db``, ``n_significant``, ``n_covered``, ``n_intersect`` and
+        ``percent_significant``. Cells with an empty 3-way intersect are omitted.
+
+    """
+    if not cells:
+        return pd.DataFrame()
+
+    frames: list[dict[str, Any]] = []
+    for pe_db, pc_db, p_db in cells:
+        pe_ids = get_filtered_sample_ids(conn, pe_db, filters.get(pe_db))
+        pc_ids = get_filtered_sample_ids(conn, pc_db, filters.get(pc_db))
+        p_ids = get_filtered_sample_ids(conn, p_db, filters.get(p_db))
+        if not pe_ids or not pc_ids or not p_ids:
+            continue
+
+        phs_pe = ", ".join(["?"] * len(pe_ids))
+        phs_pc = ", ".join(["?"] * len(pc_ids))
+        phs_p = ", ".join(["?"] * len(p_ids))
+        universe_df = conn.execute(
+            f"""
+            WITH pe_reg AS (
+                SELECT DISTINCT regulator_locus_tag FROM sample_regulator
+                WHERE db_name = ? AND sample_id IN ({phs_pe})
+            ),
+            pc_reg AS (
+                SELECT DISTINCT regulator_locus_tag FROM sample_regulator
+                WHERE db_name = ? AND sample_id IN ({phs_pc})
+            ),
+            p_reg AS (
+                SELECT DISTINCT regulator_locus_tag FROM sample_regulator
+                WHERE db_name = ? AND sample_id IN ({phs_p})
+            )
+            SELECT regulator_locus_tag FROM pe_reg
+            INTERSECT SELECT regulator_locus_tag FROM pc_reg
+            INTERSECT SELECT regulator_locus_tag FROM p_reg
+            """,
+            [pe_db, *pe_ids, pc_db, *pc_ids, p_db, *p_ids],
+        ).df()
+        universe = universe_df["regulator_locus_tag"].tolist()
+        n_intersect = len(universe)
+        if n_intersect == 0:
+            continue
+        phs_u = ", ".join(["?"] * n_intersect)
+
+        for b_db, b_ids in ((pe_db, pe_ids), (pc_db, pc_ids)):
+            phs_b = ", ".join(["?"] * len(b_ids))
+            sql = f"""
+            WITH tested AS (
+                SELECT regulator_locus_tag, min(dto_empirical_pvalue) AS best_pvalue
+                FROM dto
+                WHERE binding_db = ? AND perturbation_db = ?
+                  AND pr_ranking_column = ?
+                  AND binding_sample_id IN ({phs_b})
+                  AND perturbation_sample_id IN ({phs_p})
+                  AND regulator_locus_tag IN ({phs_u})
+                GROUP BY regulator_locus_tag
+            )
+            SELECT
+                count(*) AS n_covered,
+                count(*) FILTER (WHERE best_pvalue < ?) AS n_significant
+            FROM tested
+            """
+            params: list[Any] = (
+                [b_db, p_db, pr_ranking_column]
+                + b_ids
+                + p_ids
+                + universe
+                + [pvalue_threshold]
+            )
+            try:
+                row = conn.execute(sql, params).df().iloc[0]
+            except Exception:
+                continue
+            n_significant = int(row["n_significant"])
+            frames.append(
+                {
+                    "binding_db": b_db,
+                    "perturbation_db": p_db,
+                    "n_significant": n_significant,
+                    "n_covered": int(row["n_covered"]),
+                    "n_intersect": n_intersect,
+                    "percent_significant": 100.0 * n_significant / n_intersect,
+                }
+            )
+    return pd.DataFrame(frames)
+
+
+# ---------------------------------------------------------------------------
+# Method x promoter-set model (materialized by materialize/comparison/
+# method_promoter_model.py -- this module only reads the precomputed tables)
+# ---------------------------------------------------------------------------
+
+
+def fetch_method_promoter_target_universe(
+    conn: duckdb.DuckDBPyConnection,
+) -> pd.DataFrame:
+    """
+    Read the per-assay target-universe sizes the model's panel is restricted to.
+
+    Populated once, offline, by ``tfbpshiny materialize`` (see
+    ``materialize/comparison/method_promoter_model.py::promoter_set_target_universe``)
+    -- the intersection, across all four promoter sets' promoter-enrichment views, of
+    each assay's target list. Every cell of the panel (both methods, all four promoter
+    sets) is ranked over this same restricted pool, so a reader needs to see how large
+    it actually is per assay to judge how much each promoter set's own full target list
+    was cut down.
+
+    :param conn: Read-only DuckDB connection.
+    :returns: Columns ``assay_primary``, ``display_name``, ``n_targets``, one row per
+        assay, ``display_name`` falling back to ``assay_primary`` when the registry
+        has none.
+
+    """
+    return conn.execute(
+        "SELECT u.assay_primary,"
+        " COALESCE(r.display_name, u.assay_primary) AS display_name,"
+        " u.n_targets"
+        " FROM method_promoter_model_target_universe u"
+        " LEFT JOIN dataset_registry r ON r.db_name = u.assay_primary"
+        " ORDER BY u.assay_primary"
+    ).df()
+
+
+def fetch_method_promoter_model(
+    conn: duckdb.DuckDBPyConnection,
+    perturbation_db: str,
+    top_n: int,
+    preset_name: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Read the precomputed method x promoter-set model for one (dataset, N, preset).
+
+    The model itself is fit once, offline, by ``tfbpshiny materialize`` -- see
+    ``materialize/comparison/method_promoter_model.py`` for the design (a pooled OLS
+    with regulator and assay fixed effects, cluster-robust standard errors by
+    regulator). This is a plain filtered read against the two resulting tables; no
+    fitting happens here.
+
+    :param conn: Read-only DuckDB connection.
+    :param perturbation_db: Perturbation dataset db_name.
+    :param top_n: Materialized cutoff.
+    :param preset_name: Responsiveness preset name (``'Relaxed'`` or ``'Stringent'``).
+    :returns: ``(coefs, fit_summary)``, each filtered to this one
+        (perturbation_db, top_n, preset_name).
+
+    """
+    params = [perturbation_db, top_n, preset_name]
+    coefs = conn.execute(
+        "SELECT term, estimate, std_error, t_value, p_value"
+        " FROM method_promoter_model_coefs"
+        " WHERE perturbation_db = ? AND top_n = ? AND criteria = ?",
+        params,
+    ).df()
+    fit_summary = conn.execute(
+        "SELECT n_obs, n_regulators, r_squared, converged, note"
+        " FROM method_promoter_model_fit_summary"
+        " WHERE perturbation_db = ? AND top_n = ? AND criteria = ?",
+        params,
+    ).df()
+    return coefs, fit_summary

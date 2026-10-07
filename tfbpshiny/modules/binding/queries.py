@@ -9,7 +9,7 @@ from tfbpshiny.utils.corr_query import (  # noqa: F401
 
 # Maps binding db_name -> (score_col, pvalue_col) — must match what was materialized.
 BINDING_DATASET_COLUMNS: dict[str, tuple[str, str]] = {
-    "callingcards": ("callingcards_enrichment", "poisson_pval"),
+    "callingcards_kang": ("callingcards_enrichment", "poisson_pval"),
     "callingcards_mindel": ("callingcards_enrichment", "poisson_pval"),
     "callingcards_500bp": ("callingcards_enrichment", "poisson_pval"),
     "callingcards_intergenic": ("callingcards_enrichment", "poisson_pval"),

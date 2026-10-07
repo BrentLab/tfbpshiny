@@ -17,12 +17,18 @@ import time
 from typing import Any
 
 import duckdb
+import pandas as pd
 from labretriever import VirtualDB
 
 from tfbpshiny.materialize.comparison.agreement import (
     AGREEMENT_EXCLUDED,
     agreement_pair_select_sql,
+    agreement_rank_column,
     agreement_schema_sql,
+)
+from tfbpshiny.materialize.comparison.callingcards_authors_bound import (
+    CALLINGCARDS_BINDING_VIEW,
+    callingcards_authors_bound_select_sql,
 )
 from tfbpshiny.materialize.comparison.correlations import (
     BINDING_DATASET_COLUMNS,
@@ -36,12 +42,46 @@ from tfbpshiny.materialize.comparison.dto import (
     dto_schema_sql,
     dto_select_sql,
 )
+from tfbpshiny.materialize.comparison.harbison_authors_bound import (
+    HARBISON_BINDING_VIEW,
+    harbison_authors_bound_select_sql,
+)
+from tfbpshiny.materialize.comparison.method_promoter_model import (
+    ASSAY_PRIMARIES,
+    COEFS_COLUMNS,
+    FIT_SUMMARY_COLUMNS,
+    build_method_promoter_panel,
+    fit_method_promoter_model,
+    method_promoter_model_schema_sql,
+    method_promoter_model_target_universe_schema_sql,
+    method_promoter_model_topn_schema_sql,
+    promoter_set_target_universe,
+    resolve_panel_cells,
+)
+from tfbpshiny.materialize.comparison.target_sets import (
+    TARGET_SET_BINDING,
+    TARGET_SET_PERTURBATION,
+    target_sets_schema_sql,
+    target_sets_select_sql,
+)
+
+# TOPN_PERTURBATION_COLUMNS is aliased because correlations.py (imported above) defines
+# an identical map under the same name. The staged top-N path must follow the top-N
+# module's copy rather than silently inherit the other if the two ever diverge.
 from tfbpshiny.materialize.comparison.topn import (
     BINDING_TOPN_CONFIGS,
     PEAK_BINDING_DATASETS,
+)
+from tfbpshiny.materialize.comparison.topn import (
+    PERTURBATION_DATASET_COLUMNS as TOPN_PERTURBATION_COLUMNS,
+)
+from tfbpshiny.materialize.comparison.topn import (
     PERTURBATION_TOPN_DATASETS,
     TOP_N_ALL,
+    binding_stage_sql,
+    perturbation_stage_sql,
     topn_pair_select_sql,
+    topn_pair_select_sql_v2,
     topn_schema_sql,
 )
 from tfbpshiny.materialize.coordinating.sql import (
@@ -56,6 +96,10 @@ from tfbpshiny.materialize.coordinating.sql import (
 from tfbpshiny.materialize.metadata.sql import (
     meta_select_sql,
     regulator_display_names_select_sql,
+)
+from tfbpshiny.materialize.rounding import (
+    DEFAULT_FLOAT_DECIMALS,
+    NO_ROUNDING,
 )
 from tfbpshiny.utils.vdb_init import DEFAULT_RESPONSIVENESS_PRESETS
 
@@ -170,6 +214,41 @@ def _topn_variants(
     :returns: Distinct variants, in a stable order.
 
     """
+    cutoffs, threshold_pairs = _topn_plan(
+        binding_db,
+        perturbation_db,
+        top_n_values,
+        effect_thresholds,
+        pvalue_thresholds,
+        preset_names,
+    )
+    return [(top_n, e, pv) for top_n in cutoffs for e, pv in threshold_pairs]
+
+
+def _topn_plan(
+    binding_db: str,
+    perturbation_db: str,
+    top_n_values: list[int],
+    effect_thresholds: list[float],
+    pvalue_thresholds: list[float],
+    preset_names: list[str] | None = None,
+) -> tuple[tuple[int, ...], tuple[tuple[float, float], ...]]:
+    """
+    Return the cutoffs and threshold pairs to materialize for one pair, unexpanded.
+
+    The staged path emits every combination from a single query, so it wants the two
+    axes rather than their cross product. :func:`_topn_variants` expands this for the
+    legacy path, keeping one definition of what gets materialized.
+
+    :param binding_db: Binding dataset name.
+    :param perturbation_db: Perturbation dataset name.
+    :param top_n_values: Rank cutoffs from the CLI.
+    :param effect_thresholds: Effect cutoffs from the CLI.
+    :param pvalue_thresholds: P-value cutoffs from the CLI.
+    :param preset_names: Responsiveness presets whose thresholds to include.
+    :returns: ``(cutoffs, threshold_pairs)``, each in a stable order.
+
+    """
     threshold_pairs: list[tuple[float, float]] = [
         (e, pv) for e in effect_thresholds for pv in pvalue_thresholds
     ]
@@ -185,17 +264,377 @@ def _topn_variants(
     if binding_db in PEAK_BINDING_DATASETS:
         cutoffs.append(TOP_N_ALL)
 
-    variants: list[tuple[int, float, float]] = []
-    for top_n in cutoffs:
-        for eff, pval in threshold_pairs:
-            variants.append((top_n, eff, pval))
-    return variants
+    return tuple(cutoffs), tuple(threshold_pairs)
 
 
 def _regulators_for_binding(vdb: VirtualDB, binding_view: str) -> list[str]:
     """Return distinct regulator locus tags for a binding dataset (sorted)."""
     df = vdb.query(f"SELECT DISTINCT regulator_locus_tag FROM {binding_view}_meta")
     return sorted(t for t in df["regulator_locus_tag"].dropna().tolist())
+
+
+def _batches(regulators: list[str], chunk: int) -> list[tuple[str, ...]]:
+    """Split regulators into chunks, or one empty batch meaning "no restriction"."""
+    return [
+        tuple(regulators[i : i + chunk]) for i in range(0, len(regulators), chunk)
+    ] or [()]
+
+
+def _topn_staged(
+    vdb: VirtualDB,
+    conn: duckdb.DuckDBPyConnection,
+    binding_views: list[str],
+    perturbation_views: list[str],
+    top_n_values: list[int],
+    effect_thresholds: list[float],
+    pvalue_thresholds: list[float],
+    preset_names: list[str] | None,
+    chunk: int,
+    round_decimals: int,
+) -> int:
+    """
+    Fill ``topn_results`` by scanning each source once (stages A, B and C).
+
+    The legacy path rescanned both parquet sources for every ``(top_n, effect,
+    pvalue)`` variant -- roughly 1170 full scans for a complete build, with Rossi's
+    8.7 M-row config re-read some 60 times. Here each perturbation dataset is
+    materialized once up front and each binding dataset once as its loop iteration
+    begins, so the per-pair query touches only those two tables.
+
+    Binding is the outer loop so at most one binding intermediate is resident.
+
+    :param vdb: VirtualDB instance (data source; intermediates live on its connection).
+    :param conn: Output DuckDB connection.
+    :param binding_views: Binding dataset names to process.
+    :param perturbation_views: Perturbation dataset names to process.
+    :param top_n_values: Rank cutoffs from the CLI.
+    :param effect_thresholds: Effect cutoffs from the CLI.
+    :param pvalue_thresholds: P-value cutoffs from the CLI.
+    :param preset_names: Responsiveness presets whose thresholds to include.
+    :param chunk: Regulators per batch.
+    :param round_decimals: Decimal places kept for ``responsive_ratio``.
+    :returns: Number of query units executed against the intermediates.
+
+    """
+    pert_tables: dict[str, str] = {}
+    units = 0
+    try:
+        # Stage B: once per perturbation dataset, reused by every binding dataset.
+        for p_db in perturbation_views:
+            table = f"_mat_pert_{p_db}"
+            p_sql, p_params = perturbation_stage_sql(p_db)
+            t0 = time.monotonic()
+            vdb._conn.execute(f"CREATE OR REPLACE TABLE {table} AS {p_sql}", p_params)
+            pert_tables[p_db] = table
+            logger.info("  %-40s  %.2fs", f"stage B {p_db}", time.monotonic() - t0)
+
+        for b_db in binding_views:
+            b_cfg = BINDING_TOPN_CONFIGS[b_db]
+            b_hf_repo, b_hf_config = DATASET_HF_COORDS.get(b_db, ("", ""))
+
+            # Stage A: once per binding dataset, dropped before the next one.
+            b_sql, b_params = binding_stage_sql(
+                binding_view=b_db,
+                binding_sample_col=b_cfg["binding_sample_col"],
+                rank_col=b_cfg["rank_col"],
+                target_blacklist=b_cfg.get("target_blacklist", ()),
+                binding_dedup_cte=b_cfg.get("binding_dedup_cte", ""),
+                no_signal_value=b_cfg.get("no_signal_value"),
+            )
+            t0 = time.monotonic()
+            vdb._conn.execute(
+                f"CREATE OR REPLACE TABLE _mat_binding AS {b_sql}", b_params
+            )
+            logger.info("  %-40s  %.2fs", f"stage A {b_db}", time.monotonic() - t0)
+
+            # Hoisted out of the perturbation loop: it does not depend on p_db.
+            batches = _batches(_regulators_for_binding(vdb, b_db), chunk)
+
+            try:
+                for p_db in perturbation_views:
+                    p_hf_repo, p_hf_config = DATASET_HF_COORDS.get(p_db, ("", ""))
+                    cutoffs, pairs = _topn_plan(
+                        b_db,
+                        p_db,
+                        top_n_values,
+                        effect_thresholds,
+                        pvalue_thresholds,
+                        preset_names,
+                    )
+                    pair_rows = 0
+                    for batch_idx, batch in enumerate(batches):
+                        sql, params = topn_pair_select_sql_v2(
+                            binding_table="_mat_binding",
+                            binding_hf_repo=b_hf_repo,
+                            binding_hf_config=b_hf_config,
+                            perturbation_table=pert_tables[p_db],
+                            pert_hf_repo=p_hf_repo,
+                            pert_hf_config=p_hf_config,
+                            rank_col=b_cfg["rank_col"],
+                            rank_asc=b_cfg["rank_asc"],
+                            top_n_values=cutoffs,
+                            threshold_pairs=pairs,
+                            has_pvalue=bool(TOPN_PERTURBATION_COLUMNS[p_db][1]),
+                            regulator_subset=batch,
+                            param_prefix=f"bp{batch_idx}",
+                            round_decimals=round_decimals,
+                        )
+                        units += 1
+                        pair_rows += _vdb_to_table(
+                            vdb,
+                            conn,
+                            sql,
+                            params,
+                            "topn_results",
+                            f"topn {b_db}×{p_db} batch {batch_idx + 1}/{len(batches)}",
+                            mode="insert",
+                        )
+                    logger.info(
+                        "  %-40s  total %d rows",
+                        f"topn {b_db}×{p_db}",
+                        pair_rows,
+                    )
+            finally:
+                vdb._conn.execute("DROP TABLE IF EXISTS _mat_binding")
+    finally:
+        # Never leave intermediates on the long-lived vdb connection.
+        for table in pert_tables.values():
+            vdb._conn.execute(f"DROP TABLE IF EXISTS {table}")
+        vdb._conn.execute("DROP TABLE IF EXISTS _mat_binding")
+    return units
+
+
+def _method_promoter_topn_staged(
+    vdb: VirtualDB,
+    conn: duckdb.DuckDBPyConnection,
+    registry_df: pd.DataFrame,
+    perturbation_views: list[str],
+    top_n_values: list[int],
+    preset_names: list[str] | None,
+    chunk: int,
+    round_decimals: int,
+) -> int:
+    """
+    Fill ``method_promoter_model_topn``, ranking each of the 16 cells over its assay's
+    cross-promoter-set target intersection rather than its own full target list (see
+    ``method_promoter_model.py``'s module docstring for why). Structured exactly like
+    :func:`_topn_staged` -- perturbation datasets staged once and reused, one binding
+    intermediate resident at a time -- restricted to the 16 (assay, promoter_set,
+    method) cells this model needs, and with each binding stage additionally filtered to
+    its assay's intersected target universe.
+
+    Also fills ``method_promoter_model_target_universe`` (one row per assay, its
+    intersection's size) as a side effect of computing ``universes`` below -- the live
+    app has no ``vdb`` of its own to recompute it, so it must be persisted here.
+
+    :param vdb: VirtualDB instance (data source; intermediates live on its
+        connection).
+    :param conn: Output DuckDB connection.
+    :param registry_df: ``dataset_registry`` rows.
+    :param perturbation_views: Perturbation dataset names to process.
+    :param top_n_values: Rank cutoffs from the CLI.
+    :param preset_names: Responsiveness presets whose thresholds to include.
+    :param chunk: Regulators per batch.
+    :param round_decimals: Decimal places kept for ``responsive_ratio``.
+    :returns: Number of query units executed against the intermediates.
+
+    """
+    cells = resolve_panel_cells(registry_df)
+    universes = {
+        assay_primary: promoter_set_target_universe(vdb, registry_df, assay_primary)
+        for assay_primary in ASSAY_PRIMARIES
+    }
+
+    universe_sizes = pd.DataFrame(
+        [
+            {"assay_primary": assay_primary, "n_targets": len(universe)}
+            for assay_primary, universe in universes.items()
+        ]
+    )
+    conn.register("_tmp_mpm_universe", universe_sizes)
+    try:
+        conn.execute(
+            "INSERT INTO method_promoter_model_target_universe"
+            " SELECT * FROM _tmp_mpm_universe"
+        )
+    finally:
+        conn.unregister("_tmp_mpm_universe")
+
+    pert_tables: dict[str, str] = {}
+    units = 0
+    try:
+        for p_db in perturbation_views:
+            table = f"_mat_mpm_pert_{p_db}"
+            p_sql, p_params = perturbation_stage_sql(p_db)
+            t0 = time.monotonic()
+            vdb._conn.execute(f"CREATE OR REPLACE TABLE {table} AS {p_sql}", p_params)
+            pert_tables[p_db] = table
+            logger.info("  %-40s  %.2fs", f"stage B {p_db}", time.monotonic() - t0)
+
+        for (assay_primary, promoter_set, method), b_db in cells.items():
+            universe = universes.get(assay_primary, frozenset())
+            if not universe:
+                logger.warning(
+                    "  method_promoter_model_topn: no target universe for %s,"
+                    " skipping %s/%s/%s",
+                    assay_primary,
+                    assay_primary,
+                    promoter_set,
+                    method,
+                )
+                continue
+            b_cfg = BINDING_TOPN_CONFIGS[b_db]
+            b_hf_repo, b_hf_config = DATASET_HF_COORDS.get(b_db, ("", ""))
+
+            b_sql, b_params = binding_stage_sql(
+                binding_view=b_db,
+                binding_sample_col=b_cfg["binding_sample_col"],
+                rank_col=b_cfg["rank_col"],
+                target_blacklist=b_cfg.get("target_blacklist", ()),
+                binding_dedup_cte=b_cfg.get("binding_dedup_cte", ""),
+                target_universe=universe,
+                no_signal_value=b_cfg.get("no_signal_value"),
+            )
+            t0 = time.monotonic()
+            vdb._conn.execute(
+                f"CREATE OR REPLACE TABLE _mat_mpm_binding AS {b_sql}", b_params
+            )
+            logger.info("  %-40s  %.2fs", f"stage A {b_db}", time.monotonic() - t0)
+
+            batches = _batches(_regulators_for_binding(vdb, b_db), chunk)
+
+            try:
+                for p_db in perturbation_views:
+                    p_hf_repo, p_hf_config = DATASET_HF_COORDS.get(p_db, ("", ""))
+                    cutoffs, pairs = _topn_plan(
+                        b_db, p_db, top_n_values, [], [], preset_names
+                    )
+                    if not pairs:
+                        continue
+                    pair_rows = 0
+                    for batch_idx, batch in enumerate(batches):
+                        sql, params = topn_pair_select_sql_v2(
+                            binding_table="_mat_mpm_binding",
+                            binding_hf_repo=b_hf_repo,
+                            binding_hf_config=b_hf_config,
+                            perturbation_table=pert_tables[p_db],
+                            pert_hf_repo=p_hf_repo,
+                            pert_hf_config=p_hf_config,
+                            rank_col=b_cfg["rank_col"],
+                            rank_asc=b_cfg["rank_asc"],
+                            top_n_values=cutoffs,
+                            threshold_pairs=pairs,
+                            has_pvalue=bool(TOPN_PERTURBATION_COLUMNS[p_db][1]),
+                            regulator_subset=batch,
+                            param_prefix=f"mpm{batch_idx}",
+                            round_decimals=round_decimals,
+                        )
+                        units += 1
+                        pair_rows += _vdb_to_table(
+                            vdb,
+                            conn,
+                            sql,
+                            params,
+                            "method_promoter_model_topn",
+                            f"mpm topn {b_db}×{p_db} batch {batch_idx + 1}"
+                            f"/{len(batches)}",
+                            mode="insert",
+                        )
+                    logger.info(
+                        "  %-40s  total %d rows",
+                        f"mpm topn {b_db}×{p_db}",
+                        pair_rows,
+                    )
+            finally:
+                vdb._conn.execute("DROP TABLE IF EXISTS _mat_mpm_binding")
+    finally:
+        for table in pert_tables.values():
+            vdb._conn.execute(f"DROP TABLE IF EXISTS {table}")
+        vdb._conn.execute("DROP TABLE IF EXISTS _mat_mpm_binding")
+    return units
+
+
+def _topn_legacy(
+    vdb: VirtualDB,
+    conn: duckdb.DuckDBPyConnection,
+    binding_views: list[str],
+    perturbation_views: list[str],
+    top_n_values: list[int],
+    effect_thresholds: list[float],
+    pvalue_thresholds: list[float],
+    preset_names: list[str] | None,
+    chunk: int,
+    round_decimals: int,
+) -> int:
+    """
+    Fill ``topn_results`` one variant at a time (pre-staging behaviour).
+
+    Kept behind ``--legacy-topn`` purely so a build from this commit can be diffed
+    against a staged build from the same commit. Delete once that diff is on record.
+
+    :param vdb: VirtualDB instance (data source).
+    :param conn: Output DuckDB connection.
+    :param binding_views: Binding dataset names to process.
+    :param perturbation_views: Perturbation dataset names to process.
+    :param top_n_values: Rank cutoffs from the CLI.
+    :param effect_thresholds: Effect cutoffs from the CLI.
+    :param pvalue_thresholds: P-value cutoffs from the CLI.
+    :param preset_names: Responsiveness presets whose thresholds to include.
+    :param chunk: Regulators per batch.
+    :param round_decimals: Decimal places kept for ``responsive_ratio``.
+    :returns: Number of query units executed.
+
+    """
+    units = 0
+    for b_db, p_db in itertools.product(binding_views, perturbation_views):
+        b_cfg = BINDING_TOPN_CONFIGS[b_db]
+        b_hf_repo, b_hf_config = DATASET_HF_COORDS.get(b_db, ("", ""))
+        p_hf_repo, p_hf_config = DATASET_HF_COORDS.get(p_db, ("", ""))
+        batches = _batches(_regulators_for_binding(vdb, b_db), chunk)
+
+        for top_n, eff_thresh, pval_thresh in _topn_variants(
+            b_db,
+            p_db,
+            top_n_values,
+            effect_thresholds,
+            pvalue_thresholds,
+            preset_names=preset_names,
+        ):
+            pair_label = f"topn {b_db}×{p_db} n={top_n} ({eff_thresh},{pval_thresh})"
+            pair_rows = 0
+            for batch_idx, batch in enumerate(batches):
+                sql, params = topn_pair_select_sql(
+                    binding_view=b_db,
+                    binding_hf_repo=b_hf_repo,
+                    binding_hf_config=b_hf_config,
+                    perturbation_view=p_db,
+                    pert_hf_repo=p_hf_repo,
+                    pert_hf_config=p_hf_config,
+                    binding_sample_col=b_cfg["binding_sample_col"],
+                    rank_col=b_cfg["rank_col"],
+                    rank_asc=b_cfg["rank_asc"],
+                    target_blacklist=b_cfg.get("target_blacklist", ()),
+                    binding_dedup_cte=b_cfg.get("binding_dedup_cte", ""),
+                    no_signal_value=b_cfg.get("no_signal_value"),
+                    top_n=top_n,
+                    effect_threshold=eff_thresh,
+                    pvalue_threshold=pval_thresh,
+                    regulator_subset=batch,
+                    param_prefix=f"bp{batch_idx}",
+                    round_decimals=round_decimals,
+                )
+                units += 1
+                pair_rows += _vdb_to_table(
+                    vdb,
+                    conn,
+                    sql,
+                    params,
+                    "topn_results",
+                    f"{pair_label} batch {batch_idx + 1}/{len(batches)}",
+                    mode="insert",
+                )
+            logger.info("  %-40s  total %d rows", pair_label, pair_rows)
+    return units
 
 
 def materialize(
@@ -332,6 +771,15 @@ def materialize(
         pvalue_thresholds: list[float] = args.pvalue_thresholds
         methods: list[str] = [m.strip() for m in args.methods.split(",")]
         chunk = _DEFAULT_REGULATORS_PER_CHUNK
+        round_decimals: int = getattr(args, "float_decimals", DEFAULT_FLOAT_DECIMALS)
+        logger.info(
+            "  computed floats rounded to %s",
+            (
+                "raw (no rounding)"
+                if round_decimals == NO_ROUNDING
+                else f"{round_decimals} decimals"
+            ),
+        )
 
         # ---- topn_results ----
         _exec_static(conn, topn_schema_sql(), "topn_results (schema)")
@@ -341,64 +789,121 @@ def materialize(
             perturbation_views = [
                 db for db in datasets if db in PERTURBATION_TOPN_DATASETS
             ]
-
-            for b_db, p_db in itertools.product(binding_views, perturbation_views):
-                b_cfg = BINDING_TOPN_CONFIGS[b_db]
-                b_hf_repo, b_hf_config = DATASET_HF_COORDS.get(b_db, ("", ""))
-                p_hf_repo, p_hf_config = DATASET_HF_COORDS.get(p_db, ("", ""))
-
-                regulators = _regulators_for_binding(vdb, b_db)
-                batches: list[tuple[str, ...]] = [
-                    tuple(regulators[i : i + chunk])
-                    for i in range(0, len(regulators), chunk)
-                ] or [()]
-
-                for top_n, eff_thresh, pval_thresh in _topn_variants(
-                    b_db,
-                    p_db,
+            t_topn = time.monotonic()
+            if getattr(args, "legacy_topn", False):
+                n_units = _topn_legacy(
+                    vdb,
+                    conn,
+                    binding_views,
+                    perturbation_views,
                     top_n_values,
                     effect_thresholds,
                     pvalue_thresholds,
-                    preset_names=getattr(args, "presets", None),
-                ):
-                    pair_label = (
-                        f"topn {b_db}×{p_db} n={top_n} " f"({eff_thresh},{pval_thresh})"
-                    )
-                    pair_rows = 0
-                    for batch_idx, batch in enumerate(batches):
-                        sql, params = topn_pair_select_sql(
-                            binding_view=b_db,
-                            binding_hf_repo=b_hf_repo,
-                            binding_hf_config=b_hf_config,
-                            perturbation_view=p_db,
-                            pert_hf_repo=p_hf_repo,
-                            pert_hf_config=p_hf_config,
-                            binding_sample_col=b_cfg["binding_sample_col"],
-                            rank_col=b_cfg["rank_col"],
-                            rank_asc=b_cfg["rank_asc"],
-                            target_blacklist=b_cfg.get("target_blacklist", ()),
-                            binding_dedup_cte=b_cfg.get("binding_dedup_cte", ""),
-                            top_n=top_n,
-                            effect_threshold=eff_thresh,
-                            pvalue_threshold=pval_thresh,
-                            regulator_subset=batch,
-                            param_prefix=f"bp{batch_idx}",
-                        )
-                        batch_label = (
-                            f"{pair_label} batch {batch_idx + 1}/{len(batches)}"
-                        )
-                        pair_rows += _vdb_to_table(
-                            vdb,
-                            conn,
-                            sql,
-                            params,
-                            "topn_results",
-                            batch_label,
-                            mode="insert",
-                        )
-                    logger.info("  %-40s  total %d rows", pair_label, pair_rows)
+                    getattr(args, "presets", None),
+                    chunk,
+                    round_decimals,
+                )
+            else:
+                n_units = _topn_staged(
+                    vdb,
+                    conn,
+                    binding_views,
+                    perturbation_views,
+                    top_n_values,
+                    effect_thresholds,
+                    pvalue_thresholds,
+                    getattr(args, "presets", None),
+                    chunk,
+                    round_decimals,
+                )
+            logger.info(
+                "  topn_results: %d query units in %.1fs",
+                n_units,
+                time.monotonic() - t_topn,
+            )
         else:
             logger.info("  topn_results skipped (--skip-topn)")
+
+        # ---- calling cards authors'-threshold rows (figure 3) ----
+        # Adds TOP_N_ALL rows for callingcards_500bp using a Poisson-pvalue threshold
+        # instead of a rank cutoff -- see callingcards_authors_bound.py for why this
+        # cannot go through the same BINDING_TOPN_CONFIGS path as rossi_peaks/
+        # chec_m2025_peaks. Depends only on topn_results existing (schema above), not
+        # on the ordinary topn phase having run, but is gated the same way since it
+        # is conceptually part of populating that table.
+        if not args.skip_topn and CALLINGCARDS_BINDING_VIEW in datasets:
+            cc_hf = DATASET_HF_COORDS.get(CALLINGCARDS_BINDING_VIEW, ("", ""))
+            preset_names = getattr(args, "presets", None) or ["Relaxed", "Stringent"]
+            for perturbation_db in sorted(
+                db for db in datasets if db in PERTURBATION_TOPN_DATASETS
+            ):
+                pert_hf = DATASET_HF_COORDS.get(perturbation_db, ("", ""))
+                threshold_pairs: list[tuple[float, float]] = []
+                for preset_name in preset_names:
+                    preset = DEFAULT_RESPONSIVENESS_PRESETS.get(preset_name, {})
+                    pair = preset.get(perturbation_db, preset.get("*"))
+                    if pair is not None and pair not in threshold_pairs:
+                        threshold_pairs.append(pair)
+                for effect_threshold, pvalue_threshold in threshold_pairs:
+                    sql, params = callingcards_authors_bound_select_sql(
+                        binding_hf_repo=cc_hf[0],
+                        binding_hf_config=cc_hf[1],
+                        perturbation_view=perturbation_db,
+                        pert_hf_repo=pert_hf[0],
+                        pert_hf_config=pert_hf[1],
+                        effect_threshold=effect_threshold,
+                        pvalue_threshold=pvalue_threshold,
+                        round_decimals=round_decimals,
+                    )
+                    _vdb_to_table(
+                        vdb,
+                        conn,
+                        sql,
+                        params,
+                        "topn_results",
+                        f"cc_authors_bound {perturbation_db} "
+                        f"({effect_threshold}, {pvalue_threshold})",
+                        mode="insert",
+                    )
+
+        # ---- harbison authors'-threshold rows (figure 3) ----
+        # Same shape as the Calling Cards block above: TOP_N_ALL rows for harbison,
+        # "bound" meaning pvalue <= HARBISON_PVALUE_THRESHOLD rather than a rank
+        # cutoff. See harbison_authors_bound.py.
+        if not args.skip_topn and HARBISON_BINDING_VIEW in datasets:
+            hb_hf = DATASET_HF_COORDS.get(HARBISON_BINDING_VIEW, ("", ""))
+            preset_names = getattr(args, "presets", None) or ["Relaxed", "Stringent"]
+            for perturbation_db in sorted(
+                db for db in datasets if db in PERTURBATION_TOPN_DATASETS
+            ):
+                pert_hf = DATASET_HF_COORDS.get(perturbation_db, ("", ""))
+                threshold_pairs = []
+                for preset_name in preset_names:
+                    preset = DEFAULT_RESPONSIVENESS_PRESETS.get(preset_name, {})
+                    pair = preset.get(perturbation_db, preset.get("*"))
+                    if pair is not None and pair not in threshold_pairs:
+                        threshold_pairs.append(pair)
+                for effect_threshold, pvalue_threshold in threshold_pairs:
+                    sql, params = harbison_authors_bound_select_sql(
+                        binding_hf_repo=hb_hf[0],
+                        binding_hf_config=hb_hf[1],
+                        perturbation_view=perturbation_db,
+                        pert_hf_repo=pert_hf[0],
+                        pert_hf_config=pert_hf[1],
+                        effect_threshold=effect_threshold,
+                        pvalue_threshold=pvalue_threshold,
+                        round_decimals=round_decimals,
+                    )
+                    _vdb_to_table(
+                        vdb,
+                        conn,
+                        sql,
+                        params,
+                        "topn_results",
+                        f"harbison_authors_bound {perturbation_db} "
+                        f"({effect_threshold}, {pvalue_threshold})",
+                        mode="insert",
+                    )
 
         # ---- topn_agreement ----
         # Same-datatype top-N set overlap, for the "agreement between datasets"
@@ -409,15 +914,15 @@ def materialize(
         _exec_static(conn, agreement_schema_sql(), "topn_agreement (schema)")
 
         if not args.skip_topn:
-            for ctype, cfg_map in (
-                ("binding", BINDING_TOPN_CONFIGS),
-                ("perturbation", None),
-            ):
+            # Iterated by type rather than by (type, config map): the perturbation
+            # side has no config map, and carrying a None through the loop made every
+            # later use of it an Optional index.
+            for ctype in ("binding", "perturbation"):
                 if ctype == "binding":
                     views = sorted(
                         db
                         for db in datasets
-                        if db in cfg_map and db not in AGREEMENT_EXCLUDED
+                        if db in BINDING_TOPN_CONFIGS and db not in AGREEMENT_EXCLUDED
                     )
                 else:
                     views = sorted(
@@ -433,19 +938,27 @@ def materialize(
                     hf_a = DATASET_HF_COORDS.get(view_a, ("", ""))
                     hf_b = DATASET_HF_COORDS.get(view_b, ("", ""))
                     if ctype == "binding":
-                        cfg_a, cfg_b = cfg_map[view_a], cfg_map[view_b]
+                        cfg_a = BINDING_TOPN_CONFIGS[view_a]
+                        cfg_b = BINDING_TOPN_CONFIGS[view_b]
                         col_a, col_b = (
                             cfg_a["binding_sample_col"],
                             cfg_b["binding_sample_col"],
                         )
-                        rank_a, asc_a = cfg_a["rank_col"], cfg_a["rank_asc"]
-                        rank_b, asc_b = cfg_b["rank_col"], cfg_b["rank_asc"]
+                        rank_a, asc_a = agreement_rank_column(
+                            view_a, cfg_a["rank_col"], cfg_a["rank_asc"]
+                        )
+                        rank_b, asc_b = agreement_rank_column(
+                            view_b, cfg_b["rank_col"], cfg_b["rank_asc"]
+                        )
                     else:
                         col_a = col_b = "sample_id"
-                        rank_a = PERTURBATION_DATASET_COLUMNS[view_a][0]
-                        rank_b = PERTURBATION_DATASET_COLUMNS[view_b][0]
                         # Ranked by |effect|, so larger is always "more responsive".
-                        asc_a = asc_b = False
+                        rank_a, asc_a = agreement_rank_column(
+                            view_a, PERTURBATION_DATASET_COLUMNS[view_a][0], False
+                        )
+                        rank_b, asc_b = agreement_rank_column(
+                            view_b, PERTURBATION_DATASET_COLUMNS[view_b][0], False
+                        )
                     sql, params = agreement_pair_select_sql(
                         view_a=view_a,
                         hf_repo_a=hf_a[0],
@@ -460,6 +973,18 @@ def materialize(
                         rank_col_b=rank_b,
                         rank_asc_b=asc_b,
                         comparison_type=ctype,
+                        # The recalled peak calls report every promoter with a NULL
+                        # score where there was no peak; only scored rows are ranked.
+                        drop_null_scores_a=(
+                            ctype == "binding"
+                            and BINDING_TOPN_CONFIGS[view_a].get("no_signal_value")
+                            is not None
+                        ),
+                        drop_null_scores_b=(
+                            ctype == "binding"
+                            and BINDING_TOPN_CONFIGS[view_b].get("no_signal_value")
+                            is not None
+                        ),
                     )
                     _vdb_to_table(
                         vdb,
@@ -472,6 +997,45 @@ def materialize(
                     )
         else:
             logger.info("  topn_agreement skipped (--skip-topn)")
+
+        # ---- topn_target_sets ----
+        # The ranked target lists behind figure 10's Venn and its overlap boxes. See
+        # target_sets.py for why topn_agreement cannot serve.
+        _exec_static(conn, target_sets_schema_sql(), "topn_target_sets (schema)")
+
+        if not args.skip_topn:
+            for ctype, set_views in (
+                ("binding", TARGET_SET_BINDING),
+                ("perturbation", TARGET_SET_PERTURBATION),
+            ):
+                for view in set_views:
+                    if view not in datasets:
+                        continue
+                    hf = DATASET_HF_COORDS.get(view, ("", ""))
+                    if ctype == "binding":
+                        cfg = BINDING_TOPN_CONFIGS[view]
+                        sample_col = cfg["binding_sample_col"]
+                        rank_col, rank_asc = agreement_rank_column(
+                            view, cfg["rank_col"], cfg["rank_asc"]
+                        )
+                    else:
+                        sample_col = "sample_id"
+                        rank_col, rank_asc = agreement_rank_column(
+                            view, PERTURBATION_DATASET_COLUMNS[view][0], False
+                        )
+                    _vdb_to_table(
+                        vdb,
+                        conn,
+                        target_sets_select_sql(
+                            view, hf[0], hf[1], sample_col, rank_col, rank_asc, ctype
+                        ),
+                        {},
+                        "topn_target_sets",
+                        f"target_sets({ctype}) {view}",
+                        mode="insert",
+                    )
+        else:
+            logger.info("  topn_target_sets skipped (--skip-topn)")
 
         # ---- correlations ----
         _exec_static(conn, correlations_schema_sql(), "correlations (schema)")
@@ -500,6 +1064,7 @@ def materialize(
                         pvalue_col_b=pvalue_b,
                         method=method,
                         comparison_type="binding",
+                        round_decimals=round_decimals,
                     )
                     _vdb_to_table(
                         vdb,
@@ -534,6 +1099,7 @@ def materialize(
                         pvalue_col_b=pvalue_b,
                         method=method,
                         comparison_type="perturbation",
+                        round_decimals=round_decimals,
                     )
                     _vdb_to_table(
                         vdb,
@@ -546,6 +1112,113 @@ def materialize(
                     )
         else:
             logger.info("  correlations skipped (--skip-correlations)")
+
+        # ------------------------------------------------------------------
+        # 5. Method x promoter-set model
+        # ------------------------------------------------------------------
+        logger.info("=== Phase 5: Method x promoter-set model ===")
+        _exec_static(
+            conn,
+            method_promoter_model_schema_sql(),
+            "method_promoter_model (schema)",
+        )
+        _exec_static(
+            conn,
+            method_promoter_model_topn_schema_sql(),
+            "method_promoter_model_topn (schema)",
+        )
+        _exec_static(
+            conn,
+            method_promoter_model_target_universe_schema_sql(),
+            "method_promoter_model_target_universe (schema)",
+        )
+
+        if not getattr(args, "skip_method_promoter_model", False):
+            registry_df = conn.execute(
+                "SELECT db_name, hf_repo, hf_config, primary_db_name,"
+                " promoter_set_id, binding_method_id FROM dataset_registry"
+            ).df()
+            perturbation_dbs = sorted(
+                db for db in datasets if db in PERTURBATION_TOPN_DATASETS
+            )
+            preset_names = getattr(args, "presets", None) or [
+                "Relaxed",
+                "Stringent",
+            ]
+
+            t_mpm_topn = time.monotonic()
+            n_mpm_units = _method_promoter_topn_staged(
+                vdb,
+                conn,
+                registry_df,
+                perturbation_dbs,
+                top_n_values,
+                preset_names,
+                chunk,
+                round_decimals,
+            )
+            logger.info(
+                "  method_promoter_model_topn: %d query units in %.1fs",
+                n_mpm_units,
+                time.monotonic() - t_mpm_topn,
+            )
+
+            coefs_all: list[pd.DataFrame] = []
+            summary_all: list[pd.DataFrame] = []
+
+            for perturbation_db in perturbation_dbs:
+                for top_n in top_n_values:
+                    for preset_name in preset_names:
+                        preset = DEFAULT_RESPONSIVENESS_PRESETS.get(preset_name, {})
+                        t0 = time.monotonic()
+                        panel = build_method_promoter_panel(
+                            conn, registry_df, perturbation_db, top_n, preset
+                        )
+                        coefs, summary = fit_method_promoter_model(panel)
+                        stamps = {
+                            "perturbation_db": perturbation_db,
+                            "top_n": top_n,
+                            "criteria": preset_name,
+                        }
+                        for frame in (coefs, summary):
+                            for col, val in stamps.items():
+                                frame[col] = val
+                        coefs_all.append(coefs)
+                        summary_all.append(summary)
+                        logger.info(
+                            "  method_promoter_model %-12s n=%-4d %-10s  %d rows"
+                            "  %.2fs",
+                            perturbation_db,
+                            top_n,
+                            preset_name,
+                            len(panel),
+                            time.monotonic() - t0,
+                        )
+
+            for table_name, frames, columns in (
+                ("method_promoter_model_coefs", coefs_all, COEFS_COLUMNS),
+                (
+                    "method_promoter_model_fit_summary",
+                    summary_all,
+                    FIT_SUMMARY_COLUMNS,
+                ),
+            ):
+                combined = (
+                    pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+                )
+                if combined.empty:
+                    continue
+                combined = combined[list(columns)]
+                conn.register("_tmp_mpm", combined)
+                try:
+                    conn.execute(f'INSERT INTO "{table_name}" SELECT * FROM _tmp_mpm')
+                finally:
+                    conn.unregister("_tmp_mpm")
+                logger.info("  %-40s  %d rows", table_name, len(combined))
+        else:
+            logger.info(
+                "  method_promoter_model skipped (--skip-method-promoter-model)"
+            )
 
         logger.info(
             "Materialization complete in %.1fs → %s",

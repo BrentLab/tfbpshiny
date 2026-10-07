@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from logging import Logger
 from typing import Any
 
@@ -12,6 +13,9 @@ from plotly.io import to_html
 from shiny import module, reactive, render, ui
 
 from tfbpshiny.components import scroll_row, sidebar_label
+from tfbpshiny.materialize.comparison.method_promoter_model import (
+    pair_methods_on_regulators,
+)
 from tfbpshiny.modules.comparison.queries import (
     BINDING_METHOD_COLORS,
     BINDING_METHOD_LABELS,
@@ -29,6 +33,9 @@ from tfbpshiny.modules.comparison.queries import (
     TOP_N_CHOICES,
     build_binding_index,
     fetch_dto_results,
+    fetch_dto_results_method_intersected,
+    fetch_method_promoter_model,
+    fetch_method_promoter_target_universe,
     fetch_topn_results,
 )
 from tfbpshiny.utils.perf import perf, reset_render_counts
@@ -136,7 +143,7 @@ def _read_top_n(input: Any) -> int:
         return DEFAULT_TOP_N
 
 
-def _read_intersecting_floor(input: Any) -> bool:
+def _read_full_overlap(input: Any) -> bool:
     try:
         return bool(input.require_intersecting_floor())
     except Exception:
@@ -174,6 +181,86 @@ def _cell_style(val: float) -> str:
     return (
         f"background-color: hsl(120, 60%, {lightness:.0f}%);"
         " padding: 6px 10px; text-align: right;"
+    )
+
+
+def _mm_term_label(term: str) -> str:
+    """
+    Shorten a patsy term name for display, e.g. drop the ``C(..., Treatment(...))``
+    wrapper down to just the factor and level.
+
+    ``"C(method, Treatment('promoter_enrichment'))[T.peak_calling]"`` becomes
+    ``"method[peak_calling]"``; interaction terms keep the ``:`` separator between
+    shortened pieces. Falls back to the raw term unchanged if it doesn't match the
+    expected patsy shape, so an unrecognized term is still shown, just unprettified.
+
+    :param term: Raw patsy/statsmodels coefficient or test-block name.
+    :returns: Shortened label.
+
+    """
+
+    def _shorten_piece(piece: str) -> str:
+        m = re.match(r"C\((\w+),\s*Treatment\([^)]*\)\)(?:\[T\.(.+)\])?", piece)
+        if not m:
+            return piece
+        factor, level = m.group(1), m.group(2)
+        return f"{factor}[{level}]" if level else factor
+
+    if term == "Intercept":
+        return term
+    return ":".join(_shorten_piece(p) for p in term.split(":"))
+
+
+def _summary_table(
+    df: pd.DataFrame,
+    columns: list[tuple[str, str, str]],
+    *,
+    label_col: str | None = None,
+) -> ui.Tag:
+    """
+    Render a DataFrame as an R-``summary(lm())``-style HTML table.
+
+    :param df: Rows to render, in the order given.
+    :param columns: ``(df_column, header_label, format_spec)`` tuples. ``format_spec``
+        is a Python format spec applied via ``f"{value:{format_spec}}"``, or ``""``
+        for plain string conversion.
+    :param label_col: If given, this column's values are shortened via
+        :func:`_mm_term_label` before display (used for term/test-name columns).
+    :returns: A ``ui.tags.table``, or an empty-state div if `df` is empty.
+
+    """
+    if df.empty:
+        return ui.div({"class": "empty-state"}, ui.p("No rows."))
+    header_cells = [
+        ui.tags.th(label, style="padding: 4px 10px; text-align: right;")
+        for _, label, _ in columns
+    ]
+    data_rows = []
+    for _, row in df.iterrows():
+        cells = []
+        for col, _, fmt in columns:
+            val = row[col]
+            if col == label_col:
+                text = _mm_term_label(str(val))
+            elif pd.isna(val):
+                text = "—"
+            elif fmt:
+                text = f"{val:{fmt}}"
+            else:
+                text = str(val)
+            cells.append(
+                ui.tags.td(text, style="padding: 4px 10px; text-align: right;")
+            )
+        data_rows.append(ui.tags.tr(*cells))
+    return ui.tags.table(
+        {
+            "style": "border-collapse: collapse; font-size: 0.85rem; font-family:"
+            " ui-monospace, monospace;"
+        },
+        ui.tags.thead(
+            {"style": "background-color: #f5f5f5;"}, ui.tags.tr(*header_cells)
+        ),
+        ui.tags.tbody(*data_rows),
     )
 
 
@@ -454,6 +541,66 @@ def comparison_workspace_server(
         raw["n_regulators"] = raw["n_intersect"]
         return raw
 
+    def _cm_dto_frame(pairs: list[tuple[str, str]]) -> pd.DataFrame:
+        """
+        DTO branch of ``_cm_data`` (Compare Analysis Methods tab).
+
+        Like :func:`_dto_frame`, but this tab always varies method, and DTO
+        significance can't be recomputed for a regulator missing from one method's
+        binding data -- so instead of each ``(binding_db, perturbation_db)`` pair
+        drawing its own pairwise regulator intersection, every sibling
+        (promoter_enrichment, peak_calling) pair at the same promoter set shares one
+        3-way-intersected universe (see
+        ``fetch_dto_results_method_intersected``), so the two bars stay directly
+        comparable.
+
+        """
+        filters = dataset_filters()
+        ranking = _read_dto_ranking(input)
+        cells: list[tuple[str, str, str]] = []
+        seen: set[tuple[str, str, str]] = set()
+        for b_db, p_db in pairs:
+            primary = binding_index.primary.get(b_db, b_db)
+            ps_id = binding_index.promoter_set_id.get(b_db, "")
+            key = (primary, ps_id, p_db)
+            if key in seen:
+                continue
+            seen.add(key)
+            pe_db = binding_index.resolve(primary, ps_id, "promoter_enrichment")
+            pc_db = binding_index.resolve(primary, ps_id, "peak_calling")
+            if pe_db and pc_db:
+                cells.append((pe_db, pc_db, p_db))
+        with perf(session.id, "comparison.workspace", "_cm_dto_fetch", kind="data"):
+            try:
+                raw = fetch_dto_results_method_intersected(
+                    conn, cells, filters, ranking
+                )
+            except Exception:
+                logger.exception("cm dto fetch failed")
+                return pd.DataFrame()
+        if raw.empty:
+            return raw
+        raw["binding_label"] = (
+            raw["binding_db"].map(binding_index.label).fillna(raw["binding_db"])
+        )
+        raw["binding_base_label"] = (
+            raw["binding_db"].map(binding_index.base_label).fillna(raw["binding_db"])
+        )
+        raw["promoter_set_id"] = (
+            raw["binding_db"].map(binding_index.promoter_set_id).fillna("")
+        )
+        raw["binding_method_id"] = (
+            raw["binding_db"].map(binding_index.method_id).fillna("")
+        )
+        raw["perturbation_source"] = (
+            raw["perturbation_db"]
+            .map(PERTURBATION_LABEL_MAP)
+            .fillna(raw["perturbation_db"])
+        )
+        raw["val"] = raw["percent_significant"].round(4)
+        raw["n_regulators"] = raw["n_intersect"]
+        return raw
+
     @reactive.calc
     def _cd_data() -> pd.DataFrame:
         """
@@ -485,12 +632,12 @@ def comparison_workspace_server(
         filters = dataset_filters()
         n = _read_top_n(input)
         preset = _read_preset(input)
-        floor = _read_intersecting_floor(input)
+        floor = _read_full_overlap(input)
         logger.debug("cd_data: %d pairs", len(pairs))
         with perf(session.id, "comparison.workspace", "_cd_data", kind="data"):
             try:
                 raw = fetch_topn_results(
-                    conn, pairs, filters, n, preset, require_intersecting_floor=floor
+                    conn, pairs, filters, n, preset, require_full_overlap=floor
                 )
             except Exception:
                 logger.exception("cd_data fetch failed")
@@ -542,12 +689,12 @@ def comparison_workspace_server(
         filters = dataset_filters()
         n = _read_top_n(input)
         preset = _read_preset(input)
-        floor = _read_intersecting_floor(input)
+        floor = _read_full_overlap(input)
         logger.debug("cp_data: %d pairs", len(pairs))
         with perf(session.id, "comparison.workspace", "_cp_data", kind="data"):
             try:
                 raw = fetch_topn_results(
-                    conn, pairs, filters, n, preset, require_intersecting_floor=floor
+                    conn, pairs, filters, n, preset, require_full_overlap=floor
                 )
             except Exception:
                 logger.exception("cp_data fetch failed")
@@ -608,7 +755,7 @@ def comparison_workspace_server(
             return pd.DataFrame()
         pairs = [(b, p) for b in b_dbs for p in p_dbs]
         if _read_metric(input) == METRIC_DTO:
-            raw = _dto_frame(pairs)
+            raw = _cm_dto_frame(pairs)
             if raw.empty:
                 return raw
             return raw[
@@ -623,13 +770,13 @@ def comparison_workspace_server(
         filters = dataset_filters()
         n = _read_top_n(input)
         preset = _read_preset(input)
-        floor = _read_intersecting_floor(input)
+        floor = _read_full_overlap(input)
         common_only = _read_common_regulators_only(input)
         logger.debug("cm_data: %d pairs (%s × %s)", len(pairs), b_dbs, p_dbs)
         with perf(session.id, "comparison.workspace", "_cm_data", kind="data"):
             try:
                 raw = fetch_topn_results(
-                    conn, pairs, filters, n, preset, require_intersecting_floor=floor
+                    conn, pairs, filters, n, preset, require_full_overlap=floor
                 )
             except Exception:
                 logger.exception("cm_data fetch failed")
@@ -654,20 +801,35 @@ def comparison_workspace_server(
             if common_only
             else ""
         )
+        per_reg = duckdb.execute(
+            """
+            SELECT
+                perturbation_db,
+                promoter_set_id,
+                binding_method_id,
+                regulator_locus_tag,
+                median(responsive_ratio) * 100 AS med_pct
+            FROM raw
+            GROUP BY perturbation_db, promoter_set_id, binding_method_id,
+                regulator_locus_tag
+            """
+        ).df()
+        # Compare the two methods over the same regulators: keep a regulator within a
+        # (perturbation_db, promoter_set_id) cell only where promoter enrichment AND
+        # peak calling both have a row. A regulator with no usable peak-calling list is
+        # dropped, not scored as zero. Grouped so promoter sets do not cross-contaminate
+        # each other's regulator universe.
+        per_reg = pair_methods_on_regulators(
+            per_reg,
+            group_cols=["perturbation_db", "promoter_set_id"],
+            method_col="binding_method_id",
+        )
+        if per_reg.empty:
+            return pd.DataFrame()
+
         return duckdb.execute(
             f"""
-            WITH per_reg AS (
-                SELECT
-                    perturbation_db,
-                    promoter_set_id,
-                    binding_method_id,
-                    regulator_locus_tag,
-                    median(responsive_ratio) * 100 AS med_pct
-                FROM raw
-                GROUP BY perturbation_db, promoter_set_id, binding_method_id,
-                    regulator_locus_tag
-            ),
-            reg_cell_counts AS (
+            WITH reg_cell_counts AS (
                 SELECT
                     perturbation_db,
                     regulator_locus_tag,
@@ -749,10 +911,12 @@ def comparison_workspace_server(
                 "require_intersecting_floor",
                 ui.tooltip(
                     ui.span("Require full overlap"),
-                    "When on, only shows regulator/sample pairs whose total shared"
-                    " target count (before the top-N cutoff) is at least the"
-                    " selected Top N. Turn off to include pairs with fewer targets"
-                    " than Top N.",
+                    "When on, only shows regulator/sample pairs whose top-N list is"
+                    " complete: at least the selected Top N targets remain after"
+                    " ties are resolved (a tie group counts only if its average rank"
+                    " is within N). A regulator with too few scored targets, or a"
+                    " large tie group around rank N, is excluded. Turn off to keep"
+                    " shorter lists.",
                     placement="right",
                 ),
                 value=True,
@@ -1421,6 +1585,170 @@ def comparison_workspace_server(
                 },
                 *cards,
             )
+
+    # ---------------------------------------------------------------------------
+    # Tab 4: Method x Promoter Model
+    # ---------------------------------------------------------------------------
+
+    @reactive.calc
+    def _mm_data() -> dict[str, tuple[pd.DataFrame, pd.DataFrame]]:
+        """
+        Precomputed method x promoter-set model results, one entry per active
+        perturbation dataset.
+
+        Reads only -- the model itself is fit once, offline, by
+        ``tfbpshiny materialize`` (see ``materialize/comparison/
+        method_promoter_model.py``). No fitting happens in the app.
+
+        :trigger: ``input.top_n`` / ``input.responsiveness_preset`` — shared sidebar
+            controls.
+        :trigger: ``active_perturbation_datasets`` — committed dataset selection.
+
+        """
+        n = _read_top_n(input)
+        preset_name = _read_preset_name(input)
+        out: dict[str, tuple[pd.DataFrame, pd.DataFrame]] = {}
+        with perf(session.id, "comparison.workspace", "_mm_data", kind="data"):
+            for p_db in active_perturbation_datasets():
+                try:
+                    out[p_db] = fetch_method_promoter_model(conn, p_db, n, preset_name)
+                except Exception:
+                    logger.exception("mm_data fetch failed for %s", p_db)
+        return out
+
+    @reactive.calc
+    def _mm_target_universe() -> pd.DataFrame:
+        """
+        Per-assay size of the cross-promoter-set target intersection.
+
+        Materialized once, offline (see ``materialize/comparison/
+        method_promoter_model.py::promoter_set_target_universe``); does not depend on
+        the selected perturbation dataset, top-N, or preset, so this is read once and
+        reused across every panel :func:`mm_model_tables` draws.
+
+        :trigger: None -- this table has exactly one row per assay, always.
+
+        """
+        with perf(
+            session.id, "comparison.workspace", "_mm_target_universe", kind="data"
+        ):
+            try:
+                return fetch_method_promoter_target_universe(conn)
+            except Exception:
+                logger.exception("mm_target_universe fetch failed")
+                return pd.DataFrame(
+                    columns=["assay_primary", "display_name", "n_targets"]
+                )
+
+    @render.ui
+    def mm_model_tables() -> ui.Tag:
+        """
+        Method x promoter-set model: target-universe sizes, fit summary and
+        coefficients.
+
+        One panel per active perturbation dataset, matching every other tab in this
+        module. The model itself is precomputed (see ``_mm_data``); this only formats
+        it. A fixed-effects OLS (regulator + assay as covariates), not a mixed model --
+        cluster-robust standard errors by regulator, not a variance-component
+        decomposition. Baselines are ``peak_calling`` and ``intergenic``, so every
+        displayed method/promoter-set coefficient reads as a contrast against those.
+
+        :trigger: ``_mm_data``, ``_mm_target_universe``.
+
+        """
+        with perf(session.id, "comparison.workspace", "mm_model_tables"):
+            data = _mm_data()
+            p_dbs = active_perturbation_datasets()
+            if not p_dbs:
+                return ui.div(
+                    {"class": "empty-state"},
+                    ui.p("No perturbation datasets selected."),
+                )
+            universe_df = _mm_target_universe()
+            panels: list[Any] = []
+            if not universe_df.empty:
+                n_targets_values = universe_df["n_targets"].unique()
+                if len(n_targets_values) == 1:
+                    # The intersection is a property of genome annotation (which
+                    # genes have a defined promoter window in all four promoter
+                    # sets), not of the assay, so every assay lands on the same
+                    # number -- confirmed live against both Rossi and ChEC-seq.
+                    caption = (
+                        "The regression is performed over the"
+                        f" {int(n_targets_values[0])} targets in the intersect"
+                        " between all four promoter set definitions."
+                    )
+                else:
+                    items = ", ".join(
+                        f"{row['display_name']}: {int(row['n_targets'])} targets"
+                        for _, row in universe_df.iterrows()
+                    )
+                    caption = (
+                        "Every cell below is ranked over the intersection of"
+                        " targets present in all four promoter sets' promoter-"
+                        f" enrichment data, per assay -- {items}."
+                    )
+                panels.append(ui.p(ui.tags.em(caption), style="margin-bottom: 1rem;"))
+            for p_db in p_dbs:
+                bundle = data.get(p_db)
+                p_label = PERTURBATION_LABEL_MAP.get(p_db, p_db)
+                if bundle is None or bundle[1].empty:
+                    panels.append(
+                        ui.div(
+                            {"class": "empty-state"},
+                            ui.p(
+                                f"{p_label}: no model results for this cutoff/preset."
+                                " Rebuild with ",
+                                ui.tags.code("tfbpshiny materialize"),
+                                " to compute the method x promoter-set model.",
+                            ),
+                        )
+                    )
+                    continue
+
+                coefs, fit_summary = bundle
+                summ = fit_summary.iloc[0]
+                if not summ["converged"]:
+                    panels.append(
+                        ui.div(
+                            {"class": "empty-state"},
+                            ui.p(
+                                ui.strong(f"{p_label}: model did not converge."),
+                                f" {summ['note'] or ''}",
+                            ),
+                        )
+                    )
+                    continue
+
+                summary_text = (
+                    f"{int(summ['n_obs'])} observations,"
+                    f" {int(summ['n_regulators'])} regulators, R² ="
+                    f" {summ['r_squared']:.2f}."
+                )
+                panels.append(
+                    ui.div(
+                        {
+                            "style": (
+                                "border: 1px solid #ddd; border-radius: 4px;"
+                                " padding: 12px; margin-bottom: 1.5rem;"
+                            )
+                        },
+                        ui.h4(p_label, style="margin-top: 0;"),
+                        ui.p(ui.tags.em(summary_text)),
+                        _summary_table(
+                            coefs,
+                            [
+                                ("term", "term", ""),
+                                ("estimate", "Estimate (pp)", ".3f"),
+                                ("std_error", "Std. Error (pp)", ".3f"),
+                                ("t_value", "t value", ".2f"),
+                                ("p_value", "Pr(>|t|)", ".3g"),
+                            ],
+                            label_col="term",
+                        ),
+                    )
+                )
+            return ui.div(*panels)
 
 
 __all__ = ["comparison_workspace_server"]

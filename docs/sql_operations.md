@@ -465,7 +465,7 @@ LEFT JOIN (SELECT DISTINCT sample_id, time FROM hackett_meta WHERE time = 45) h
     ON d.perturbation_id_source = 'hackett'
    AND CAST(d.perturbation_id_id AS VARCHAR) = CAST(h.sample_id AS VARCHAR)
 LEFT JOIN (SELECT DISTINCT sample_id FROM callingcards) cc
-    ON d.binding_id_source = 'callingcards'
+    ON d.binding_id_source = 'callingcards_kang'
    AND CAST(d.binding_id_id AS VARCHAR) = CAST(cc.sample_id AS VARCHAR)
 LEFT JOIN (SELECT DISTINCT sample_id FROM harbison WHERE condition = 'YPD') harb
     ON d.binding_id_source = 'harbison'
@@ -473,7 +473,7 @@ LEFT JOIN (SELECT DISTINCT sample_id FROM harbison WHERE condition = 'YPD') harb
 WHERE
     d.pr_ranking_column = 'log2fc'
     AND (d.perturbation_id_source != 'hackett'      OR h.sample_id IS NOT NULL)
-    AND (d.binding_id_source != 'callingcards'      OR cc.sample_id IS NOT NULL)
+    AND (d.binding_id_source != 'callingcards_kang' OR cc.sample_id IS NOT NULL)
     AND (d.binding_id_source != 'harbison'          OR harb.sample_id IS NOT NULL)
 ```
 

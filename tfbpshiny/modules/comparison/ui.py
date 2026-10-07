@@ -83,6 +83,15 @@ def comparison_ui() -> ui.Tag:
                     " ChIP-exo and ChEC-seq datasets. Rows are binding methods;"
                     " columns are promoter set definitions.",
                 ),
+                ui.tags.li(
+                    ui.strong("Method × Promoter Model:"),
+                    " a linear model, not a table of medians -- estimates the"
+                    " relative contribution of peak calling vs. promoter"
+                    " enrichment and of the 4 promoter definitions, holding"
+                    " regulator identity and assay constant. A fixed-effects"
+                    " OLS with cluster-robust standard errors by regulator,"
+                    " not a mixed model.",
+                ),
             ),
             ui.tags.details(
                 ui.tags.summary(ui.h4("Binding Methods", style="display:inline;")),
@@ -187,6 +196,13 @@ def comparison_ui() -> ui.Tag:
             ui.nav_panel(
                 "Compare Analysis Methods",
                 ui.output_ui("cm_method_table"),
+            ),
+            # ------------------------------------------------------------------
+            # Tab 4: Method x Promoter Model
+            # ------------------------------------------------------------------
+            ui.nav_panel(
+                "Method × Promoter Model",
+                ui.output_ui("mm_model_tables"),
             ),
             id="comparison_inner_tabs",
         ),

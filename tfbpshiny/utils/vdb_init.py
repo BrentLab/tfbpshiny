@@ -11,6 +11,10 @@ import pandas as pd
 logger = logging.getLogger("shiny")
 
 # Metadata fields to suppress from the filter UI, keyed by db_name.
+#: Library-size columns carried by every callingcards config. Not experimental
+#: conditions, so they do not belong in the filter UI.
+_CC_HOP_FIELDS: set[str] = {"total_background_hops", "total_experiment_hops"}
+
 # Use "*" for fields hidden across all datasets; use the db_name key for
 # dataset-specific exclusions. The effective hidden set for a given dataset
 # is the union of "*" and its own entry.
@@ -21,7 +25,14 @@ HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
         "Regulator locus tag",
         "Regulator symbol",
     },
-    "callingcards": {"background_total_hops", "experiment_total_hops"},
+    # All four callingcards configs share a schema, so they share these. The primary
+    # previously spelled them background_total_hops / experiment_total_hops; the
+    # yiming config conforms to the variants' total_* order. Only the primary had an
+    # entry here, so the variants were exposing these as filter options.
+    "callingcards_kang": _CC_HOP_FIELDS,
+    "callingcards_mindel": _CC_HOP_FIELDS,
+    "callingcards_500bp": _CC_HOP_FIELDS,
+    "callingcards_intergenic": _CC_HOP_FIELDS,
     "harbison": {"condition"},
     "chec_m2025": {"condition", "mahendrawada_symbol"},
     "degron": {"env_condition", "timepoint"},
@@ -39,10 +50,10 @@ HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
 # modules once a promoter selector is wired up.
 PRIMARY_DATASETS: frozenset[str] = frozenset(
     {
-        "callingcards",
+        "callingcards_500bp",
         "harbison",
-        "rossi",
-        "chec_m2025",
+        "rossi_500bp",
+        "chec_m2025_500bp",
         "hackett",
         "hu_reimand",
         "hughes_overexpression",
@@ -56,10 +67,10 @@ PRIMARY_DATASETS: frozenset[str] = frozenset(
 # — datasets with no preset conditions are listed here but not in the filter dict.
 DEFAULT_ACTIVE_DATASETS: frozenset[str] = frozenset(
     {
-        "rossi",
-        "chec_m2025",
+        "rossi_500bp",
+        "chec_m2025_500bp",
         "hackett",
-        "callingcards",
+        "callingcards_500bp",
         "kemmeren",
         "degron",
     }
@@ -72,10 +83,16 @@ DEFAULT_DATASET_FILTERS: dict[str, dict] = {
     "harbison": {
         "Experimental condition": {"type": "categorical", "value": ["YPD"]},
     },
-    "rossi": {
+    # Filters are keyed by the *primary* dataset the selection tab shows; every variant
+    # (other promoter sets, peak calls) inherits its primary's -- see
+    # ``utils.corr_query.expand_filters_to_variants``. Unfiltered, Rossi has 792 samples
+    # for 777 regulators (heat-shock repeats) and ChEC-seq 197 for 178 (non-standard
+    # conditions such as galactose or the activation-domain mutants); filtered they are
+    # one sample per regulator.
+    "rossi_500bp": {
         "treatment": {"type": "categorical", "value": ["Normal"]},
     },
-    "chec_m2025": {
+    "chec_m2025_500bp": {
         "Experimental condition": {"type": "categorical", "value": ["standard"]},
     },
     "hackett": {
@@ -113,7 +130,7 @@ DEFAULT_RESPONSIVENESS_PRESETS: dict[str, ResponsivenessPreset] = {
         "degron": (0.38, 0.1),  # |fold change| > log2(1.3) and padj < 0.1
         # hackett/hughes have no pvalue column; materialized with pvalue_threshold=0.05.
         # Use effect_threshold only to distinguish Stringent from Relaxed.
-        "hackett": (0.0, 0.05),
+        "hackett": (0.1, 0.05),
         "kemmeren": (0.77, 0.05),  # |Madj| > log2(1.7) and pval < 0.05
         "hu_reimand": (0.0, 0.05),  # pval < 0.05 (no effect threshold)
         "hughes_overexpression": (1.0, 0.05),

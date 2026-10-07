@@ -33,12 +33,12 @@ repositories:
       path: experimental_conditions.temperature_celsius
       dtype: string
     dataset:
-      2026_analysis_set:
+      annotated_feature_reprocess_yiming_analysis:
         tags:
           data_type: binding
           assay: CallingCards
-          display_name: "2026 Calling Cards"
-        db_name: callingcards
+          display_name: "2026 Calling Cards (Kang)"
+        db_name: callingcards_kang
         description: >-
           Data generated with calling cards, a method that inserts transposons
           near TF binding sites, from cells growing on synthetic complete media
@@ -58,7 +58,7 @@ repositories:
           at room temperature with galactose as the sole carbon source. Quantified
           over the Mindel promoters.
         sample_id:
-          field: combined_id
+          field: gm_id
       annotated_feature_reprocess_start_codon_500bp_analysis:
         tags:
           data_type: binding
@@ -71,7 +71,7 @@ repositories:
           at room temperature with galactose as the sole carbon source. Quantified
           over the regions 500bp upstream of the targets' start codons.
         sample_id:
-          field: combined_id
+          field: gm_id
       annotated_feature_reprocess_intergenic_analysis:
         tags:
           data_type: binding
@@ -84,7 +84,7 @@ repositories:
           at room temperature with galactose as the sole carbon source. Quantified
           over the intergenic regions upstream of the 5' side of the targets.
         sample_id:
-          field: combined_id
+          field: gm_id
 
   BrentLab/harbison_2004:
     dataset:
@@ -384,6 +384,13 @@ repositories:
           field: regulator_locus_tag
         Regulator symbol:
           field: regulator_symbol
+        # These peak calls carry no per-sample condition column, but every sample is the
+        # standard condition. Declared as a constant so the default "Experimental
+        # condition" filter (inherited from chec_m2025_500bp) applies to this dataset
+        # like every other ChEC-seq variant, instead of being skipped for lack of the
+        # column.
+        Experimental condition:
+          expression: "'standard'"
       kang_peaks:
         tags:
           data_type: binding
@@ -580,9 +587,9 @@ repositories:
           field: dto_fdr
         links:
           binding_id:
-            # 22 binding datasets present in the dto partitions
+            # 23 binding datasets present in the dto partitions
             # callingcards
-            - [BrentLab/callingcards, 2026_analysis_set]
+            - [BrentLab/callingcards, annotated_feature_reprocess_yiming_analysis]
             - [BrentLab/callingcards, annotated_feature_reprocess_mindel_analysis]
             - [BrentLab/callingcards, annotated_feature_reprocess_start_codon_500bp_analysis]
             - [BrentLab/callingcards, annotated_feature_reprocess_intergenic_analysis]
@@ -606,6 +613,7 @@ repositories:
             - [BrentLab/mahendrawada_2025, mindel_peaks]
             - [BrentLab/mahendrawada_2025, bp500_peaks]
             - [BrentLab/mahendrawada_2025, intergenic_peaks]
+            - [BrentLab/harbison_2004, harbison_2004]
           perturbation_id:
             # 6 perturbation datasets present in the dto partitions
             # hu_2007_reimand_2010

@@ -3,10 +3,102 @@ workspaces."""
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import duckdb
 import pandas as pd
+
+logger = logging.getLogger("shiny")
+
+#: (variant, field) pairs already warned about, so the warning is logged once rather
+#: than on every change to the filter state.
+_WARNED_MISSING: set[tuple[str, str]] = set()
+
+
+def expand_filters_to_variants(
+    conn: duckdb.DuckDBPyConnection,
+    filters: dict[str, Any],
+    registry: pd.DataFrame | None = None,
+) -> dict[str, Any]:
+    """
+    Give every variant dataset its primary's sample filter.
+
+    The selection tab shows, and edits, filters on the *primary* datasets
+    (``rossi_500bp``, ``chec_m2025_500bp``, ...). The alternate promoter-set and
+    peak-calling variants of an assay (``rossi_mindel``, ``rossi_peaks_kang``, ...) are
+    the same experiment, and consumers look a filter up under the variant's own name --
+    so without this a variant silently keeps every sample, including the ones the
+    default filter exists to remove (heat-shock, non-standard conditions), and a
+    regulator appears several times.
+
+    A variant takes its primary's filter **in place of** any entry of its own, so an
+    edit made on the selection tab reaches every variant. Only the filter fields that
+    the variant's metadata actually has are copied: the authors' ChEC-seq peak calls
+    carry no condition column, so the condition filter cannot apply to them and is
+    left off rather than raising. A variant with no applicable field is left
+    unfiltered.
+
+    :param conn: DuckDB connection holding ``dataset_registry`` and the ``{db}_meta``
+        tables.
+    :param filters: Committed filters, keyed by db_name (usually primaries only).
+    :param registry: ``db_name`` / ``primary_db_name`` rows to use instead of reading
+        ``dataset_registry`` from ``conn``.
+    :returns: A new dict: ``filters`` plus an entry for each variant whose primary has
+        one. The input is not modified.
+
+    """
+    out = dict(filters)
+    if registry is None:
+        variants = conn.execute(
+            "SELECT db_name, primary_db_name FROM dataset_registry"
+            " WHERE primary_db_name IS NOT NULL AND primary_db_name != db_name"
+        ).fetchall()
+    else:
+        variants = [
+            (str(v), str(p))
+            for v, p in zip(registry["db_name"], registry["primary_db_name"])
+            if pd.notna(p) and p != v
+        ]
+    wanted = [v for v, primary in variants if filters.get(primary)]
+    if not wanted:
+        return out
+    meta_cols: dict[str, set[str]] = {}
+    for table, column in conn.execute(
+        "SELECT table_name, column_name FROM information_schema.columns"
+        " WHERE table_name LIKE '%\\_meta' ESCAPE '\\'"
+    ).fetchall():
+        meta_cols.setdefault(table, set()).add(column)
+    for variant, primary in variants:
+        spec = filters.get(primary)
+        if not spec:
+            continue
+        if f"{variant}_meta" not in meta_cols:
+            # No metadata table for this variant in this database (a scratch workspace
+            # holds only the datasets it needs): nothing to filter, nothing to warn
+            # about.
+            out.pop(variant, None)
+            continue
+        have = meta_cols[f"{variant}_meta"]
+        inherited = {field: s for field, s in spec.items() if field in have}
+        for field in spec:
+            if field not in have and (variant, field) not in _WARNED_MISSING:
+                _WARNED_MISSING.add((variant, field))
+                logger.warning(
+                    "default filter field %r of %s cannot be applied to its variant %s:"
+                    " %s_meta has no such column, so that variant is not filtered on it"
+                    " (declare a constant column in the collection yaml if every sample"
+                    " has the same value)",
+                    field,
+                    primary,
+                    variant,
+                    variant,
+                )
+        if inherited:
+            out[variant] = inherited
+        else:
+            out.pop(variant, None)
+    return out
 
 
 def get_filtered_sample_ids(

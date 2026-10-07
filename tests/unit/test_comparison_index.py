@@ -295,11 +295,11 @@ def test_fallback_does_not_rescue_a_missing_variant() -> None:
         pd.DataFrame(
             [
                 _row(
-                    "callingcards",
+                    "callingcards_kang",
                     promoter_set_id="kang",
                     binding_method_id="promoter_enrichment",
                 )
             ]
         )
     )
-    assert index.resolve_or_self("callingcards", "kang", "peak_calling") is None
+    assert index.resolve_or_self("callingcards_kang", "kang", "peak_calling") is None

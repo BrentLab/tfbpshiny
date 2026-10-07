@@ -18,6 +18,9 @@ plotly = "^6.0.1"
 python-dotenv = "^1.1.0"
 faicons = "^0.2.2"
 matplotlib-venn = "^1.1.2"
+matplotlib = "^3.11.1"
+statsmodels = "^0.15.0"
+shapely = "^2.1.2"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^7.2.0"
@@ -25,8 +28,10 @@ pytest = "^9.0.2"
 nbformat = "^5.10.4"
 playwright = "^1.58.0"
 pytest-playwright = "^0.7.2"
-statsmodels = "^0.14.6"
 nbclient = "^0.11.0"
+black = "^26.5.1"
+isort = "^9.0.0"
+flake8 = "^7.3.0"
 
 [tool.pytest.ini_options]
 minversion = "6.0"

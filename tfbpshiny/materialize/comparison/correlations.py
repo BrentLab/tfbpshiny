@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tfbpshiny.materialize.rounding import DEFAULT_FLOAT_DECIMALS, round_expr
+
 # ---------------------------------------------------------------------------
 # Per-dataset measurement columns (self-contained copy, not imported from modules/)
 # ---------------------------------------------------------------------------
@@ -19,7 +21,7 @@ from typing import Any
 #: Binding dataset → (effect_col, pvalue_col).
 #: Empty string means the column does not exist in that dataset.
 BINDING_DATASET_COLUMNS: dict[str, tuple[str, str]] = {
-    "callingcards": ("callingcards_enrichment", "poisson_pval"),
+    "callingcards_kang": ("callingcards_enrichment", "poisson_pval"),
     "callingcards_mindel": ("callingcards_enrichment", "poisson_pval"),
     "callingcards_500bp": ("callingcards_enrichment", "poisson_pval"),
     "callingcards_intergenic": ("callingcards_enrichment", "poisson_pval"),
@@ -40,7 +42,10 @@ PERTURBATION_DATASET_COLUMNS: dict[str, tuple[str, str]] = {
     "hughes_overexpression": ("mean_norm_log2fc", ""),
     "hughes_knockout": ("mean_norm_log2fc", ""),
     "kemmeren": ("Madj", "pval"),
-    "hackett": ("log2_shrunken_timecourses", ""),
+    # Correlation and ranking use log2_cleaned_ratio; log2_shrunken_timecourses is
+    # 95% exactly zero, so correlating or ranking on it is close to meaningless.
+    # topn.py keeps the shrunken column, which is what defines "responsive".
+    "hackett": ("log2_cleaned_ratio", ""),
     "hu_reimand": ("effect", "pval"),
 }
 
@@ -101,6 +106,7 @@ def _score_type_block(
     method: str,
     comparison_type_safe: str,
     method_safe: str,
+    round_decimals: int = DEFAULT_FLOAT_DECIMALS,
 ) -> str:
     """
     Build one parenthesized ``WITH ... SELECT`` block for a single score type.
@@ -180,7 +186,7 @@ def _score_type_block(
       SELECT
         regulator_locus_tag,
         id_a, id_b,
-        corr(rank_a, rank_b) AS correlation,
+        {round_expr("corr(rank_a, rank_b)", round_decimals)} AS correlation,
         COUNT(*)             AS n_shared_targets
       FROM ranked
       GROUP BY regulator_locus_tag, id_a, id_b
@@ -228,7 +234,7 @@ def _score_type_block(
         a_raw.regulator_locus_tag,
         a_raw.sample_id       AS id_a,
         b_raw.sample_id       AS id_b,
-        corr(a_raw.val, b_raw.val) AS correlation,
+        {round_expr("corr(a_raw.val, b_raw.val)", round_decimals)} AS correlation,
         COUNT(*)              AS n_shared_targets
       FROM a_raw
       INNER JOIN b_raw
@@ -268,6 +274,7 @@ def correlation_pair_select_sql(
     method: str,
     comparison_type: str,
     param_prefix: str = "p",
+    round_decimals: int = DEFAULT_FLOAT_DECIMALS,
 ) -> tuple[str, dict[str, Any]]:
     """
     Return a SELECT that produces ``correlations``-shaped rows for one dataset pair,
@@ -336,6 +343,7 @@ def correlation_pair_select_sql(
             method,
             comparison_type_safe,
             method_safe,
+            round_decimals,
         )
     ]
 
@@ -357,6 +365,7 @@ def correlation_pair_select_sql(
                 method,
                 comparison_type_safe,
                 method_safe,
+                round_decimals,
             )
         )
         # Not computed for spearman — see docstring above.
@@ -380,6 +389,7 @@ def correlation_pair_select_sql(
                     method,
                     comparison_type_safe,
                     method_safe,
+                    round_decimals,
                 )
             )
 

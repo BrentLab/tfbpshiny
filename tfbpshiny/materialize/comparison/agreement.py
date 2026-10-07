@@ -18,18 +18,7 @@ from typing import Any
 #: Rank cutoffs at which set overlap is measured. Log-spaced to 500: agreement changes
 #: fastest at the top of the ranking, and a linear grid would spend most of its points
 #: in the flat tail.
-AGREEMENT_TOP_N: tuple[int, ...] = (
-    10,
-    25,
-    50,
-    75,
-    100,
-    150,
-    200,
-    300,
-    400,
-    500,
-)
+AGREEMENT_TOP_N: tuple[int, ...] = tuple(range(10, 210, 10))
 
 #: Gene universe used for the random expectation, ``(N / GENE_UNIVERSE) * N``.
 GENE_UNIVERSE = 6000
@@ -43,6 +32,48 @@ GENE_UNIVERSE = 6000
 #: (``rossi_peaks_500bp`` and friends) carry the same information against a defined
 #: window, and are kept.
 AGREEMENT_EXCLUDED: frozenset[str] = frozenset({"rossi_peaks", "chec_m2025_peaks"})
+
+
+#: Ranking-column overrides for the agreement table only.
+#:
+#: The agreement ranking answers "which targets are this sample's top N?", which is a
+#: different question from "is this target responsive?" -- so these must not leak into
+#: ``topn_results``, whose responsiveness calls stay on the columns each dataset
+#: publishes for that purpose.
+#:
+#: * **callingcards** ranks on ``log_poisson_pval``. It is computed in log space, so it
+#:   keeps the 606-1,487 rows per config whose linear ``poisson_pval`` underflows to
+#:   exactly 0. It is only a marginal help against ties -- measured cutoff-in-tie rates
+#:   move 28.8%->26.9% (kang, mindel), 36.2%->35.2% (500bp) and 50.1%->48.8%
+#:   (intergenic) -- because a log is monotonic and cannot separate values that are
+#:   genuinely equal. The callingcards ties come from discreteness of the Poisson
+#:   computation over small integer hop counts, not from underflow. Determinism comes
+#:   from the ``target_locus_tag`` tiebreak, not from this column.
+#: * **hackett** ranks on ``log2_cleaned_ratio`` rather than
+#:   ``log2_shrunken_timecourses``, which is 95% exactly zero and so ranks almost
+#:   arbitrarily. This one *is* decisive: live-group tie collisions fall from up to 999
+#:   groups to at most 5 across the whole cutoff grid.
+AGREEMENT_RANK_OVERRIDES: dict[str, tuple[str, bool]] = {
+    "callingcards_kang": ("log_poisson_pval", True),
+    "callingcards_mindel": ("log_poisson_pval", True),
+    "callingcards_500bp": ("log_poisson_pval", True),
+    "callingcards_intergenic": ("log_poisson_pval", True),
+    "hackett": ("log2_cleaned_ratio", False),
+}
+
+
+def agreement_rank_column(db_name: str, default_col: str, default_asc: bool):
+    """
+    Return the ``(column, ascending)`` the agreement table should rank a dataset by.
+
+    :param db_name: Dataset name.
+    :param default_col: Column used when no override applies.
+    :param default_asc: Direction used when no override applies.
+    :returns: ``(rank_col, rank_asc)``.
+    :rtype: tuple[str, bool]
+
+    """
+    return AGREEMENT_RANK_OVERRIDES.get(db_name, (default_col, default_asc))
 
 
 def agreement_schema_sql() -> str:
@@ -90,6 +121,8 @@ def agreement_pair_select_sql(
     top_n_values: tuple[int, ...] = AGREEMENT_TOP_N,
     regulator_subset: tuple[str, ...] = (),
     param_prefix: str = "a",
+    drop_null_scores_a: bool = False,
+    drop_null_scores_b: bool = False,
 ) -> tuple[str, dict[str, Any]]:
     """
     Return a SELECT producing ``topn_agreement`` rows for one same-type dataset pair.
@@ -101,6 +134,17 @@ def agreement_pair_select_sql(
     Set sizes must be exactly N here: the overlap is compared against an expectation of
     ``N^2 / GENE_UNIVERSE``, so a tie inflating one side's set would inflate the
     intersection and read as agreement.
+
+    ``ROW_NUMBER()`` alone is **not deterministic across runs** when the ranking column
+    ties: it numbers equal values in whatever order the scan produced them, so which
+    targets fall inside the cutoff varies build to build. Two builds of the same
+    database disagreed on ``n_intersect`` for 30,829 of 609,450 rows across 219 of 225
+    dataset pairs, and re-running one pair twice in a single process disagreed on 24.4%
+    of its rows. ``target_locus_tag`` is therefore appended as a final sort key: it is
+    unique within a (sample, regulator) group for every dataset except degron, so the
+    ordering becomes total and the result reproducible. Where a cutoff still lands
+    inside a tie the chosen subset remains arbitrary -- but it is now the *same*
+    arbitrary subset every run, which is what makes builds comparable.
 
     **Perturbation datasets are ranked by absolute effect**, so a knockout and an
     overexpression experiment are ordered by magnitude of response rather than sign and
@@ -122,6 +166,8 @@ def agreement_pair_select_sql(
     :param top_n_values: Cutoffs to measure at.
     :param regulator_subset: Restrict to these regulators (for batching).
     :param param_prefix: Namespace prefix for SQL parameters.
+    :param drop_null_scores_a: Rank only rows with a non-NULL score on side A.
+    :param drop_null_scores_b: Rank only rows with a non-NULL score on side B.
     :returns: ``(sql, params)``.
 
     """
@@ -135,13 +181,20 @@ def agreement_pair_select_sql(
     expr_a = f"ABS({rank_col_a})" if comparison_type == "perturbation" else rank_col_a
     expr_b = f"ABS({rank_col_b})" if comparison_type == "perturbation" else rank_col_b
 
-    reg_clause_a = reg_clause_b = ""
+    conditions_a: list[str] = []
+    conditions_b: list[str] = []
     if regulator_subset:
         ph = ", ".join(f"${param_prefix}_reg_{i}" for i in range(len(regulator_subset)))
         for i, reg in enumerate(regulator_subset):
             params[f"{param_prefix}_reg_{i}"] = reg
-        reg_clause_a = f"WHERE regulator_locus_tag IN ({ph})"
-        reg_clause_b = reg_clause_a
+        conditions_a.append(f"regulator_locus_tag IN ({ph})")
+        conditions_b.append(f"regulator_locus_tag IN ({ph})")
+    if drop_null_scores_a:
+        conditions_a.append(f"{rank_col_a} IS NOT NULL")
+    if drop_null_scores_b:
+        conditions_b.append(f"{rank_col_b} IS NOT NULL")
+    reg_clause_a = f"WHERE {' AND '.join(conditions_a)}" if conditions_a else ""
+    reg_clause_b = f"WHERE {' AND '.join(conditions_b)}" if conditions_b else ""
 
     n_list = ", ".join(f"({n})" for n in top_n_values)
     a_prefix = f"{hf_repo_a};{hf_config_a};".replace("'", "''")
@@ -160,7 +213,7 @@ def agreement_pair_select_sql(
                target_locus_tag,
                ROW_NUMBER() OVER (
                    PARTITION BY {sample_col_a}, regulator_locus_tag
-                   ORDER BY {expr_a} {dir_a}
+                   ORDER BY {expr_a} {dir_a}, target_locus_tag
                ) AS rnk
         FROM {view_a}
         {reg_clause_a}
@@ -171,7 +224,7 @@ def agreement_pair_select_sql(
                target_locus_tag,
                ROW_NUMBER() OVER (
                    PARTITION BY {sample_col_b}, regulator_locus_tag
-                   ORDER BY {expr_b} {dir_b}
+                   ORDER BY {expr_b} {dir_b}, target_locus_tag
                ) AS rnk
         FROM {view_b}
         {reg_clause_b}
@@ -224,6 +277,8 @@ def agreement_pair_select_sql(
 
 __all__ = [
     "AGREEMENT_EXCLUDED",
+    "AGREEMENT_RANK_OVERRIDES",
+    "agreement_rank_column",
     "AGREEMENT_TOP_N",
     "GENE_UNIVERSE",
     "agreement_pair_select_sql",

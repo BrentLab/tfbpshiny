@@ -79,6 +79,16 @@ CREATE TABLE binding_methods (
 `peak_calling` datasets score a target from peaks overlapping it; all others use
 counts aggregated over a fixed promoter window.
 
+The recalled, promoter-set-matched peak datasets (`rossi_peaks_*`, `chec_m2025_peaks_*`)
+are **dense**: every promoter of the set is reported for every sample, and a promoter with
+no qualifying peak has a NULL `nearest_score` / `median_score` / `max_score` (Rossi:
+`n_peaks = 0`; ChEC-seq: fewer than two replicates with a peak, `n_replicates < 2`; test
+`max_score IS NOT NULL`, not `n_peaks > 0`). They are ranked on `max_score`, and a NULL
+ranks as a score of 0, below every real score. The Rossi score is MACS -log10(q);
+the ChEC-seq score is HOMER's normalized tag count (the datacard calls it -log10(q), which
+it is not), so the two scales are not comparable. The authors' own peak calls
+(`rossi_peaks`, `chec_m2025_peaks`) are sparse and unaffected.
+
 Peak-calling datasets come in two flavours, distinguished by `promoter_set_id`:
 
 - **`promoter_set_id = 'peaks'`** — the original authors' peak annotations
@@ -108,7 +118,7 @@ dictionaries (`BINDING_LABEL_MAP`, `PERTURBATION_LABEL_MAP`,
 CREATE TABLE dataset_registry (
     db_name              VARCHAR  PRIMARY KEY,
     hf_repo              VARCHAR  NOT NULL,     -- e.g. 'BrentLab/callingcards'
-    hf_config            VARCHAR  NOT NULL,     -- e.g. '2026_analysis_set'
+    hf_config            VARCHAR  NOT NULL,     -- e.g. 'annotated_feature_reprocess_yiming_analysis'
     data_type            VARCHAR  NOT NULL,     -- 'binding' | 'perturbation'
     assay                VARCHAR,               -- 'CallingCards' | 'ChIP-chip' | 'ChIPexo' | 'ChEC-seq' | 'TFKO' | 'overexpression'
     display_name         VARCHAR,               -- full label, e.g. '2026 Calling Cards (Mindel)'
@@ -134,35 +144,35 @@ Comparison module no longer hand-maintains parallel label dicts.
 
 | db_name | data_type | display_name | base_label | is_primary | is_active_default | primary_db_name | promoter_set_id | binding_method_id |
 |---|---|---|---|---|---|---|---|---|
-| `callingcards` | binding | 2026 Calling Cards | 2026 Calling Cards | TRUE | TRUE | NULL | kang | promoter_enrichment |
-| `harbison` | binding | 2004 ChIP-chip (Harbison) | 2004 ChIP-chip | TRUE | FALSE | NULL | kang | promoter_enrichment |
-| `rossi` | binding | 2021 ChIP-exo (Rossi) | 2021 ChIP-exo | TRUE | TRUE | NULL | kang | promoter_enrichment |
-| `chec_m2025` | binding | 2025 ChEC-seq (Mahendrawada) | 2025 ChEC-seq | TRUE | TRUE | NULL | kang | promoter_enrichment |
-| `kemmeren` | perturbation | 2014 TFKO (Kemmeren) | 2014 TFKO | TRUE | TRUE | NULL | NULL | NULL |
+| `callingcards_500bp` | binding | 2026 Calling Cards | 2026 Calling Cards | TRUE | TRUE | NULL | 500bp | promoter_enrichment |
+| `chec_m2025_500bp` | binding | 2025 ChEC-seq (Mahendrawada) | 2025 ChEC-seq | TRUE | TRUE | NULL | 500bp | promoter_enrichment |
+| `harbison` | binding | 2004 ChIP-chip (Harbison) | 2004 ChIP-chip | TRUE | FALSE | NULL | array | promoter_enrichment |
+| `rossi_500bp` | binding | 2021 ChIP-exo (Rossi) | 2021 ChIP-exo | TRUE | TRUE | NULL | 500bp | promoter_enrichment |
 | `degron` | perturbation | 2025 Degron (Mahendrawada) | 2025 Degron | TRUE | TRUE | NULL | NULL | NULL |
 | `hackett` | perturbation | 2020 Overexpression (Hackett) | 2020 Overexpression | TRUE | TRUE | NULL | NULL | NULL |
 | `hu_reimand` | perturbation | 2007 TFKO (Hu) | 2007 TFKO | TRUE | FALSE | NULL | NULL | NULL |
-| `hughes_overexpression` | perturbation | 2006 Overexpression (Hughes) | 2006 Overexpression | TRUE | FALSE | NULL | NULL | NULL |
 | `hughes_knockout` | perturbation | 2006 Knockout (Hughes) | 2006 Knockout | TRUE | FALSE | NULL | NULL | NULL |
-| `callingcards_mindel` | binding | 2026 Calling Cards (Mindel) | 2026 Calling Cards | FALSE | FALSE | callingcards | mindel | promoter_enrichment |
-| `callingcards_500bp` | binding | 2026 Calling Cards (500bp) | 2026 Calling Cards | FALSE | FALSE | callingcards | 500bp | promoter_enrichment |
-| `callingcards_intergenic` | binding | 2026 Calling Cards (Intergenic) | 2026 Calling Cards | FALSE | FALSE | callingcards | intergenic | promoter_enrichment |
-| `rossi_mindel` | binding | 2021 ChIP-exo (Rossi, Mindel) | 2021 ChIP-exo | FALSE | FALSE | rossi | mindel | promoter_enrichment |
-| `rossi_500bp` | binding | 2021 ChIP-exo (Rossi, 500bp) | 2021 ChIP-exo | FALSE | FALSE | rossi | 500bp | promoter_enrichment |
-| `rossi_intergenic` | binding | 2021 ChIP-exo (Rossi, Intergenic) | 2021 ChIP-exo | FALSE | FALSE | rossi | intergenic | promoter_enrichment |
-| `rossi_peaks` | binding | 2021 ChIP-exo Peaks | 2021 ChIP-exo | FALSE | FALSE | rossi | peaks | peak_calling |
-| `rossi_peaks_kang` | binding | 2021 ChIP-exo Peaks (MACS, Kang) | 2021 ChIP-exo | FALSE | FALSE | rossi | kang | peak_calling |
-| `rossi_peaks_mindel` | binding | 2021 ChIP-exo Peaks (MACS, Mindel) | 2021 ChIP-exo | FALSE | FALSE | rossi | mindel | peak_calling |
-| `rossi_peaks_500bp` | binding | 2021 ChIP-exo Peaks (MACS, 500bp) | 2021 ChIP-exo | FALSE | FALSE | rossi | 500bp | peak_calling |
-| `rossi_peaks_intergenic` | binding | 2021 ChIP-exo Peaks (MACS, Intergenic) | 2021 ChIP-exo | FALSE | FALSE | rossi | intergenic | peak_calling |
-| `chec_m2025_mindel` | binding | 2025 ChEC-seq (Mahendrawada, Mindel) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025 | mindel | promoter_enrichment |
-| `chec_m2025_500bp` | binding | 2025 ChEC-seq (Mahendrawada, 500bp) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025 | 500bp | promoter_enrichment |
-| `chec_m2025_intergenic` | binding | 2025 ChEC-seq (Mahendrawada, Intergenic) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025 | intergenic | promoter_enrichment |
-| `chec_m2025_peaks` | binding | 2025 ChEC-seq Peaks (Mahendrawada) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025 | peaks | peak_calling |
-| `chec_m2025_peaks_kang` | binding | 2025 ChEC-seq Peaks (HOMER, Kang) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025 | kang | peak_calling |
-| `chec_m2025_peaks_mindel` | binding | 2025 ChEC-seq Peaks (HOMER, Mindel) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025 | mindel | peak_calling |
-| `chec_m2025_peaks_500bp` | binding | 2025 ChEC-seq Peaks (HOMER, 500bp) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025 | 500bp | peak_calling |
-| `chec_m2025_peaks_intergenic` | binding | 2025 ChEC-seq Peaks (HOMER, Intergenic) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025 | intergenic | peak_calling |
+| `hughes_overexpression` | perturbation | 2006 Overexpression (Hughes) | 2006 Overexpression | TRUE | FALSE | NULL | NULL | NULL |
+| `kemmeren` | perturbation | 2014 TFKO (Kemmeren) | 2014 TFKO | TRUE | TRUE | NULL | NULL | NULL |
+| `callingcards_intergenic` | binding | 2026 Calling Cards (Intergenic) | 2026 Calling Cards | FALSE | FALSE | callingcards_500bp | intergenic | promoter_enrichment |
+| `callingcards_kang` | binding | 2026 Calling Cards (Kang) | 2026 Calling Cards | FALSE | FALSE | callingcards_500bp | kang | promoter_enrichment |
+| `callingcards_mindel` | binding | 2026 Calling Cards (Mindel) | 2026 Calling Cards | FALSE | FALSE | callingcards_500bp | mindel | promoter_enrichment |
+| `chec_m2025` | binding | 2025 ChEC-seq (Mahendrawada, Kang) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025_500bp | kang | promoter_enrichment |
+| `chec_m2025_intergenic` | binding | 2025 ChEC-seq (Mahendrawada, Intergenic) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025_500bp | intergenic | promoter_enrichment |
+| `chec_m2025_mindel` | binding | 2025 ChEC-seq (Mahendrawada, Mindel) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025_500bp | mindel | promoter_enrichment |
+| `chec_m2025_peaks` | binding | 2025 ChEC-seq Peaks (Mahendrawada) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025_500bp | peaks | peak_calling |
+| `chec_m2025_peaks_500bp` | binding | 2025 ChEC-seq Peaks (HOMER, 500bp) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025_500bp | 500bp | peak_calling |
+| `chec_m2025_peaks_intergenic` | binding | 2025 ChEC-seq Peaks (HOMER, Intergenic) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025_500bp | intergenic | peak_calling |
+| `chec_m2025_peaks_kang` | binding | 2025 ChEC-seq Peaks (HOMER, Kang) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025_500bp | kang | peak_calling |
+| `chec_m2025_peaks_mindel` | binding | 2025 ChEC-seq Peaks (HOMER, Mindel) | 2025 ChEC-seq | FALSE | FALSE | chec_m2025_500bp | mindel | peak_calling |
+| `rossi` | binding | 2021 ChIP-exo (Rossi, Kang) | 2021 ChIP-exo | FALSE | FALSE | rossi_500bp | kang | promoter_enrichment |
+| `rossi_intergenic` | binding | 2021 ChIP-exo (Rossi, Intergenic) | 2021 ChIP-exo | FALSE | FALSE | rossi_500bp | intergenic | promoter_enrichment |
+| `rossi_mindel` | binding | 2021 ChIP-exo (Rossi, Mindel) | 2021 ChIP-exo | FALSE | FALSE | rossi_500bp | mindel | promoter_enrichment |
+| `rossi_peaks` | binding | 2021 ChIP-exo Peaks | 2021 ChIP-exo | FALSE | FALSE | rossi_500bp | peaks | peak_calling |
+| `rossi_peaks_500bp` | binding | 2021 ChIP-exo Peaks (MACS, 500bp) | 2021 ChIP-exo | FALSE | FALSE | rossi_500bp | 500bp | peak_calling |
+| `rossi_peaks_intergenic` | binding | 2021 ChIP-exo Peaks (MACS, Intergenic) | 2021 ChIP-exo | FALSE | FALSE | rossi_500bp | intergenic | peak_calling |
+| `rossi_peaks_kang` | binding | 2021 ChIP-exo Peaks (MACS, Kang) | 2021 ChIP-exo | FALSE | FALSE | rossi_500bp | kang | peak_calling |
+| `rossi_peaks_mindel` | binding | 2021 ChIP-exo Peaks (MACS, Mindel) | 2021 ChIP-exo | FALSE | FALSE | rossi_500bp | mindel | peak_calling |
 
 ### `comparative_dataset_registry`
 
@@ -218,7 +228,7 @@ datacard for the authoritative list):
 
 | Table | Notable columns |
 |---|---|
-| `callingcards_meta` | `background_total_hops`, `experiment_total_hops`, `carbon_source`, `temperature_celsius` |
+| `callingcards_meta` | `total_background_hops`, `total_experiment_hops`, `carbon_source`, `temperature_celsius` |
 | `harbison_meta` | `condition` (YPD, YP-galactose, …) |
 | `rossi_meta` | `antibody`, `growth_media`, `treatment`, `carbon_source`, `temperature_celsius` |
 | `chec_m2025_meta` | `condition`, `mahendrawada_symbol`, `carbon_source`, `temperature_celsius` |
@@ -366,6 +376,30 @@ Measured intersections, for reference:
 Note ChIP-chip is absent from `dto` entirely, so the DTO figures are three binding
 datasets wide rather than four.
 
+### `topn_target_sets`
+
+The actual ranked targets behind figure 10's Venn diagram and overlap boxes, per sample
+and regulator, for the six datasets it uses (Calling Cards, Rossi and ChEC-seq at 500 bp;
+Kemmeren, Hackett and Degron). `topn_agreement` keeps only overlap *counts* on a fixed
+grid, which cannot draw a Venn and lacks the 25 and 75 the Figures sidebar offers.
+
+```sql
+CREATE TABLE topn_target_sets (
+    source_sample       VARCHAR  NOT NULL,   -- repo;config;sample_id
+    comparison_type     VARCHAR  NOT NULL,   -- 'binding' | 'perturbation'
+    regulator_locus_tag VARCHAR  NOT NULL,
+    target_locus_tag    VARCHAR  NOT NULL,
+    rnk                 INTEGER  NOT NULL,   -- 1 = best; kept to 100
+    PRIMARY KEY (source_sample, regulator_locus_tag, target_locus_tag)
+);
+```
+
+"In the top N" is `rnk <= N` at read time, for any N up to 100. Ranking follows
+`topn_agreement` (same rank columns and overrides, absolute effect for perturbation,
+`target_locus_tag` tiebreak) except that duplicate rows for a target are collapsed first:
+Kemmeren and Hackett measure some genes with several probes, which would otherwise count
+one target twice and leave fewer than N distinct targets.
+
 ### `topn_agreement`
 
 Per-regulator overlap between the top-N target sets of two datasets of the **same**
@@ -395,8 +429,20 @@ Notes:
 
 - Measured at ten log-spaced cutoffs to 500 (`AGREEMENT_TOP_N`). Agreement changes
   fastest at the top of the ranking, so a linear grid would waste points on the tail.
-- Ranking uses `ROW_NUMBER()`, not the `RANK()` used by `topn_results`: a tie inflating
-  one side's set would inflate the intersection and read as agreement. `n_a` / `n_b`
+- Ranking uses `ROW_NUMBER()`, not the tie rule `topn_results` uses: sets must be exactly
+  N so that figures 6 and 10 read as "shared out of N". `ROW_NUMBER()` alone is not
+  reproducible when the ranking column ties, so `target_locus_tag` is appended as a final
+  sort key to make the ordering total (the same targets fall inside the cutoff on every
+  build).
+- For the recalled peak datasets only **scored** rows are ranked (`drop_null_scores_*`).
+  Ranking the NULL-score promoters too would pad a regulator that has fewer than N peaks
+  up to exactly N with no-peak promoters in alphabetical order, and the overlaps would
+  measure nothing.
+- Ranking columns can be overridden per dataset for this table only, via
+  `AGREEMENT_RANK_OVERRIDES` in `materialize/comparison/agreement.py`: Calling Cards
+  ranks on `log_poisson_pval` and hackett on `log2_cleaned_ratio`. These do **not**
+  affect `topn_results`, whose responsiveness calls stay on each dataset's published
+  effect column. `n_a` / `n_b`
   still fall below `top_n` when a dataset simply has fewer targets for that regulator,
   which is why the read-time expectation uses them rather than `top_n`.
 - **Every same-type dataset pair is materialized**, not only the primaries — figure 6's
@@ -462,7 +508,8 @@ CREATE TABLE topn_results (
                                                      -- FALSE → highest = rank 1 (enrichment)
     effect_threshold            DOUBLE   NOT NULL,   -- |effect| > threshold → responsive
     pvalue_threshold            DOUBLE   NOT NULL,   -- padj/pval < threshold → responsive
-    n                           INTEGER  NOT NULL,   -- targets in top-N present in both datasets
+    n                           INTEGER  NOT NULL,   -- targets in the top N present in both datasets
+                                                      -- (tie rule: see Notes; can be < or > top_n)
     n_responsive                INTEGER  NOT NULL,
     responsive_ratio            DOUBLE   NOT NULL,   -- n_responsive / n
     n_intersecting_targets      INTEGER  NOT NULL,   -- distinct targets shared by this
@@ -490,18 +537,40 @@ analysis_config)`.
 - Multiple rows can exist for the same sample pair and regulator when different
   `(top_n, rank_col, effect_threshold, pvalue_threshold)` combinations are
   pre-computed.
+- **Ties: a tie group is in the top N only if its average rank is within N.** A group
+  spanning ranks a..b has average rank (a+b)/2 (`RANK() + (group size - 1) / 2`). So a
+  large tie group straddling the cutoff is excluded whole and leaves `n < top_n`, while a
+  group kept whole can push `n` above `top_n` (a group of 2N-1 starting at rank 1 has
+  average N). This replaced `RANK() <= N`, which kept the whole group whenever its first
+  member was within N. (`topn_pair_select_sql*`'s `tie_rule` is `"avg_rank"`; `"rank"`
+  reproduces the old behaviour exactly.) The ratio is taken over the `n` kept.
+- **NULL scores rank as no signal.** For the recalled peak datasets
+  (`BINDING_TOPN_CONFIGS[...]["no_signal_value"] = 0`) a NULL score is ranked as 0, so the
+  no-peak promoters form one tie group at the bottom whose average rank is far above N
+  unless the pool is tiny; a sample with few peaks therefore has a short list. Those
+  promoters still count toward `n_intersecting_targets`.
 - `n_intersecting_targets` is computed independently of the top-N cutoff, from
   the raw binding/perturbation overlap for that sample pair (blacklist/dedup
   applied, self-targets excluded). It is **not** filtered at materialize time
   (unlike `correlations.n_shared_targets`'s `HAVING COUNT(*) >= 3` floor,
   below) — it repeats identically across every `(top_n, rank_col,
   effect_threshold, pvalue_threshold)` row for the same sample pair and
-  regulator, and is meant to be filtered at query time (e.g. the Comparison
-  module's "Require full overlap" toggle checks
-  `n_intersecting_targets >= top_n`).
+  regulator. Because dense peak tables report every promoter it is large for every
+  sample, so it no longer says whether a list is complete.
+- **The Comparison module's "Require full overlap" toggle checks `n >= top_n`**: the list
+  must still hold at least N targets after the tie rule. A regulator with too few scored
+  targets, or a large tie group around rank N, is excluded when it is on.
+- Built in three stages (`materialize/comparison/topn.py`): `binding_stage_sql` and
+  `perturbation_stage_sql` materialize each source once, and `topn_pair_select_sql_v2`
+  emits every `(top_n, effect_threshold, pvalue_threshold)` combination for a pair from
+  one scan-and-rank. Ranking still happens *after* the intersecting-target restriction,
+  so a target's rank depends on which perturbation dataset it is being compared against
+  and cannot be shared between them.
 - Defaults: `top_n ∈ {10, 25, 50, 75, 100}`, plus a `top_n = 0` sentinel for the
   peak datasets meaning "every authors'-bound target, no rank cutoff" (`n` then
-  carries the size of the authors' bound set).
+  carries the size of the authors' bound set). Harbison (`pvalue <= 0.001`, YPD) and
+  Calling Cards (Poisson p < 1e-4) have no binary call of their own, so their
+  `top_n = 0` rows apply those named thresholds instead.
 - **Responsiveness is decided by `(effect_threshold, pvalue_threshold)` and nothing
   else.** `tfbpshiny materialize` defaults to `--preset Relaxed --preset Stringent`,
   resolving each preset's pair *per perturbation dataset* from
@@ -533,7 +602,7 @@ CREATE TABLE correlations (
     score_type           VARCHAR  NOT NULL,  -- 'effect' | 'pvalue' | 'log10pval'
     score_col_a          VARCHAR  NOT NULL,  -- raw column used from sample_a's dataset
     score_col_b          VARCHAR  NOT NULL,  -- raw column used from sample_b's dataset
-    correlation          DOUBLE   NOT NULL,
+    correlation          DOUBLE   NOT NULL,   -- rounded, see --float-decimals
     n_shared_targets     INTEGER  NOT NULL,  -- targets used; always >= 3
     PRIMARY KEY (
         source_sample_a, source_sample_b,
@@ -563,6 +632,86 @@ unordered pair is stored exactly once.
   provenance/debugging; it is not part of the primary key since `score_type`
   plus the dataset pair already determines it deterministically.
 - Rows are only written when `COUNT(shared targets) >= 3`.
+
+---
+
+### Method x promoter-set model
+
+Two tables, populated by `materialize/comparison/method_promoter_model.py`. Answers the
+relative contribution of the binding method (peak calling vs. promoter enrichment) and
+of the 4 promoter definitions, holding regulator identity and assay constant --
+a question the descriptive `topn_results`/`correlations` tables above cannot answer,
+since they report medians rather than fit a model.
+
+**Design:** a 16-cell panel (2 methods x 4 promoter sets x 2 assays -- Rossi ChIP-exo
+and Mahendrawada ChEC-seq, the only two with both a promoter-enrichment and a
+promoter-set-matched peak-calling arm) is fit with a pooled OLS:
+`responsive_ratio ~ method + promoter_set + assay + C(regulator_locus_tag)`, with
+cluster-robust standard errors by `regulator_locus_tag`. The regulator fixed effect
+holds each TF's own baseline responsiveness constant while the method/promoter_set/
+assay contrasts are estimated; the regulator dummy coefficients themselves are fit but
+never stored in `_coefs`. Excluded structurally: Harbison (`promoter_set_id='array'`,
+no re-quantifiable window), the authors' original peaks (`promoter_set_id='peaks'`, no
+fixed window), and all `callingcards_*` (no peak-calling arm -- would unbalance the
+method contrast). The panel is further restricted to (a) samples allowed by the app's
+default per-dataset filters (`DEFAULT_DATASET_FILTERS`, e.g. Hackett's 45-minute
+timepoint), matching every live Comparison query, and (b) regulators in the 3-way
+intersection of the perturbation dataset's and both binding assays' regulator sets, so
+the population is fixed across every cell. Fit once per
+`(perturbation_db, top_n, criteria)`.
+
+**Candidate pool and pairing.** Every cell is restricted to the targets shared by all
+**eight** views of the assay (4 promoter sets x 2 methods; each is a complete list of its
+set's targets), so a wider window cannot win by offering more candidates, and no view is
+treated as the ground truth for another. Within each assay x promoter set a regulator is
+kept only where **both methods have a row**: a regulator with no usable peak-calling list
+is dropped, not scored as zero (earlier builds imputed such a regulator from the matching
+promoter-enrichment row, which favoured promoter enrichment).
+
+This is a **fixed-effects OLS, not a mixed model** -- a plain linear model, the
+deliberately simple port of a full crossed-random-effects binomial GLMM design drafted
+separately for an R-based analysis (`hf_yeast_explorer`), which explicitly ruled out
+fitting that design in-app.
+
+```sql
+CREATE TABLE method_promoter_model_coefs (
+    -- Only the Intercept, method, promoter_set (3 rows), and assay coefficients are
+    -- kept -- the regulator fixed-effect dummies are fit (they make the model
+    -- correct) but never displayed.
+    perturbation_db  VARCHAR  NOT NULL,
+    top_n            INTEGER  NOT NULL,
+    criteria         VARCHAR  NOT NULL,
+    term             VARCHAR  NOT NULL,  -- patsy term name
+    estimate         DOUBLE,  -- percentage points
+    std_error        DOUBLE,  -- percentage points
+    t_value          DOUBLE,
+    p_value          DOUBLE,
+    PRIMARY KEY (perturbation_db, top_n, criteria, term)
+);
+
+CREATE TABLE method_promoter_model_fit_summary (
+    -- One row per model fit. `note` explains a failed/degenerate fit (too few
+    -- regulators, no variation in a factor) rather than leaving a silent blank.
+    perturbation_db  VARCHAR  NOT NULL,
+    top_n            INTEGER  NOT NULL,
+    criteria         VARCHAR  NOT NULL,
+    n_obs            INTEGER  NOT NULL,
+    n_regulators     INTEGER  NOT NULL,
+    r_squared        DOUBLE,
+    converged        BOOLEAN  NOT NULL,
+    note             VARCHAR,
+    PRIMARY KEY (perturbation_db, top_n, criteria)
+);
+```
+
+**Notes:**
+
+- Reads `topn_results`, `dataset_registry`, and `{db}_meta` tables directly against the
+  *output* connection -- no VirtualDB/HuggingFace hop, unlike the `dto` import above;
+  every input is already local by the time this phase runs.
+- `--skip-method-promoter-model` on `tfbpshiny materialize` skips this phase.
+- The Comparison module's "Method × Promoter Model" tab only reads these tables; no
+  fitting happens in the running app.
 
 ---
 
@@ -642,8 +791,8 @@ ORDER BY dr.base_label;
 ```sql
 SELECT db_name, display_name, promoter_set_id, binding_method_id
 FROM dataset_registry
-WHERE primary_db_name = 'callingcards'
-   OR db_name         = 'callingcards'
+WHERE primary_db_name = 'callingcards_kang'
+   OR db_name         = 'callingcards_kang'
 ORDER BY promoter_set_id;
 ```
 

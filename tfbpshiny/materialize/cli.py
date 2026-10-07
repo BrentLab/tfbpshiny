@@ -16,6 +16,7 @@ import sys
 from typing import Literal, cast
 
 from tfbpshiny.configure_logger import LogLevel, configure_logger
+from tfbpshiny.materialize.rounding import DEFAULT_FLOAT_DECIMALS
 
 
 def run_materialize(args: argparse.Namespace) -> None:
@@ -77,7 +78,9 @@ def run_materialize(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def register_subparser(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+def register_subparser(
+    subparsers: argparse._SubParsersAction,  # type: ignore[type-arg]
+) -> None:
     """
     Register the ``materialize`` subcommand on the parent parser's subparsers.
 
@@ -165,6 +168,34 @@ def register_subparser(subparsers: argparse._SubParsersAction) -> None:  # type:
         ),
     )
     p.add_argument(
+        "--float-decimals",
+        dest="float_decimals",
+        type=int,
+        default=DEFAULT_FLOAT_DECIMALS,
+        metavar="N",
+        help=(
+            "Decimal places kept for computed floating-point columns "
+            "(correlations.correlation, topn_results.responsive_ratio). DuckDB's "
+            "parallel aggregation sums in a nondeterministic order, so two builds of "
+            "the same data can differ in the last bits; rounding removes that so "
+            "builds can be diffed. Pass -1 to store raw values. Default: "
+            f"{DEFAULT_FLOAT_DECIMALS} (~1e-9), three to four orders above the "
+            "observed ~1e-13 noise. Values read from the source parquet, such as the "
+            "DTO p-values, are never rounded."
+        ),
+    )
+    p.add_argument(
+        "--legacy-topn",
+        action="store_true",
+        default=False,
+        help=(
+            "Compute topn_results one (top_n, effect, pvalue) variant at a time, as "
+            "builds did before the scan was hoisted out of the variant loop. Far "
+            "slower; kept only so a build from this commit can be diffed against the "
+            "staged one to prove they agree."
+        ),
+    )
+    p.add_argument(
         "--skip-correlations",
         action="store_true",
         default=False,
@@ -175,6 +206,18 @@ def register_subparser(subparsers: argparse._SubParsersAction) -> None:  # type:
         action="store_true",
         default=False,
         help="Skip the top-N responsive-ratio computation.",
+    )
+    p.add_argument(
+        "--skip-method-promoter-model",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip the method x promoter-set pooled OLS model (peak calling vs. "
+            "promoter enrichment, crossed with promoter definition), over Rossi and "
+            "ChEC-seq. Also skips this model's own top-N staging fill, which ranks "
+            "each of its 16 cells over the cross-promoter-set target intersection "
+            "(a VirtualDB hop of its own, separate from --skip-topn)."
+        ),
     )
     p.add_argument(
         "--token",

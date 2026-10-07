@@ -20,6 +20,7 @@ from tfbpshiny.modules.perturbation.server import perturbation_workspace_server
 from tfbpshiny.modules.perturbation.ui import perturbation_ui
 from tfbpshiny.modules.select_datasets.server import select_datasets_server
 from tfbpshiny.modules.select_datasets.ui import selection_ui
+from tfbpshiny.utils.corr_query import expand_filters_to_variants
 
 logger = logging.getLogger("shiny")
 
@@ -101,10 +102,24 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         )
     )
 
+    @reactive.calc
+    def analysis_filters() -> dict[str, Any]:
+        """
+        The committed filters with each primary's filter copied onto its variants.
+
+        The selection tab edits the primaries; the analysis modules look filters up by
+        whichever variant they resolved, so they need the expanded form. A drop-in for
+        ``dataset_filters`` -- the modules only ever call it.
+
+        :trigger: ``dataset_filters`` -- re-runs whenever the committed filters change.
+
+        """
+        return expand_filters_to_variants(conn, dataset_filters())
+
     binding_workspace_server(
         "binding",
         active_binding_datasets=active_binding_datasets,
-        dataset_filters=dataset_filters,
+        dataset_filters=analysis_filters,
         conn=conn,
         logger=logger,
     )
@@ -112,7 +127,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
     perturbation_workspace_server(
         "perturbation",
         active_perturbation_datasets=active_perturbation_datasets,
-        dataset_filters=dataset_filters,
+        dataset_filters=analysis_filters,
         conn=conn,
         logger=logger,
     )
@@ -121,14 +136,14 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         "comparison",
         active_binding_datasets=active_binding_datasets,
         active_perturbation_datasets=active_perturbation_datasets,
-        dataset_filters=dataset_filters,
+        dataset_filters=analysis_filters,
         conn=conn,
         logger=logger,
     )
 
     figures_workspace_server(
         "figures",
-        dataset_filters=dataset_filters,
+        dataset_filters=analysis_filters,
         conn=conn,
         logger=logger,
     )
