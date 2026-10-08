@@ -11,6 +11,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Rebuild required (schema version 3).** `dataset_registry` gains a
+  `description` column, labretriever's dataset description (the collection
+  config's, else the DataCard's). The Dataset selection page shows it again as
+  the tooltip on each dataset's name; the tooltips had been empty since the page
+  moved from VirtualDB to the materialized database.
+- DTO is named for what it is, dual threshold optimization, in the Comparison
+  metric tooltip, the figure 4 heading, the `comparative_dataset_registry`
+  description and the docs. Earlier text called it "direct target overlap" or
+  "directional transcription overlap".
+- `shinywidgets` is no longer a dependency; nothing imported it.
+
 - **Rebuild required (schema version 2).** Dataset identity and presentation are
   declared once, as labretriever `tags` in `brentlab_yeast_collection.yaml`,
   read by `materialize` through `VirtualDB`; the promoter-set and binding-method

@@ -219,7 +219,7 @@ METHOD_COMPARISON_ASSAYS: tuple[str, ...] = ("rossi_500bp", "chec_m2025_500bp")
 #: constant at startup (``utils.schema_check``); a database built at a different version
 #: is reported on every page and the figures refuse to draw from it. Bump it whenever a
 #: table the app reads changes shape, and record what changed in ``CHANGELOG.md``.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 __all__ = [
     "BINDING_METHODS",

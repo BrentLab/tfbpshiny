@@ -129,7 +129,8 @@ CREATE TABLE dataset_registry (
     binding_method_id    VARCHAR  REFERENCES binding_methods(binding_method_id),
     -- presentation, on primaries; variants share their primary's base_label
     color                VARCHAR,               -- series colour of the experiment
-    peak_calling_note    VARCHAR                -- how the assay's peak calls were made
+    peak_calling_note    VARCHAR,               -- how the assay's peak calls were made
+    description          VARCHAR                -- dataset description (selection tooltip)
 );
 ```
 
@@ -138,6 +139,10 @@ promoter-set or method variant (e.g. `callingcards_mindel` has
 `callingcards_500bp`). `(primary_db_name, promoter_set_id, binding_method_id)`
 identifies every binding variant; `build_binding_index` in
 `modules/comparison/queries.py` reads exactly these columns.
+
+**`description`** is labretriever's dataset description: the collection
+config's `description` if it has one, else the HuggingFace DataCard's. The
+Dataset selection page shows it as the tooltip of each dataset's name.
 
 **Colours:** `callingcards_500bp`, `rossi_500bp`, `chec_m2025_500bp`, `harbison`,
 `kemmeren`, `hackett` and `degron` carry a colour. **Peak-calling notes:**
@@ -316,7 +321,9 @@ Every comparison row involves two samples. Each sample is identified two ways:
 
 ### `dto`
 
-DTO empirical p-values, computed by the Brent Lab and stored in
+Dual threshold optimization
+([DTO](https://github.com/BrentLab/dual_threshold_optimization)) empirical
+p-values, computed by the Brent Lab and stored in
 `BrentLab/yeast_comparative_analysis`, config `dto`. Each row is a (binding
 sample, perturbation sample) pair for the **same regulator**.
 

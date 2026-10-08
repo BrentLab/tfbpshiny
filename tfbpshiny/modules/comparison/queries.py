@@ -308,7 +308,7 @@ def fetch_topn_results(
 
 
 # ---------------------------------------------------------------------------
-# DTO (direct target overlap)
+# DTO (dual threshold optimization)
 # ---------------------------------------------------------------------------
 
 #: Metric identifiers for the Comparison sidebar selector.

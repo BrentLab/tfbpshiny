@@ -169,7 +169,7 @@ def figures_ui() -> ui.Tag:
                 ),
             ),
             ui.output_ui("fig_authors_bound"),
-            workspace_heading("4. Direct target overlap significance"),
+            workspace_heading("4. Dual threshold optimization (DTO) significance"),
             sidebar_text(
                 ui.p(
                     "Percent of TFs shared by a binding and perturbation dataset"

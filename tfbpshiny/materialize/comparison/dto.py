@@ -1,5 +1,5 @@
 """
-SQL generators for the DTO (direct target overlap) comparison table.
+SQL generators for the DTO (dual threshold optimization) comparison table.
 
 The DTO data is sourced from the HuggingFace Parquet stored in
 ``BrentLab/yeast_comparative_analysis;dto``.

@@ -50,8 +50,7 @@ read the source in `@labretriever (reference)` or check https://brentlab.github.
 - **Plotly**: ^6.0.1 (interactive plots, rendered to HTML with `plotly.io.to_html`)
 - **matplotlib**: static figures on the Figures page
 - **faicons**: ^0.2.2 (icons)
-- **shinywidgets** is declared in `pyproject.toml` but not imported; see "Plotly
-  rendering" in `docs/development.md` for why plots do not use it
+- Plots do not use shinywidgets; see "Plotly rendering" in `docs/development.md`
 
 ## Application Architecture
 

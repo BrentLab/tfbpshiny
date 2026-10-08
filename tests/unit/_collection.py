@@ -2,9 +2,10 @@
 An offline stand-in for ``VirtualDB`` over the packaged collection config.
 
 Exposes only the accessors the registry builders use (``get_datasets``, ``get_tags``,
-``db_name_map``, ``get_region_sets``), backed by labretriever's own
-``MetadataConfig`` so tag merging and ``db_name`` resolution are labretriever's, not a
-re-implementation. Unlike ``VirtualDB`` it never contacts HuggingFace.
+``get_dataset_description``, ``db_name_map``, ``get_region_sets``), backed by
+labretriever's own ``MetadataConfig`` so tag merging and ``db_name`` resolution are
+labretriever's, not a re-implementation. Unlike ``VirtualDB`` it never contacts
+HuggingFace.
 
 """
 
@@ -48,6 +49,12 @@ class CollectionVDB:
             **self.config.get_tags(repo_id, cfg),
             **self._overrides.get(db_name, {}),
         }
+
+    def get_dataset_description(self, db_name: str) -> str | None:
+        # The collection config's description only; VirtualDB falls back to the
+        # DataCard, which needs HuggingFace.
+        repo_id, cfg = self.db_name_map[db_name]
+        return self.config.repositories[repo_id].dataset[cfg].description
 
     def get_region_sets(self, db_name: str) -> dict[str, Any]:
         # The collection declares its region sets in a genome-resources repository

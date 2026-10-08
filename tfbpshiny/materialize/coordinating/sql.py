@@ -69,7 +69,8 @@ class RegistryRow:
     ``binding_method`` (binding only; keys of :data:`tfbpshiny.datasets.PROMOTER_SETS` /
     :data:`~tfbpshiny.datasets.BINDING_METHODS`), ``active_default`` (``"true"`` to
     switch the dataset on in a new session), and on primaries ``color`` and
-    ``peak_calling_note``.
+    ``peak_calling_note``. ``description`` is labretriever's dataset description:
+    the collection config's, else the DataCard's.
 
     """
 
@@ -86,6 +87,7 @@ class RegistryRow:
     binding_method_id: str | None
     color: str | None
     peak_calling_note: str | None
+    description: str | None = None
 
     @property
     def is_primary(self) -> bool:
@@ -146,6 +148,7 @@ def registry_rows(vdb: Any) -> list[RegistryRow]:
             binding_method_id=method,
             color=tags.get("color"),
             peak_calling_note=tags.get("peak_calling_note"),
+            description=vdb.get_dataset_description(db),
         )
     for row in rows.values():
         p = row.primary_db_name
@@ -277,6 +280,7 @@ def dataset_registry_sql(rows: list[RegistryRow]) -> str:
                     r.binding_method_id,
                     r.color,
                     r.peak_calling_note,
+                    r.description,
                 )
             )
             + ")"
@@ -299,7 +303,8 @@ CREATE TABLE dataset_registry (
     promoter_set_id      VARCHAR  REFERENCES promoter_sets(promoter_set_id),
     binding_method_id    VARCHAR  REFERENCES binding_methods(binding_method_id),
     color                VARCHAR,
-    peak_calling_note    VARCHAR
+    peak_calling_note    VARCHAR,
+    description          VARCHAR
 );
 
 -- Primaries first, in their own statement: the FK is checked per statement.
@@ -331,7 +336,7 @@ CREATE TABLE comparative_dataset_registry (
 INSERT INTO comparative_dataset_registry VALUES
     ('dto',
      'hf_parquet',
-     'Directional transcription overlap (DTO) empirical p-values',
+     'Dual threshold optimization (DTO) empirical p-values',
      'BrentLab/yeast_comparative_analysis',
      'dto'),
     ('topn_results',

@@ -13,8 +13,10 @@ The **sidebar** has:
 - **Metric**:
   - *Top-N % responsive*: the median, across regulators, of the percent of each
     regulator's top-N bound targets that are responsive;
-  - *DTO % significant*: the percent of regulators shared by the two datasets whose
-    bound and responsive target sets overlap more than chance (empirical p < 0.01).
+  - *DTO % significant*: from dual threshold optimization
+    ([DTO](https://github.com/BrentLab/dual_threshold_optimization)), the percent
+    of regulators shared by the two datasets whose bound and responsive target sets
+    overlap more than chance (empirical p < 0.01).
 - Controls for the selected metric. For Top-N: **Top N** (10, 25, 50, 75 or 100;
   default 25), **Require full overlap** (on by default: keep only regulator/sample pairs
   whose top-N list is complete after ties are resolved) and **Responsiveness** (Relaxed,

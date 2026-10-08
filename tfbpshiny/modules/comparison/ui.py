@@ -30,9 +30,10 @@ def comparison_ui() -> ui.Tag:
                     ),
                     METRIC_DTO: ui.tooltip(
                         ui.span(METRIC_LABELS[METRIC_DTO]),
-                        "Percent of regulators whose bound and responsive target sets"
-                        " overlap more than chance (empirical p < 0.01), out of all"
-                        " regulators shared by the two datasets.",
+                        "Dual threshold optimization (DTO): percent of regulators whose"
+                        " bound and responsive target sets overlap more than chance"
+                        " (empirical p < 0.01), out of all regulators shared by the"
+                        " two datasets.",
                         placement="right",
                     ),
                 },

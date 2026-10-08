@@ -89,7 +89,7 @@ def select_datasets_sidebar_server(
     # Build dataset lookup from the materialized dataset_registry table.
     # Only show primary datasets (is_primary = TRUE) in the selector.
     _reg_df = conn.execute(
-        "SELECT db_name, data_type, display_name, is_active_default "
+        "SELECT db_name, data_type, display_name, is_active_default, description "
         "FROM dataset_registry WHERE is_primary = TRUE"
     ).df()
 
@@ -99,13 +99,14 @@ def select_datasets_sidebar_server(
             "data_type": str(row["data_type"]),
             "display_name": str(row["display_name"]),
             "is_active_default": bool(row["is_active_default"]),
+            "description": row["description"] if pd.notna(row["description"]) else "",
         }
 
-    # Sorted lists of (db_name, display_name, description) for each data type.
-    # description is not stored in dataset_registry; use empty string.
+    # Sorted lists of (db_name, display_name, description) for each data type. The
+    # description is the row label's tooltip.
     binding_datasets: list[tuple[str, str, str]] = sorted(
         [
-            (db_name, tags["display_name"], "")
+            (db_name, tags["display_name"], tags["description"])
             for db_name, tags in dataset_dict.items()
             if tags["data_type"] == "binding"
         ],
@@ -113,7 +114,7 @@ def select_datasets_sidebar_server(
     )
     perturbation_datasets: list[tuple[str, str, str]] = sorted(
         [
-            (db_name, tags["display_name"], "")
+            (db_name, tags["display_name"], tags["description"])
             for db_name, tags in dataset_dict.items()
             if tags["data_type"] == "perturbation"
         ],

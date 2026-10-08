@@ -116,3 +116,17 @@ def test_the_generated_tables_load_and_link() -> None:
     assert conn.execute(
         "SELECT count(*) FROM dataset_registry WHERE color IS NOT NULL"
     ).fetchone()[0] == len(PROMOTER_ENRICHMENT_500BP) + 1 + len(HEADLINE_PERTURBATION)
+
+
+def test_dataset_descriptions_reach_the_registry() -> None:
+    """The selection page's row tooltips read ``dataset_registry.description``."""
+    vdb = CollectionVDB()
+    conn = duckdb.connect()
+    conn.execute(promoter_sets_sql(promoter_set_descriptions(vdb)))
+    conn.execute(binding_methods_sql())
+    conn.execute(dataset_registry_sql(registry_rows(vdb)))
+    desc = conn.execute(
+        "SELECT description FROM dataset_registry WHERE db_name = 'rossi_500bp'"
+    ).fetchone()[0]
+    assert desc == vdb.get_dataset_description("rossi_500bp")
+    assert desc.startswith("ChIP-exo")

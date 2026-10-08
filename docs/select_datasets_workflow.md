@@ -7,7 +7,7 @@ dataset, every other page analyses.
 
 The **sidebar** lists the binding and perturbation datasets under two headings. Each
 dataset row has a switch that activates it and a filter button that opens its filter
-modal. The modal has two columns: characteristics
+modal. Hovering over a dataset's name shows its description. The modal has two columns: characteristics
 shared across datasets on the left, each with an "Apply to all datasets" toggle that
 copies the setting to every dataset with that characteristic, and dataset-specific
 characteristics on the right. "Queue Filters" stages the modal's settings; "Reset"
