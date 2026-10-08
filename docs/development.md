@@ -192,119 +192,10 @@ Plotly JS, or D3-based custom components.
 
 ---
 
-## Production Deployment (EC2 / Docker)
-
-The production stack is defined in `production.yml` (Docker Compose). Two services:
-
-- **shinyapp** — Runs the Shiny app on port 8000 inside the container. Mounts a named
-  Docker volume `hf_cache` at `/hf-cache` with `HF_HOME=/hf-cache`, so HuggingFace
-  Parquet downloads persist across container rebuilds. Environment variables `HF_TOKEN`
-  and `DOCKER_ENV` are passed in from `.envs/.production/`.
-
-- **traefik** — Reverse proxy handling HTTPS termination and Let's Encrypt certificate
-  renewal for `tfbindingandperturbation.com`.
-
-Both services use the AWS CloudWatch log driver. The EC2 instance and related
-infrastructure (security group, IAM role, user_data.sh bootstrap) are managed by
-Terraform in `terraform/`.
-
-### Prerequisites
-
-- An AWS account with permissions to create EC2 instances, IAM roles,
-  and security groups
-- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.0
-- An EC2 key pair already created in `us-east-2` (or your target region)
-- DNS A records for `tfbindingandperturbation.com`,
-  `www.tfbindingandperturbation.com`,
-  and `shinytraefik.tfbindingandperturbation.com` pointed at the
-  instance's public IP
-
-### 1. Provision the EC2 instance
-
-```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars — set key_name and adjust instance_type / root_volume_gb
-# if needed
-terraform init
-terraform apply
-```
-
-Note the `public_ip` output and update your DNS records to point at it.
-
-### 2. Prepare the environment file
-
-The app requires a single `.env` file that is **not** stored in the repository.
-Create it locally and copy it to the instance:
-
-```bash
-DOCKER_ENV=true
-HF_TOKEN=<your_huggingface_token>       # optional; only for private HF datasets
-TRAEFIK_DASHBOARD_PASSWORD_HASH=myusername:$$2y$$05$$...  # see below
-```
-
-To generate the bcrypt hash for the Traefik dashboard:
-
-```bash
-docker run --rm httpd:alpine htpasswd -nbB myusername mypassword
-```
-
-This prints something like:
-
-```
-myusername:$2y$05$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ123456
-```
-
-Copy the full output into `.env`, but **escape every `$` as `$$`** so Docker
-Compose does not interpret them as variable references:
-
-```bash
-TRAEFIK_DASHBOARD_PASSWORD_HASH=myusername:$$2y$$05$$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ123456
-```
-
-Copy the env file to the instance:
-
-```bash
-scp .env ec2-user@<public_ip>:/opt/tfbpshiny/
-```
-
-### 3. Build and start the stack
-
-```bash
-ssh ec2-user@<public_ip>
-cd /opt/tfbpshiny
-docker compose -f production.yml up -d --build
-```
-
-**First deploy only** — fix `/hf-cache` volume ownership so the non-root `appuser`
-can write HuggingFace downloads to the named volume:
-
-```bash
-docker compose -f production.yml run --rm --user root shinyapp chown appuser /hf-cache
-docker compose -f production.yml up -d
-```
-
-Traefik will automatically obtain a Let's Encrypt TLS certificate on first start.
-
-### HuggingFace cache
-
-The shinyapp container sets `HF_HOME=/hf-cache` and mounts a named Docker volume
-there. HuggingFace data is downloaded once and persists across container rebuilds —
-no re-download on `docker compose up --build`. The volume ownership fix above is
-only needed once; the volume retains correct permissions across rebuilds.
-
-### Logs
-
-Application and Traefik logs are sent to AWS CloudWatch Logs under the log group
-`/tfbpshiny/production` in `us-east-2`.
-
----
-
 ## shinyapps.io Deployment
 
-This section describes how to deploy the app to
-[shinyapps.io](https://www.shinyapps.io) as an alternative to the EC2/Docker
-stack above. The two deployments are independent and can run in parallel.
+The app is deployed to [shinyapps.io](https://www.shinyapps.io) (moving to Posit
+Connect, which uses the same `rsconnect` workflow).
 
 ### Prerequisites
 
@@ -367,8 +258,6 @@ CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
     --name <nickname> \
     --entrypoint shinyapps_entry:app \
     --title "TF Binding and Perturbation" \
-    --exclude "terraform" \
-    --exclude "compose" \
     --exclude "tests" \
     --exclude "docs" \
     --exclude "tmp" \
@@ -382,7 +271,6 @@ CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
     --exclude ".venv" \
     --exclude "mkdocs.yml" \
     --exclude "mkdocs_requirements.txt" \
-    --exclude "production.yml" \
     --exclude "*.log"
 ```
 

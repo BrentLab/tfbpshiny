@@ -51,8 +51,8 @@ To install the latest development version from GitHub, use:
 python -m pip install git+https://github.com/BrentLab/tfbpshiny@dev
 ```
 
-For production deployment (EC2/Docker) and shinyapps.io deployment instructions,
-see [docs/development.md](docs/development.md).
+For shinyapps.io / Posit Connect deployment instructions, see
+[docs/development.md](docs/development.md).
 
 ---
 

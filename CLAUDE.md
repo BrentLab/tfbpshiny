@@ -24,7 +24,6 @@ than guessing at APIs.
 | labretriever | `@labretriever (reference)` | https://github.com/cmatKhan/labretriever |
 | duckDB (for SQL query reference) | `@duckdb (reference)` | https://duckdb.org/docs/stable/
 | plotly | `@plotly (reference)`   | https://plotly.com/python/ |
-| terraform | `@terraform (reference)` | https://developer.hashicorp.com/terraform/docs
 
 ## Technology Stack
 
@@ -49,7 +48,6 @@ read the source in `@labretriever (reference)` or check https://brentlab.github.
 - **Python**: ^3.11
 - **Plotly**: ^6.0.1 (for visualizations)
 - **shinywidgets**: ^0.5.2
-- **python-dotenv**: ^1.1.0 (environment configuration)
 - **faicons**: ^0.2.2 (icons)
 
 ## Application Architecture
@@ -298,37 +296,6 @@ def test_navigation(page: Page, app):
 - Controlled via CLI flags on the root parser (available to all subcommands):
   - `--log-level` (choices: DEBUG, INFO, WARNING, ERROR, CRITICAL; default: INFO)
   - `--log-handler` (choices: console, file; default: console)
-
-## Docker Deployment
-
-Production uses Docker Compose (`production.yml`). Environment files in
-`.envs/.production/`. Traefik handles reverse proxy routing.
-
-The shinyapp service mounts a named Docker volume `hf_cache` at `/hf-cache`
-inside the container, and sets `HF_HOME=/hf-cache`. This causes HuggingFace
-downloads to land on the persistent volume rather than the container layer,
-so the cache survives container rebuilds.
-
-## Terraform / Infrastructure as Code
-
-The `terraform/` directory contains Terraform configuration for provisioning
-the EC2 instance on AWS. It manages:
-
-- EC2 instance (Amazon Linux 2023, default `t3.small`, 20 GB gp3 root volume)
-- Security group (ports 22, 80, 443)
-- IAM role with `CloudWatchAgentServerPolicy` (required for the `awslogs` Docker log driver)
-- `user_data.sh` cloud-init script that installs Docker + Compose plugin and clones the repo
-
-It does **not** manage DNS records, SSL certificates (handled by Traefik/Let's Encrypt),
-or secret env files (must be copied to the instance manually after provisioning).
-
-**Key files:**
-- `terraform/main.tf` — resource definitions and `public_ip` output
-- `terraform/variables.tf` — `aws_region`, `instance_type`, `key_name`, `root_volume_gb`
-- `terraform/terraform.tfvars.example` — copy to `terraform.tfvars` (gitignored) and fill in values
-- `terraform/user_data.sh` — cloud-init script run on first boot
-
-**Terraform state files and `terraform.tfvars` are gitignored.** Never commit them.
 
 ## Branch Strategy
 

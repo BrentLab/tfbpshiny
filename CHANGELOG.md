@@ -483,6 +483,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Removed
 
+- The AWS deployment: `compose/` (Dockerfiles, Traefik), `production.yml`,
+  `terraform/`, the Dependabot Docker entry and the EC2/Docker documentation.
+  The app is deployed to shinyapps.io (moving to Posit Connect).
+  `python-dotenv`, used only by the Docker environment, is dropped.
 - `tfbpshiny/deprecated/` (4,400 lines that no longer imported), the
   `modules/binding` and `modules/perturbation` `queries.py` shims,
   `utils/sample_conditions.py`, the legacy per-variant top-N path and its
