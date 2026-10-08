@@ -11,6 +11,32 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Rebuild required (schema version 1).** Every computed table now also carries
+  plain identity columns beside its composite `source_sample` key: `binding_db`,
+  `binding_sample_id`, `perturbation_db`, `perturbation_sample_id` on
+  `topn_results` and `method_promoter_model_topn`; `db_a`, `sample_a`, `db_b`,
+  `sample_b` on `topn_agreement` and `correlations`; `db_name`, `sample_id` on
+  `topn_target_sets`. Readers select by name instead of reconstructing a
+  `repo;config;` prefix and joining with `LIKE`. The build stamps
+  `tfbpshiny.datasets.SCHEMA_VERSION` into a new `schema_version` table; the app
+  shows a banner on every page, and the figures refuse to draw, when the stamp
+  does not match. Verified by rebuilding and fingerprinting every table: identical
+  to the previous build on the original columns.
+- Per-dataset facts are declared once, in `tfbpshiny/datasets.py` (measurement
+  columns, promoter-set and method levels, top-N choices, preset names, gene
+  universe, DTO threshold, schema version). The Comparison and Figures pages build
+  their choice lists from it; the figures' promoter-set and method axis labels
+  come from the `promoter_sets` / `binding_methods` tables.
+- The two Calling Cards / Harbison authors'-threshold generators are one
+  `materialize/comparison/authors_bound.py` driven by `AuthorsBoundConfig`; the
+  materializer's public names are `exec_static`, `vdb_to_table`, `stage_topn`,
+  `stage_method_promoter_topn` and `HARBISON_DEDUP_CTE` (underscore aliases kept
+  for one release).
+- The Comparison and Figures workspace servers are split into one file per tab
+  or figure under `server/`, wired from a thin `workspace.py`; output ids are
+  unchanged and an end-to-end render snapshot (`tests/e2e/test_outputs_render.py`)
+  is identical before and after.
+
 - **Rebuild required.** Re-run `tfbpshiny materialize` (about 16 minutes against
   HuggingFace, `correlations` included) so the stored tables follow the changes
   below. Affected: `topn_results`, `topn_agreement`, `topn_target_sets`,
@@ -258,6 +284,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Six samples (three per Hughes dataset: YIL101C, YER161C, YKL109W) were silently
+  dropped from `hughes_knockout_meta` / `hughes_overexpression_meta` because the
+  materializer discarded any row containing a NULL (their `found_domain` is
+  NULL). Only the `correlations` writer drops NaN rows now; the samples are back,
+  `sample_regulator` gains six rows, and the Hughes method x promoter-set fits
+  gain one regulator.
+- Shiny inputs are read through one `utils.inputs.read_input`, which falls back
+  to the default only for an input the client has not sent yet (or a value the
+  cast rejects); the sixteen `try/except Exception` readers it replaces also
+  hid real errors. The Comparison queries log a DB error instead of swallowing it.
+
 - **Default dataset filters now reach every variant of a dataset.** A filter set
   on the selection tab (or by default) is applied to the dataset's promoter-set
   and peak-calling variants as well, through `expand_filters_to_variants` in
@@ -331,6 +368,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   column — would have been silently emptied by the existing `dropna(how="any")`.
 
 ### Added
+
+- `scripts/snapshot_db.py`, `scripts/diff_snapshots.py` and
+  `scripts/snapshot_queries.py`: fingerprint every table of a build and the output
+  of every read-side query under the default inputs, so a rebuild or a refactor
+  can be diffed against a baseline.
+- `components.sidebar_text`; every `empty-state` and `sidebar-text` div goes
+  through `components.py` as CLAUDE.md required.
 
 - **Figure 10, "Targets shared between datasets"**: for each comparison type, the
   featured TF's Venn diagram of the targets each dataset ranks in its top N (left)
@@ -438,6 +482,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   yields no useful filename.
 
 ### Removed
+
+- `tfbpshiny/deprecated/` (4,400 lines that no longer imported), the
+  `modules/binding` and `modules/perturbation` `queries.py` shims,
+  `utils/sample_conditions.py`, the legacy per-variant top-N path and its
+  `--legacy-topn` flag (its SQL survives only as the test oracle), `fetch_dto_pvalues`,
+  the `has_top_n` / `table_exists` / `warn_if_stale_topn_schema` probes, and four
+  component factories with no caller. `docs/development.md` and
+  `docs/sql_operations.md` are rewritten to describe the materialize-then-read
+  architecture; the `page_test.py` requirement is dropped.
 
 - The `criteria` column on `topn_results`, and with it every row scored from a
   perturbation dataset's own `responsive` boolean. That column is deprecated

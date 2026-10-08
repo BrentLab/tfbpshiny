@@ -169,13 +169,13 @@ def test_sidebar_promoter_set_keys_match_data_keys() -> None:
     ``500bp`` -- the one value where label and id coincide -- rendered empty.
 
     """
-    from tfbpshiny.modules.comparison.server.workspace import (
-        _PROMOTER_SET_ALIAS,
-        _PROMOTER_TOOLTIPS,
+    from tfbpshiny.modules.comparison.server.context import (
+        PROMOTER_SET_ALIAS,
+        PROMOTER_TOOLTIPS,
     )
 
-    assert set(_PROMOTER_SET_ALIAS) == set(PROMOTER_SET_LEVELS)
-    assert set(_PROMOTER_TOOLTIPS) == set(PROMOTER_SET_LEVELS)
+    assert set(PROMOTER_SET_ALIAS) == set(PROMOTER_SET_LEVELS)
+    assert set(PROMOTER_TOOLTIPS) == set(PROMOTER_SET_LEVELS)
 
 
 def test_index_promoter_set_ids_are_known(registry_df: pd.DataFrame) -> None:

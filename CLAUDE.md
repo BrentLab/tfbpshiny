@@ -81,6 +81,13 @@ Each module follows a consistent structure:
   function taking `conn`, `logger` and the shared reactives it needs
   (`select_datasets` additionally splits out `server/sidebar.py` and
   `server/dataset_row.py`, combined by `select_datasets_server`)
+- Larger servers (`comparison`, `figures`) keep `workspace.py` thin: it builds a
+  per-session context (`server/context.py`), registers shared reactives
+  (`server/shared.py`) and then calls one `register_*` function per tab or figure
+  (`server/fig6.py`, `server/compare_methods.py`, ...). Shiny registers a
+  `@render.ui` / `@reactive.calc` against the current session wherever it is
+  created, so those helpers need no decorator of their own. Output ids are fixed
+  by `ui.py`; never rename one without changing both.
 - `queries.py` (optional) — SQL the module runs against the read-only materialized
   DuckDB connection (`conn`). Builders return `(sql, params)`; `fetch_*` functions
   execute and return DataFrames. **Note**: queries.py is excluded from flake8 linting

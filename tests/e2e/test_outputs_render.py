@@ -81,7 +81,8 @@ PAGES: dict[str, tuple[str, tuple[str, ...]]] = {
             "fig_authors_bound",
             "fig_dto_bars",
             "fig_dto_venn",
-            "agreement_dataset_picker",
+            # agreement_dataset_picker is inside a collapsed accordion: hidden
+            # outputs are never rendered, so it is not listed.
             "fig_agreement_binding",
             "fig_agreement_perturbation",
             "fig_promoter_boxes",
@@ -92,6 +93,11 @@ PAGES: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
 }
+
+#: Outputs that legitimately render nothing in the default state (a status message
+#: that only appears when the selection is incomplete). They must still finish
+#: rendering without error, but may be empty.
+MAY_BE_EMPTY = {"analysis_status"}
 
 pytestmark = pytest.mark.skipif(
     not _DB.exists(), reason=f"no materialized database at {_DB}"
@@ -106,6 +112,33 @@ def _normalise(text: str) -> str:
     )
 
 
+def _settled_text(page: Page, locator, *, settle_ms: int = 3000) -> str:
+    """
+    The output's text once it has stopped changing.
+
+    Several outputs render twice on first view: once before a sibling input (a
+    regulator selector, a tab's controls) has reached the server, then again with it.
+    A single "not recalculating" check can land between the two, so the text is
+    sampled until it is unchanged for ``settle_ms`` with no render in flight.
+
+    """
+    deadline = 120_000
+    last, stable_since, waited = None, 0, 0
+    while waited < deadline:
+        busy = "recalculating" in (locator.get_attribute("class") or "")
+        text = _normalise(locator.inner_text())
+        if not busy and text == last:
+            stable_since += 500
+            if stable_since >= settle_ms:
+                return text
+        else:
+            stable_since = 0
+        last = text
+        page.wait_for_timeout(500)
+        waited += 500
+    raise AssertionError(f"output never settled: {locator}")
+
+
 @pytest.mark.parametrize("tab", list(PAGES))
 def test_every_output_renders(page: Page, app, tab: str) -> None:
     module, outputs = PAGES[tab]
@@ -115,10 +148,14 @@ def test_every_output_renders(page: Page, app, tab: str) -> None:
     rendered: dict[str, str] = {}
     for out in outputs:
         locator = page.locator(f"#{module}-{out}")
-        # Figures compute from the database on first view; allow them time.
-        expect(locator).not_to_be_empty(timeout=120_000)
+        # Shiny marks an output `recalculating` while its render runs. Figures
+        # compute from the database on first view; allow them time.
+        expect(locator).to_have_class(re.compile(r"shiny-bound-output"), timeout=60_000)
+        expect(locator).not_to_have_class(re.compile(r"recalculating"), timeout=120_000)
+        if out not in MAY_BE_EMPTY:
+            expect(locator).not_to_be_empty(timeout=120_000)
         expect(locator.locator(".shiny-output-error")).to_have_count(0)
-        rendered[out] = _normalise(locator.inner_text())
+        rendered[out] = _settled_text(page, locator)
 
     if _MODE == "write":
         _SNAPSHOT.parent.mkdir(exist_ok=True)
@@ -127,4 +164,12 @@ def test_every_output_renders(page: Page, app, tab: str) -> None:
         _SNAPSHOT.write_text(json.dumps(existing, indent=2, sort_keys=True) + "\n")
     elif _MODE == "compare":
         baseline = json.loads(_SNAPSHOT.read_text())[tab]
-        assert rendered == baseline
+        diffs = {
+            k: (baseline.get(k), rendered.get(k))
+            for k in sorted(set(baseline) | set(rendered))
+            if baseline.get(k) != rendered.get(k)
+        }
+        assert not diffs, "\n".join(
+            f"{k}:\n  before: {(a or '')[:600]!r}\n  after:  {(b or '')[:600]!r}"
+            for k, (a, b) in diffs.items()
+        )

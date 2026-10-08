@@ -159,6 +159,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         dataset_filters=analysis_filters,
         conn=conn,
         logger=logger,
+        db_schema_version=db_schema_version,
     )
 
     figures_workspace_server(
