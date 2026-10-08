@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import duckdb
 
+from tests.unit._collection import CollectionVDB
 from tfbpshiny.materialize.coordinating.sql import (
     binding_methods_sql,
+    promoter_set_descriptions,
     promoter_sets_sql,
 )
 from tfbpshiny.utils.vdb_init import binding_method_labels, promoter_set_labels
@@ -13,7 +15,7 @@ from tfbpshiny.utils.vdb_init import binding_method_labels, promoter_set_labels
 
 def _registry_conn() -> duckdb.DuckDBPyConnection:
     conn = duckdb.connect(":memory:")
-    conn.execute(promoter_sets_sql())
+    conn.execute(promoter_sets_sql(promoter_set_descriptions(CollectionVDB())))
     conn.execute(binding_methods_sql())
     return conn
 

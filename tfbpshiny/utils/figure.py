@@ -17,28 +17,16 @@ import plotly.graph_objects as go
 from plotly.io import to_html
 from shiny import ui
 
-from tfbpshiny.config import load_app_config
-
-#: Palettes are declared in the collection config (``color`` tags and the
-#: ``tfbpshiny`` vocabularies), so a dataset's colour lives next to its label.
-_CONFIG = load_app_config()
-
 #: Base font size. Deliberately large -- these figures are meant to be readable when
 #: dropped into a slide or a manuscript, not just on a wide monitor.
 FONT_SIZE = 16
 AXIS_TITLE_SIZE = 18
 TITLE_SIZE = 20
 
-#: Colour per binding dataset, keyed by ``dataset_registry.base_label``. Declared as
-#: the ``color`` tag of each binding primary in the collection config.
-BINDING_COLORS: dict[str, str] = _CONFIG.colors_by_base_label("binding")
-
-#: Colour per perturbation dataset, keyed by ``base_label`` (the ``color`` tag).
-PERTURBATION_COLORS: dict[str, str] = _CONFIG.colors_by_base_label("perturbation")
-
 #: Colour cycle for figures that plot *pairs* of datasets (figure 6's overlap
 #: agreement) rather than one dataset per series. Deliberately avoids every hue family
-#: already claimed by BINDING_COLORS/PERTURBATION_COLORS (purple, red-orange, teal,
+#: already claimed by the dataset colours (the registry's ``color`` column: purple,
+#: red-orange, teal,
 #: light blue, navy, salmon, mint) -- reusing those, even approximately, risks a reader
 #: mistaking a pair's colour for one specific dataset's, since a pair isn't "the
 #: dataset that happens to be tinted red" the way a single-series figure's line is. An
@@ -60,20 +48,6 @@ PAIR_COLORS: tuple[str, ...] = (
     "#5A5A5A",
     "#222222",
 )
-
-#: Colour per promoter set definition, keyed by ``promoter_set_id`` (figures 7 & 8's
-#: box axis). No existing app-wide promoter-set colour convention to reuse -- these
-#: never appear alongside BINDING_COLORS/PAIR_COLORS in the same panel (figures 7/8
-#: exclude Harbison, the one dataset colour with a similar purple), so a fresh
-#: qualitative set is fine.
-PROMOTER_SET_COLORS: dict[str, str] = {
-    k: v.color for k, v in _CONFIG.promoter_sets.items() if v.color
-}
-
-#: Colour per binding method (figure 9's box axis, the Comparison method rows).
-METHOD_COLORS: dict[str, str] = {
-    k: v.color for k, v in _CONFIG.binding_methods.items() if v.color
-}
 
 
 def apply_figure_style(
@@ -254,12 +228,8 @@ def matplotlib_svg_html(
 
 __all__ = [
     "AXIS_TITLE_SIZE",
-    "BINDING_COLORS",
     "FONT_SIZE",
-    "METHOD_COLORS",
     "PAIR_COLORS",
-    "PERTURBATION_COLORS",
-    "PROMOTER_SET_COLORS",
     "TITLE_SIZE",
     "apply_figure_style",
     "figure_html",

@@ -16,6 +16,8 @@ the data.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 # ---------------------------------------------------------------------------
 # Measurement columns
 # ---------------------------------------------------------------------------
@@ -80,6 +82,72 @@ PROMOTER_SET_LEVELS: tuple[str, ...] = ("kang", "mindel", "500bp", "intergenic")
 #: The two binding methods, in display order, matching
 #: ``binding_methods.binding_method_id``.
 METHOD_LEVELS: tuple[str, ...] = ("promoter_enrichment", "peak_calling")
+
+
+@dataclass(frozen=True)
+class Vocab:
+    """
+    One promoter set or binding method, as the app presents it.
+
+    :param display_name: Label shown in the UI and written to the registry tables.
+    :param color: Series colour where the entry is a plot axis, or ``None``.
+    :param reference: URL of the publication that defines it, or ``None``.
+    :param region_set: Name of the labretriever ``genome_resources`` region set this
+        promoter set corresponds to; ``materialize`` takes the description from it.
+    :param description: Used only where there is no region set to describe it.
+
+    """
+
+    display_name: str
+    color: str | None = None
+    reference: str | None = None
+    region_set: str | None = None
+    description: str | None = None
+
+
+#: Every promoter set a binding dataset's ``promoter_set`` tag may name. The comparable
+#: windows (:data:`PROMOTER_SET_LEVELS`) correspond to labretriever region sets, which
+#: hold their descriptions; ``peaks`` and ``array`` are not windows and say so here.
+PROMOTER_SETS: dict[str, Vocab] = {
+    "kang": Vocab(
+        "Kang",
+        color="#377EB8",
+        reference="https://doi.org/10.1101/gr.259655.119",
+        region_set="Kang",
+    ),
+    "mindel": Vocab(
+        "Mindel",
+        color="#4DAF4A",
+        reference="https://doi.org/10.1101/2025.10.12.681120",
+        region_set="Mindel",
+    ),
+    "500bp": Vocab("500bp", color="#984EA3", region_set="start_codon_500bp"),
+    "intergenic": Vocab("Intergenic", color="#FF7F00", region_set="intergenic"),
+    "peaks": Vocab(
+        "Peaks",
+        description=(
+            "Regions as called by the original authors' peak-calling pipeline; not"
+            " a fixed promoter window."
+        ),
+    ),
+    "array": Vocab(
+        "Array Probes",
+        description=(
+            "Regions fixed by the ChIP-chip microarray platform. Not a promoter window"
+            " and not re-quantifiable over one: the source ships per-target binding"
+            " ratios with no underlying signal track to re-summarise."
+        ),
+    ),
+}
+
+#: Every binding method a binding dataset's ``binding_method`` tag may name.
+BINDING_METHODS: dict[str, Vocab] = {
+    "promoter_enrichment": Vocab("Promoter Enrichment", color="#4DBBD5"),
+    "peak_calling": Vocab("Peak Calling", color="#E64B35"),
+}
+
+assert set(PROMOTER_SET_LEVELS) <= set(PROMOTER_SETS)
+assert set(METHOD_LEVELS) == set(BINDING_METHODS)
 
 # ---------------------------------------------------------------------------
 # Top-N analysis
@@ -156,9 +224,15 @@ METHOD_COMPARISON_ASSAYS: tuple[str, ...] = ("rossi_500bp", "chec_m2025_500bp")
 #:
 #: 1 -- first stamped layout: plain ``*_db`` / ``*_sample_id`` identity columns beside
 #:      the composite ``source_sample`` keys on every computed table.
-SCHEMA_VERSION = 1
+#: 2 -- presentation columns on the registry tables: ``color`` and
+#:      ``peak_calling_note`` on ``dataset_registry``, ``color`` and ``reference`` on
+#:      ``promoter_sets``, ``color`` on ``binding_methods``.
+SCHEMA_VERSION = 2
 
 __all__ = [
+    "BINDING_METHODS",
+    "PROMOTER_SETS",
+    "Vocab",
     "SCHEMA_VERSION",
     "HEADLINE_PERTURBATION",
     "METHOD_COMPARISON_ASSAYS",

@@ -225,7 +225,9 @@ def test_venn_circles_use_the_binding_dataset_colours() -> None:
     """Fig 5's circles share the colour each dataset has in every other figure."""
     from matplotlib.colors import to_rgb
 
-    from tfbpshiny.utils.figure import BINDING_COLORS
+    colours = {
+        label: f"#{i:02x}{i:02x}80" for i, label in enumerate(set(LABELS.values()), 1)
+    }
 
     sets = {
         DTO_BINDING_ORDER[0]: {f"g{i}" for i in range(30)},
@@ -233,7 +235,7 @@ def test_venn_circles_use_the_binding_dataset_colours() -> None:
         DTO_BINDING_ORDER[2]: {f"g{i}" for i in range(50, 80)},
     }
     fig, proportional = dto_venn_figure(
-        sets, LABELS, list(DTO_BINDING_ORDER), title="X"
+        sets, LABELS, list(DTO_BINDING_ORDER), title="X", colors=colours
     )
     # Patches are the first three artists in set order (A only, B only, C only
     # regions are drawn in "100", "010", "001" order is not guaranteed), so compare
@@ -242,7 +244,7 @@ def test_venn_circles_use_the_binding_dataset_colours() -> None:
         tuple(round(c, 2) for c in p.get_facecolor()[:3]) for p in fig.axes[0].patches
     }
     for db in DTO_BINDING_ORDER:
-        expected = tuple(round(c, 2) for c in to_rgb(BINDING_COLORS[LABELS[db]]))
+        expected = tuple(round(c, 2) for c in to_rgb(colours[LABELS[db]]))
         assert expected in drawn
 
 
@@ -593,11 +595,12 @@ def test_agreement_curve_drops_horizontal_gridlines_box_keeps_them() -> None:
 
 
 def test_agreement_pair_colors_are_distinct_from_single_dataset_colors() -> None:
-    """Pairs get their own palette, not `BINDING_COLORS`/`PERTURBATION_COLORS` -- a pair
-    is not "the dataset that happens to be tinted red" the way a single-series figure's
-    line is, so reusing that palette risks a reader misreading it as one."""
+    """Pairs get their own palette, not the datasets' registry colours -- a pair is not
+    "the dataset that happens to be tinted red" the way a single-series figure's line
+    is, so reusing that palette risks a reader misreading it as one."""
+    from tests.unit._collection import CollectionVDB
+    from tfbpshiny.materialize.coordinating.sql import registry_rows
     from tfbpshiny.modules.figures.plots import agreement_curve_figure
-    from tfbpshiny.utils.figure import BINDING_COLORS, PERTURBATION_COLORS
 
     curve = agreement_curve_figure(
         pd.DataFrame(
@@ -609,9 +612,7 @@ def test_agreement_pair_colors_are_distinct_from_single_dataset_colors() -> None
             }
         )
     )
-    single_dataset_colors = set(BINDING_COLORS.values()) | set(
-        PERTURBATION_COLORS.values()
-    )
+    single_dataset_colors = {r.color for r in registry_rows(CollectionVDB()) if r.color}
     for trace in curve.data:
         assert trace.line.color not in single_dataset_colors
 

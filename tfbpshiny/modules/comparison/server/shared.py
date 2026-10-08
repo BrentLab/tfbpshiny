@@ -26,7 +26,6 @@ from tfbpshiny.modules.comparison.queries import (
     fetch_dto_results_method_intersected,
 )
 from tfbpshiny.modules.comparison.server.context import (
-    PROMOTER_SET_ALIAS,
     ComparisonContext,
     read_dto_ranking,
     read_metric,
@@ -109,7 +108,7 @@ def register_shared(input: Any, session: Any, ctx: ComparisonContext) -> Shared:
         """
         included_ps = list(
             read_input(
-                input, "cp_included_promoter_sets", list(PROMOTER_SET_ALIAS), list
+                input, "cp_included_promoter_sets", list(PROMOTER_SET_LEVELS), list
             )
         )
 

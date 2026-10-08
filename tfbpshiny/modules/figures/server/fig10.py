@@ -16,8 +16,6 @@ from tfbpshiny.modules.figures.server.context import (
 )
 from tfbpshiny.modules.figures.server.shared import Shared
 from tfbpshiny.utils.figure import (
-    BINDING_COLORS,
-    PERTURBATION_COLORS,
     figure_html,
     matplotlib_svg_html,
 )
@@ -72,7 +70,7 @@ def register_fig10(
         top_n = shared.read_top_n()
         filters = ctx.dataset_filters()
         tf = read_input(input, "featured_tf", "", str)
-        palette = BINDING_COLORS if ctype == "binding" else PERTURBATION_COLORS
+        palette = ctx.binding_colors if ctype == "binding" else ctx.perturbation_colors
         panels = []
         sets = fetch_target_sets(conn, datasets, tf, top_n, filters) if tf else {}
         if any(sets.values()):

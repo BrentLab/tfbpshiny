@@ -142,12 +142,13 @@ the connection (`conn`) to every module server. `VirtualDB` is used only in
 touches HuggingFace. See `docs/development.md` and `docs/materialized_db_schema.md`.
 
 Dataset identity and presentation (labels, primary/variant structure, promoter set,
-binding method, default-active, colours) are declared once, as `tags` in
-`brentlab_yeast_collection.yaml`, with the promoter-set and method vocabularies in its
-`tfbpshiny:` section; `tfbpshiny/config.py` loads them. Never hardcode a dataset label,
-colour or db_name-to-label map in module code: read the registry tables (labels) or
-`load_app_config()` (presentation). Measurement columns, levels and the dataset groups
-the figures use live in `tfbpshiny/datasets.py`.
+binding method, default-active, colours, notes) are declared once, as labretriever
+`tags` in `brentlab_yeast_collection.yaml`; the promoter-set and binding-method
+vocabularies are `PROMOTER_SETS` / `BINDING_METHODS` in `tfbpshiny/datasets.py`.
+`materialize` reads the tags through `VirtualDB` (never parse the YAML in tfbpshiny)
+and writes them into the registry tables; the app reads only those tables. Never
+hardcode a dataset label, colour or db_name-to-label map in module code. Measurement
+columns, levels and the dataset groups the figures use also live in `datasets.py`.
 
 ## Common Patterns
 

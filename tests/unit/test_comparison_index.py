@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from tfbpshiny.config import load_app_config
+from tfbpshiny.datasets import BINDING_METHODS, PROMOTER_SETS
 from tfbpshiny.modules.comparison.queries import (
     METHOD_LEVELS,
     PROMOTER_SET_LEVELS,
@@ -138,11 +138,10 @@ def test_perturbation_rows_are_ignored(registry_df: pd.DataFrame) -> None:
 
 def test_labels_come_from_the_registry(registry_df: pd.DataFrame) -> None:
     """display_name and base_label are read through, not reconstructed."""
-    cfg = load_app_config()
     index = build_binding_index(
         registry_df,
-        {k: v.display_name for k, v in cfg.promoter_sets.items()},
-        {k: v.display_name for k, v in cfg.binding_methods.items()},
+        {k: v.display_name for k, v in PROMOTER_SETS.items()},
+        {k: v.display_name for k, v in BINDING_METHODS.items()},
     )
     assert index.label["rossi"] == "2021 ChIP-exo (Rossi)"
     assert index.base_label["rossi_peaks_mindel"] == "2021 ChIP-exo"
@@ -175,13 +174,12 @@ def test_sidebar_promoter_set_keys_match_data_keys() -> None:
     ``500bp`` -- the one value where label and id coincide -- rendered empty.
 
     """
-    from tfbpshiny.modules.comparison.server.context import (
-        PROMOTER_SET_ALIAS,
-        PROMOTER_TOOLTIPS,
-    )
+    from tfbpshiny.modules.comparison.server.context import promoter_set_alias
 
-    assert set(PROMOTER_SET_ALIAS) == set(PROMOTER_SET_LEVELS)
-    assert set(PROMOTER_TOOLTIPS) == set(PROMOTER_SET_LEVELS)
+    info = {ps: {"display_name": v.display_name} for ps, v in PROMOTER_SETS.items()}
+    alias = promoter_set_alias(info)  # type: ignore[arg-type]
+    assert set(alias) == set(PROMOTER_SET_LEVELS)
+    assert alias["500bp"] == "Promoter Set 3 (500bp)"
 
 
 def test_index_promoter_set_ids_are_known(registry_df: pd.DataFrame) -> None:

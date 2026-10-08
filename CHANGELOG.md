@@ -11,18 +11,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
-- **Rebuild required (registry labels).** Dataset identity and presentation are
-  declared once, as labretriever `tags` in `brentlab_yeast_collection.yaml`
-  (plus a `tfbpshiny:` section for the promoter-set and method vocabularies),
-  loaded by `tfbpshiny/config.py`. The `dataset_registry`, `promoter_sets` and
-  `binding_methods` tables are generated from it instead of hand-written SQL, HF
-  coordinates come from VirtualDB, and the Comparison page's label, colour and
-  note dicts, the figure palettes and the duplicated dataset lists are gone.
-  Label changes: promoter set "500 bp" is now "500bp" everywhere, and the Hughes
-  knockout dataset is "2006 TFKO" everywhere (it was "2006 Knockout" in the
-  registry and the figures). The YAML's own tags, which disagreed with the
-  registry (e.g. degron's assay was `ChIPexo`), now match it. Promoter-set
-  descriptions are the genome-resources region-set text.
+- **Rebuild required (schema version 2).** Dataset identity and presentation are
+  declared once, as labretriever `tags` in `brentlab_yeast_collection.yaml`,
+  read by `materialize` through `VirtualDB`; the promoter-set and binding-method
+  vocabulary is `PROMOTER_SETS` / `BINDING_METHODS` in `tfbpshiny/datasets.py`,
+  with promoter-set descriptions from labretriever's genome-resources region
+  sets. The `dataset_registry`, `promoter_sets` and `binding_methods` tables are
+  generated from these instead of hand-written SQL, and gain `color`,
+  `reference` and `peak_calling_note` columns, so the app reads labels, colours,
+  tooltips and notes only from the database. HF coordinates come from VirtualDB.
+  The Comparison page's label, colour and note dicts, the figure palettes and
+  the duplicated dataset lists are gone; plot functions take their palette as an
+  argument. Label changes: promoter set "500 bp" is now "500bp" everywhere, and
+  the Hughes knockout dataset is "2006 TFKO" everywhere (it was "2006 Knockout"
+  in the registry and the figures). The YAML's own tags, which disagreed with
+  the registry (e.g. degron's assay was `ChIPexo`), now match it.
 - **Rebuild required (schema version 1).** Every computed table now also carries
   plain identity columns beside its composite `source_sample` key: `binding_db`,
   `binding_sample_id`, `perturbation_db`, `perturbation_sample_id` on

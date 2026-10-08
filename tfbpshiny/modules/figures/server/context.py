@@ -25,8 +25,11 @@ from tfbpshiny.modules.figures.queries import (
 )
 from tfbpshiny.utils.schema_check import schema_mismatch_message
 from tfbpshiny.utils.vdb_init import (
+    binding_method_colors,
     binding_method_labels,
+    dataset_colors,
     get_regulator_display_name,
+    promoter_set_info,
     promoter_set_labels,
 )
 
@@ -57,6 +60,11 @@ class FiguresContext:
     :param labels: ``db_name -> base_label`` for every registry row.
     :param promoter_set_labels: ``promoter_set_id -> display_name``.
     :param method_labels: ``binding_method_id -> display_name``.
+    :param binding_colors: ``base_label -> colour`` for binding experiments.
+    :param perturbation_colors: ``base_label -> colour`` for perturbation
+        experiments.
+    :param promoter_set_colors: ``promoter_set_id -> colour``.
+    :param method_colors: ``binding_method_id -> colour``.
     :param reg_labels: ``locus tag -> "SYMBOL (tag)"`` (or the tag alone).
     :param reg_symbols: ``locus tag -> symbol`` for regulators that have one.
     :param agreement_choices: Selectable datasets for figures 6 and 10, per comparison
@@ -72,6 +80,10 @@ class FiguresContext:
     labels: dict[str, str] = field(default_factory=dict)
     promoter_set_labels: dict[str, str] = field(default_factory=dict)
     method_labels: dict[str, str] = field(default_factory=dict)
+    binding_colors: dict[str, str] = field(default_factory=dict)
+    perturbation_colors: dict[str, str] = field(default_factory=dict)
+    promoter_set_colors: dict[str, str] = field(default_factory=dict)
+    method_colors: dict[str, str] = field(default_factory=dict)
     reg_labels: dict[str, str] = field(default_factory=dict)
     reg_symbols: dict[str, str] = field(default_factory=dict)
     agreement_choices: dict[str, dict[str, str]] = field(default_factory=dict)
@@ -122,6 +134,13 @@ def build_context(
     # tables the build wrote, so they cannot drift from the Comparison page.
     ctx.promoter_set_labels = promoter_set_labels(conn)
     ctx.method_labels = binding_method_labels(conn)
+    # Series colours are registry columns, declared in the collection config.
+    ctx.binding_colors = dataset_colors(conn, "binding")
+    ctx.perturbation_colors = dataset_colors(conn, "perturbation")
+    ctx.promoter_set_colors = {
+        k: str(v["color"]) for k, v in promoter_set_info(conn).items() if v["color"]
+    }
+    ctx.method_colors = binding_method_colors(conn)
 
     for _, row in get_regulator_display_name(conn).iterrows():
         tag = str(row["regulator_locus_tag"])

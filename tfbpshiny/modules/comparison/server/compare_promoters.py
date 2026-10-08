@@ -15,8 +15,6 @@ from tfbpshiny.modules.comparison.queries import (
     fetch_topn_results,
 )
 from tfbpshiny.modules.comparison.server.context import (
-    PROMOTER_SET_ALIAS,
-    PROMOTER_TOOLTIPS,
     ComparisonContext,
     cell_style,
     inputs_ready,
@@ -141,7 +139,7 @@ def register_compare_promoters(
 
             selected_ps = set(
                 read_input(
-                    input, "cp_included_promoter_sets", list(PROMOTER_SET_ALIAS), list
+                    input, "cp_included_promoter_sets", list(PROMOTER_SET_LEVELS), list
                 )
             )
             # Keep the canonical column order regardless of checkbox click order.
@@ -180,7 +178,7 @@ def register_compare_promoters(
                         ui.tags.th(
                             ui.tooltip(
                                 ui.span(ctx.promoter_set_labels.get(ps, ps)),
-                                PROMOTER_TOOLTIPS.get(ps, ""),
+                                ctx.promoter_tooltips.get(ps, ""),
                             ),
                             style=_th_style,
                         )

@@ -99,17 +99,19 @@ dataset in the repository; dataset-level tags override them):
 | `data_type` | `binding` or `perturbation`; datasets without one (the comparative `dto`) are not in the registry |
 | `display_name`, `base_label` | full label, and the label shared by every variant of one experiment |
 | `primary` | `db_name` of the primary this dataset is a variant of (a primary names itself or nothing) |
-| `promoter_set`, `binding_method` | binding only; keys of the `tfbpshiny` section below |
+| `promoter_set`, `binding_method` | binding only; keys of `PROMOTER_SETS` / `BINDING_METHODS` in `tfbpshiny/datasets.py` |
 | `assay`, `active_default`, `color`, `peak_calling_note` | assay name; on in a new session; series colour and peak-caller tooltip (primaries) |
 
-The YAML's top-level `tfbpshiny` section (ignored by labretriever) declares the promoter
-sets and binding methods those tags refer to: display name, colour, publication, and
-description (taken from the genome-resources `region_sets` where one is named).
+The promoter sets and binding methods those tags refer to are app vocabulary, in
+`tfbpshiny/datasets.py` (`PROMOTER_SETS`, `BINDING_METHODS`: display name, colour,
+publication). A promoter set names the labretriever `genome_resources.region_sets`
+entry it corresponds to, and takes its description from there.
 
-`tfbpshiny/config.py` reads and validates all of it. `materialize` writes the
-`dataset_registry`, `promoter_sets` and `binding_methods` tables from it; the app reads
-labels from those tables (they are used inside SQL) and colours, tooltips and notes from
-the config. Adding or relabelling a dataset is a YAML edit plus a rebuild.
+Only `materialize` reads any of this, through labretriever (`vdb.get_tags`,
+`vdb.db_name_map`, `vdb.get_region_sets`); `coordinating/sql.py::registry_rows` checks
+the tags are coherent and writes the `dataset_registry`, `promoter_sets` and
+`binding_methods` tables, labels, colours, links and notes included. The app reads only
+those tables. Adding or relabelling a dataset is a YAML edit plus a rebuild.
 
 ### Dataset-level configuration in code
 

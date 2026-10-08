@@ -9,9 +9,12 @@ The coordinator is the only code that calls ``.execute()``.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
+
 from labretriever import VirtualDB
 
-from tfbpshiny.config import AppConfig, load_app_config
+from tfbpshiny.datasets import BINDING_METHODS, PROMOTER_SETS
 from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS
 
 
@@ -40,7 +43,7 @@ INSERT INTO schema_version VALUES ({int(version)}, now()::TIMESTAMP, {sha});
 
 
 def _lit(value: object) -> str:
-    """A SQL literal for a config value: NULL, TRUE/FALSE, or a quoted string."""
+    """A SQL literal: NULL, TRUE/FALSE, or a quoted string."""
     if value is None:
         return "NULL"
     if isinstance(value, bool):
@@ -48,26 +51,170 @@ def _lit(value: object) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def promoter_sets_sql(config: AppConfig | None = None) -> str:
+# ---------------------------------------------------------------------------
+# Dataset registry, from the collection config's tags
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RegistryRow:
+    """
+    One ``dataset_registry`` row, from a dataset's merged labretriever tags.
+
+    The tags tfbpshiny reads (all strings): ``data_type`` (``binding`` or
+    ``perturbation``; datasets without one, such as ``dto``, are not registered),
+    ``assay``, ``display_name``, ``base_label``, ``primary`` (the primary this
+    dataset is a variant of; a dataset naming itself or nothing is a primary),
+    ``promoter_set`` and
+    ``binding_method`` (binding only; keys of :data:`tfbpshiny.datasets.PROMOTER_SETS` /
+    :data:`~tfbpshiny.datasets.BINDING_METHODS`), ``active_default`` (``"true"`` to
+    switch the dataset on in a new session), and on primaries ``color`` and
+    ``peak_calling_note``.
+
+    """
+
+    db_name: str
+    hf_repo: str
+    hf_config: str
+    data_type: str
+    assay: str
+    display_name: str
+    base_label: str
+    primary_db_name: str | None
+    is_active_default: bool
+    promoter_set_id: str | None
+    binding_method_id: str | None
+    color: str | None
+    peak_calling_note: str | None
+
+    @property
+    def is_primary(self) -> bool:
+        return self.primary_db_name is None
+
+
+def registry_rows(vdb: Any) -> list[RegistryRow]:
+    """
+    Read and check every binding/perturbation dataset's tags.
+
+    labretriever merges repository- and dataset-level tags and resolves ``db_name``;
+    this only checks that the tags tfbpshiny relies on are present and coherent.
+
+    :param vdb: VirtualDB (anything with ``get_datasets``, ``get_tags`` and
+        ``db_name_map``).
+    :returns: Rows in ``db_name`` order.
+    :raises ValueError: On a missing label, an unknown promoter set or method, a
+        promoter set on perturbation data, an ``active_default`` other than
+        true/false, or a variant that is not of a primary with the same data type and
+        ``base_label``.
+
+    """
+    rows: dict[str, RegistryRow] = {}
+    for db in sorted(vdb.get_datasets()):
+        tags = vdb.get_tags(db)
+        data_type = tags.get("data_type")
+        if data_type not in ("binding", "perturbation"):
+            continue
+        missing = [
+            k for k in ("assay", "display_name", "base_label") if not tags.get(k)
+        ]
+        if missing:
+            raise ValueError(f"{db}: missing tag(s) {missing}")
+        ps, method = tags.get("promoter_set"), tags.get("binding_method")
+        if data_type == "binding":
+            if ps not in PROMOTER_SETS:
+                raise ValueError(f"{db}: unknown promoter_set {ps!r}")
+            if method not in BINDING_METHODS:
+                raise ValueError(f"{db}: unknown binding_method {method!r}")
+        elif ps or method:
+            raise ValueError(f"{db}: perturbation data has no promoter set or method")
+        active = str(tags.get("active_default", "false")).lower()
+        if active not in ("true", "false"):
+            raise ValueError(f"{db}: active_default must be true or false")
+        primary = tags.get("primary")
+        hf_repo, hf_config = vdb.db_name_map[db]
+        rows[db] = RegistryRow(
+            db_name=db,
+            hf_repo=hf_repo,
+            hf_config=hf_config,
+            data_type=data_type,
+            assay=tags["assay"],
+            display_name=tags["display_name"],
+            base_label=tags["base_label"],
+            primary_db_name=None if primary in (None, "", db) else primary,
+            is_active_default=active == "true",
+            promoter_set_id=ps,
+            binding_method_id=method,
+            color=tags.get("color"),
+            peak_calling_note=tags.get("peak_calling_note"),
+        )
+    for row in rows.values():
+        p = row.primary_db_name
+        if p is None:
+            continue
+        if p not in rows or not rows[p].is_primary:
+            raise ValueError(f"{row.db_name}: primary {p!r} is not a primary dataset")
+        if (rows[p].data_type, rows[p].base_label) != (row.data_type, row.base_label):
+            raise ValueError(
+                f"{row.db_name}: a variant must share its primary's data_type and"
+                " base_label"
+            )
+    return list(rows.values())
+
+
+def promoter_set_descriptions(vdb: Any) -> dict[str, str]:
+    """
+    Description of every promoter set in :data:`tfbpshiny.datasets.PROMOTER_SETS`.
+
+    A promoter set that names a ``region_set`` takes that region set's description
+    from labretriever; the others carry their own.
+
+    :param vdb: VirtualDB (anything with ``get_datasets`` and ``get_region_sets``).
+    :returns: ``promoter_set_id -> description`` (whitespace normalised).
+    :raises ValueError: If a named region set is not declared in the collection.
+
+    """
+    region_sets: dict[str, Any] = {}
+    for db in vdb.get_datasets():
+        region_sets.update(vdb.get_region_sets(db))
+    out: dict[str, str] = {}
+    for ps, v in PROMOTER_SETS.items():
+        if v.region_set is None:
+            text = v.description or ""
+        elif v.region_set in region_sets:
+            text = region_sets[v.region_set].description or ""
+        else:
+            raise ValueError(
+                f"promoter set {ps!r}: region set {v.region_set!r} is not declared in"
+                " the collection's genome_resources"
+            )
+        out[ps] = " ".join(text.split())
+    return out
+
+
+def promoter_sets_sql(descriptions: dict[str, str]) -> str:
     """
     Return SQL to create and populate the ``promoter_sets`` table.
 
-    Rows are the ``tfbpshiny.promoter_sets`` section of the collection config.
-
-    :param config: Parsed collection config; the packaged one when ``None``.
+    :param descriptions: From :func:`promoter_set_descriptions`.
     :returns: ``CREATE TABLE`` + ``INSERT`` SQL string.
 
     """
-    config = config or load_app_config()
     rows = ",\n".join(
-        f"    ({_lit(v.id)}, {_lit(v.display_name)}, {_lit(v.description or None)})"
-        for v in config.promoter_sets.values()
+        "    ("
+        + ", ".join(
+            _lit(x)
+            for x in (ps, v.display_name, descriptions.get(ps), v.color, v.reference)
+        )
+        + ")"
+        for ps, v in PROMOTER_SETS.items()
     )
     return f"""
 CREATE TABLE promoter_sets (
     promoter_set_id  VARCHAR  PRIMARY KEY,
     display_name     VARCHAR  NOT NULL,
-    description      VARCHAR
+    description      VARCHAR,
+    color            VARCHAR,
+    reference        VARCHAR
 );
 
 INSERT INTO promoter_sets VALUES
@@ -75,25 +222,22 @@ INSERT INTO promoter_sets VALUES
 """
 
 
-def binding_methods_sql(config: AppConfig | None = None) -> str:
+def binding_methods_sql() -> str:
     """
     Return SQL to create and populate the ``binding_methods`` table.
 
-    Rows are the ``tfbpshiny.binding_methods`` section of the collection config.
-
-    :param config: Parsed collection config; the packaged one when ``None``.
     :returns: ``CREATE TABLE`` + ``INSERT`` SQL string.
 
     """
-    config = config or load_app_config()
     rows = ",\n".join(
-        f"    ({_lit(v.id)}, {_lit(v.display_name)})"
-        for v in config.binding_methods.values()
+        f"    ({_lit(m)}, {_lit(v.display_name)}, {_lit(v.color)})"
+        for m, v in BINDING_METHODS.items()
     )
     return f"""
 CREATE TABLE binding_methods (
     binding_method_id  VARCHAR  PRIMARY KEY,
-    display_name       VARCHAR  NOT NULL
+    display_name       VARCHAR  NOT NULL,
+    color              VARCHAR
 );
 
 INSERT INTO binding_methods VALUES
@@ -101,21 +245,17 @@ INSERT INTO binding_methods VALUES
 """
 
 
-def dataset_registry_sql(config: AppConfig | None = None) -> str:
+def dataset_registry_sql(rows: list[RegistryRow]) -> str:
     """
     Return SQL to create and populate the ``dataset_registry`` table.
-
-    One row per binding or perturbation dataset declared in the collection config,
-    from its merged labretriever ``tags`` (see :mod:`tfbpshiny.config`).
 
     Primaries are inserted in a statement of their own before the variants, so the
     self-referential FK is satisfied when DuckDB checks the second statement.
 
-    :param config: Parsed collection config; the packaged one when ``None``.
+    :param rows: From :func:`registry_rows`.
     :returns: ``CREATE TABLE`` + ``INSERT`` SQL string.
 
     """
-    config = config or load_app_config()
 
     def _values(primaries: bool) -> str:
         return ",\n".join(
@@ -123,23 +263,25 @@ def dataset_registry_sql(config: AppConfig | None = None) -> str:
             + ", ".join(
                 _lit(v)
                 for v in (
-                    d.db_name,
-                    d.hf_repo,
-                    d.hf_config,
-                    d.data_type,
-                    d.assay,
-                    d.display_name,
-                    d.base_label,
-                    d.is_primary,
-                    d.is_active_default,
-                    d.primary_db_name,
-                    d.promoter_set_id,
-                    d.binding_method_id,
+                    r.db_name,
+                    r.hf_repo,
+                    r.hf_config,
+                    r.data_type,
+                    r.assay,
+                    r.display_name,
+                    r.base_label,
+                    r.is_primary,
+                    r.is_active_default,
+                    r.primary_db_name,
+                    r.promoter_set_id,
+                    r.binding_method_id,
+                    r.color,
+                    r.peak_calling_note,
                 )
             )
             + ")"
-            for d in config.datasets.values()
-            if d.is_primary == primaries
+            for r in rows
+            if r.is_primary == primaries
         )
 
     return f"""
@@ -155,7 +297,9 @@ CREATE TABLE dataset_registry (
     is_active_default    BOOLEAN  NOT NULL,
     primary_db_name      VARCHAR  REFERENCES dataset_registry(db_name),
     promoter_set_id      VARCHAR  REFERENCES promoter_sets(promoter_set_id),
-    binding_method_id    VARCHAR  REFERENCES binding_methods(binding_method_id)
+    binding_method_id    VARCHAR  REFERENCES binding_methods(binding_method_id),
+    color                VARCHAR,
+    peak_calling_note    VARCHAR
 );
 
 -- Primaries first, in their own statement: the FK is checked per statement.

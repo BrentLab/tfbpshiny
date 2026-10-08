@@ -15,7 +15,7 @@ conditions, etc) and provide some
 
 | Layer | Tables | Description |
 |-------|--------|-------------|
-| Coordinating | `promoter_sets`, `binding_methods`, `dataset_registry`, `comparative_dataset_registry` | Registry + display metadata, written from the collection config's `tags` and `tfbpshiny` section (see `tfbpshiny/config.py`) |
+| Coordinating | `promoter_sets`, `binding_methods`, `dataset_registry`, `comparative_dataset_registry` | Registry + display metadata (labels, colours, links, notes), written from the collection config's `tags` (read via labretriever) and `datasets.PROMOTER_SETS` / `BINDING_METHODS` |
 | Metadata | `{db_name}_meta` (one per dataset) | Materialized verbatim from VirtualDB `_meta` views; schema is dataset-specific |
 | Comparison — HF-sourced | `{analysis_name}` (one per configured comparative dataset) | Materialized verbatim from the raw HuggingFace Parquet; composite `source_sample` IDs preserved |
 | Comparison — computed | `topn_results`, `correlations` | Pairwise analysis results computed at materialization time; same `source_sample` format |
@@ -45,7 +45,9 @@ The descriptions come from the `genome_resources` block in
 CREATE TABLE promoter_sets (
     promoter_set_id  VARCHAR  PRIMARY KEY,  -- 'kang' | 'mindel' | '500bp' | 'intergenic' | 'peaks'
     display_name     VARCHAR  NOT NULL,
-    description      VARCHAR
+    description      VARCHAR,   -- from the labretriever region set it names
+    color            VARCHAR,   -- series colour (figures 7/8)
+    reference        VARCHAR    -- defining publication URL
 );
 ```
 
@@ -67,7 +69,8 @@ labels in `SCORING_VARIANT_MAP` in `comparison/queries.py`.
 ```sql
 CREATE TABLE binding_methods (
     binding_method_id  VARCHAR  PRIMARY KEY,  -- 'promoter_enrichment' | 'peak_calling'
-    display_name       VARCHAR  NOT NULL
+    display_name       VARCHAR  NOT NULL,
+    color              VARCHAR   -- series colour (figure 9, Comparison method rows)
 );
 ```
 
@@ -128,7 +131,10 @@ CREATE TABLE dataset_registry (
     -- binding-only (NULL for perturbation datasets)
     primary_db_name      VARCHAR  REFERENCES dataset_registry(db_name),
     promoter_set_id      VARCHAR  REFERENCES promoter_sets(promoter_set_id),
-    binding_method_id    VARCHAR  REFERENCES binding_methods(binding_method_id)
+    binding_method_id    VARCHAR  REFERENCES binding_methods(binding_method_id),
+    -- presentation, on primaries; variants share their primary's base_label
+    color                VARCHAR,               -- series colour of the experiment
+    peak_calling_note    VARCHAR                -- how the assay's peak calls were made
 );
 ```
 

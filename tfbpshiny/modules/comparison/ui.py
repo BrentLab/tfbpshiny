@@ -10,11 +10,6 @@ from tfbpshiny.modules.comparison.queries import (
     METRIC_LABELS,
     METRIC_TOPN,
 )
-from tfbpshiny.modules.comparison.server.context import (
-    PROMOTER_SET_ALIAS,
-    PROMOTER_SET_REFERENCES,
-    PROMOTER_TOOLTIPS,
-)
 
 
 @module.ui
@@ -136,24 +131,7 @@ def comparison_ui() -> ui.Tag:
                 ui.tags.summary(
                     ui.h4("Promoter Set Definitions", style="display:inline;")
                 ),
-                ui.tags.dl(
-                    *(
-                        tag
-                        for ps, alias in PROMOTER_SET_ALIAS.items()
-                        for tag in (
-                            ui.tags.dt(
-                                ui.tags.a(
-                                    alias,
-                                    href=PROMOTER_SET_REFERENCES[ps],
-                                    target="_blank",
-                                )
-                                if PROMOTER_SET_REFERENCES[ps]
-                                else alias
-                            ),
-                            ui.tags.dd(PROMOTER_TOOLTIPS[ps]),
-                        )
-                    )
-                ),
+                ui.output_ui("promoter_set_definitions"),
             ),
         ),
         ui.output_ui("analysis_status"),

@@ -19,8 +19,6 @@ from tfbpshiny.modules.comparison.queries import (
     fetch_topn_results,
 )
 from tfbpshiny.modules.comparison.server.context import (
-    PEAK_CALLER_NOTES,
-    PROMOTER_TOOLTIPS,
     ComparisonContext,
     cell_style,
     inputs_ready,
@@ -31,7 +29,6 @@ from tfbpshiny.modules.comparison.server.context import (
     read_top_n,
 )
 from tfbpshiny.modules.comparison.server.shared import Shared
-from tfbpshiny.utils.figure import METHOD_COLORS
 from tfbpshiny.utils.perf import perf
 
 
@@ -210,7 +207,7 @@ def register_compare_methods(
 
             binding_db = shared.cm_selected_binding_db()
             binding_label = binding_index.base_label.get(binding_db, binding_db)
-            peak_note = PEAK_CALLER_NOTES.get(
+            peak_note = ctx.peak_notes.get(
                 binding_db,
                 "Peaks called over the same promoter definition used by the"
                 " promoter-enrichment row.",
@@ -258,7 +255,7 @@ def register_compare_methods(
                         ui.tags.th(
                             ui.tooltip(
                                 ui.span(ctx.promoter_set_labels.get(ps, ps)),
-                                PROMOTER_TOOLTIPS.get(ps, ""),
+                                ctx.promoter_tooltips.get(ps, ""),
                             ),
                             style=f"{_th_style} font-weight: 600;",
                         )
@@ -267,7 +264,7 @@ def register_compare_methods(
                 data_rows_cm: list[ui.Tag] = []
                 for method_id in methods_present:
                     method_label = ctx.method_labels.get(method_id, method_id)
-                    color = METHOD_COLORS.get(method_id, "#888888")
+                    color = ctx.method_colors.get(method_id, "#888888")
                     if method_id == "peak_calling":
                         label_tag: Any = ui.tooltip(
                             ui.span(method_label), peak_note, placement="right"

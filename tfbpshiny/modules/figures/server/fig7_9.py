@@ -41,7 +41,7 @@ from tfbpshiny.modules.figures.queries import (
 )
 from tfbpshiny.modules.figures.server.context import FiguresContext
 from tfbpshiny.modules.figures.server.shared import Shared
-from tfbpshiny.utils.figure import METHOD_COLORS, PROMOTER_SET_COLORS, figure_html
+from tfbpshiny.utils.figure import figure_html
 from tfbpshiny.utils.perf import perf
 
 Panels = dict[tuple[str, str], pd.DataFrame]
@@ -342,7 +342,7 @@ def register_fig7_9(
                 ctx.labels,
                 ctx.labels,
                 ctx.promoter_set_labels,
-                PROMOTER_SET_COLORS,
+                ctx.promoter_set_colors,
                 y_title=f"% responsive in top {shared.read_top_n()}",
                 y_range=FIG7_RESPONSE_Y,
             )
@@ -371,7 +371,7 @@ def register_fig7_9(
                 ctx.labels,
                 ctx.labels,
                 ctx.promoter_set_labels,
-                PROMOTER_SET_COLORS,
+                ctx.promoter_set_colors,
                 y_title="% of shared TFs (DTO p < 0.01)",
             )
             return ui.div(figure_html(fig, filename="fig8_dto_bars"))
@@ -400,7 +400,7 @@ def register_fig7_9(
                     ctx.labels,
                     ctx.labels,
                     ctx.method_labels,
-                    METHOD_COLORS,
+                    ctx.method_colors,
                     y_title=f"% responsive in top {shared.read_top_n()}",
                     y_range=FIG7_RESPONSE_Y,
                 )
@@ -421,7 +421,7 @@ def register_fig7_9(
                         ctx.labels,
                         ctx.labels,
                         ctx.method_labels,
-                        METHOD_COLORS,
+                        ctx.method_colors,
                         y_title="% of shared TFs (DTO p < 0.01)",
                     )
                     blocks.append(figure_html(bottom_fig, filename="fig9_dto_bars"))

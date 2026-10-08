@@ -49,7 +49,11 @@ def register_fig4_5(
             if df.empty:
                 return empty_state(ui.p("No DTO results."))
             fig = dto_significance_bars(
-                df, ctx.labels, list(DTO_BINDING_ORDER), list(PR_ORDER)
+                df,
+                ctx.labels,
+                list(DTO_BINDING_ORDER),
+                list(PR_ORDER),
+                colors=ctx.binding_colors,
             )
             return ui.div(
                 figure_html(fig, filename="fig4_dto_significance"),
@@ -87,6 +91,7 @@ def register_fig4_5(
                     list(DTO_BINDING_ORDER),
                     title=ctx.labels.get(p, p),
                     layout=layout,
+                    colors=ctx.binding_colors,
                 )
                 panels.append(
                     ui.div(

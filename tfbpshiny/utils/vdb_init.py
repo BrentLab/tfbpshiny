@@ -229,6 +229,80 @@ def binding_method_labels(conn: duckdb.DuckDBPyConnection) -> dict[str, str]:
     return {str(k): str(v) for k, v in rows}
 
 
+def promoter_set_info(
+    conn: duckdb.DuckDBPyConnection,
+) -> dict[str, dict[str, str | None]]:
+    """
+    Everything the UI shows about each promoter set, from ``promoter_sets``.
+
+    :param conn: Open read-only DuckDB connection to the materialized database.
+    :returns: ``promoter_set_id -> {display_name, description, color, reference}``.
+
+    """
+    rows = conn.execute(
+        "SELECT promoter_set_id, display_name, description, color, reference"
+        " FROM promoter_sets"
+    ).fetchall()
+    return {
+        str(r[0]): {
+            "display_name": r[1],
+            "description": r[2],
+            "color": r[3],
+            "reference": r[4],
+        }
+        for r in rows
+    }
+
+
+def binding_method_colors(conn: duckdb.DuckDBPyConnection) -> dict[str, str]:
+    """
+    Series colour of each binding method, from ``binding_methods``.
+
+    :param conn: Open read-only DuckDB connection to the materialized database.
+    :returns: ``binding_method_id -> color``.
+
+    """
+    rows = conn.execute(
+        "SELECT binding_method_id, color FROM binding_methods WHERE color IS NOT NULL"
+    ).fetchall()
+    return {str(k): str(v) for k, v in rows}
+
+
+def dataset_colors(conn: duckdb.DuckDBPyConnection, data_type: str) -> dict[str, str]:
+    """
+    Series colour of each experiment of one data type, keyed by ``base_label``.
+
+    Colours are declared on primaries; every variant of a primary shares its
+    ``base_label``, so one entry per experiment covers them all.
+
+    :param conn: Open read-only DuckDB connection to the materialized database.
+    :param data_type: ``'binding'`` or ``'perturbation'``.
+    :returns: ``base_label -> color``.
+
+    """
+    rows = conn.execute(
+        "SELECT base_label, color FROM dataset_registry"
+        " WHERE data_type = ? AND is_primary AND color IS NOT NULL",
+        [data_type],
+    ).fetchall()
+    return {str(k): str(v) for k, v in rows}
+
+
+def peak_calling_notes(conn: duckdb.DuckDBPyConnection) -> dict[str, str]:
+    """
+    How each assay's peak calls were made, keyed by its primary ``db_name``.
+
+    :param conn: Open read-only DuckDB connection to the materialized database.
+    :returns: ``db_name -> note`` for primaries that have one.
+
+    """
+    rows = conn.execute(
+        "SELECT db_name, peak_calling_note FROM dataset_registry"
+        " WHERE peak_calling_note IS NOT NULL"
+    ).fetchall()
+    return {str(k): str(v) for k, v in rows}
+
+
 def load_app_datasets(conn: duckdb.DuckDBPyConnection) -> AppDatasets:
     """
     Load AppDatasets from dataset_column_metadata table in the materialized DuckDB.
@@ -260,8 +334,12 @@ __all__ = [
     "DEFAULT_RESPONSIVENESS_PRESET",
     "get_responsiveness_label",
     "AppDatasets",
+    "binding_method_colors",
     "binding_method_labels",
+    "dataset_colors",
     "get_regulator_display_name",
     "load_app_datasets",
+    "peak_calling_notes",
+    "promoter_set_info",
     "promoter_set_labels",
 ]

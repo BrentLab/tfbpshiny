@@ -18,8 +18,6 @@ from tfbpshiny.modules.comparison.queries import (
 )
 from tfbpshiny.modules.comparison.server.context import (
     PRESET_HELP,
-    PROMOTER_SET_ALIAS,
-    PROMOTER_TOOLTIPS,
     ComparisonContext,
     read_metric,
 )
@@ -137,7 +135,9 @@ def register_sidebar(
                 ui.input_select(
                     "cd_promoter_set",
                     label=None,
-                    choices={k: PROMOTER_SET_ALIAS[k] for k in PROMOTER_SET_ALIAS},
+                    choices={
+                        k: ctx.promoter_set_alias[k] for k in ctx.promoter_set_alias
+                    },
                     selected="kang",
                 ),
             )
@@ -150,13 +150,13 @@ def register_sidebar(
                     label=None,
                     choices={
                         ps: ui.tooltip(
-                            ui.span(PROMOTER_SET_ALIAS[ps]),
-                            PROMOTER_TOOLTIPS[ps],
+                            ui.span(ctx.promoter_set_alias[ps]),
+                            ctx.promoter_tooltips[ps],
                             placement="right",
                         )
-                        for ps in PROMOTER_SET_ALIAS
+                        for ps in ctx.promoter_set_alias
                     },
-                    selected=list(PROMOTER_SET_ALIAS.keys()),
+                    selected=list(ctx.promoter_set_alias),
                 ),
             )
 
@@ -179,7 +179,9 @@ def register_sidebar(
                 ui.input_checkbox_group(
                     "cm_promoter_set",
                     label=None,
-                    choices={k: PROMOTER_SET_ALIAS[k] for k in PROMOTER_SET_ALIAS},
+                    choices={
+                        k: ctx.promoter_set_alias[k] for k in ctx.promoter_set_alias
+                    },
                     selected=list(PROMOTER_SET_LEVELS),
                 ),
                 ui.input_switch(
@@ -198,6 +200,22 @@ def register_sidebar(
             )
 
         return ui.span()
+
+    @render.ui
+    def promoter_set_definitions() -> ui.Tag:
+        """
+        The "Promoter Set Definitions" list: names, links and descriptions from the
+        ``promoter_sets`` table.
+
+        :trigger: none -- the registry is fixed for the session.
+
+        """
+        items: list[ui.Tag] = []
+        for ps, alias in ctx.promoter_set_alias.items():
+            ref = ctx.promoter_references.get(ps)
+            name = ui.tags.a(alias, href=ref, target="_blank") if ref else alias
+            items += [ui.tags.dt(name), ui.tags.dd(ctx.promoter_tooltips[ps])]
+        return ui.tags.dl(*items)
 
     @render.ui
     def analysis_status() -> ui.Tag:

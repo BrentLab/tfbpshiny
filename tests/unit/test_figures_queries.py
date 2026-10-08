@@ -335,15 +335,23 @@ def test_figure_six_defaults_to_500bp_promoter_enrichment() -> None:
     """
     import duckdb
 
+    from tests.unit._collection import CollectionVDB
     from tfbpshiny.materialize.coordinating.sql import (
         binding_methods_sql,
         dataset_registry_sql,
+        promoter_set_descriptions,
         promoter_sets_sql,
+        registry_rows,
     )
     from tfbpshiny.modules.figures.queries import AGREEMENT_DEFAULT_BINDING
 
     conn = duckdb.connect()
-    for stmt in (promoter_sets_sql(), binding_methods_sql(), dataset_registry_sql()):
+    vdb = CollectionVDB()
+    for stmt in (
+        promoter_sets_sql(promoter_set_descriptions(vdb)),
+        binding_methods_sql(),
+        dataset_registry_sql(registry_rows(vdb)),
+    ):
         conn.execute(stmt)
     reg = {
         r[0]: (r[1], r[2])
@@ -370,15 +378,23 @@ def test_figure_six_default_covers_every_assay_that_can_have_500bp() -> None:
     """
     import duckdb
 
+    from tests.unit._collection import CollectionVDB
     from tfbpshiny.materialize.coordinating.sql import (
         binding_methods_sql,
         dataset_registry_sql,
+        promoter_set_descriptions,
         promoter_sets_sql,
+        registry_rows,
     )
     from tfbpshiny.modules.figures.queries import AGREEMENT_DEFAULT_BINDING
 
     conn = duckdb.connect()
-    for stmt in (promoter_sets_sql(), binding_methods_sql(), dataset_registry_sql()):
+    vdb = CollectionVDB()
+    for stmt in (
+        promoter_sets_sql(promoter_set_descriptions(vdb)),
+        binding_methods_sql(),
+        dataset_registry_sql(registry_rows(vdb)),
+    ):
         conn.execute(stmt)
     available = {
         r[0]

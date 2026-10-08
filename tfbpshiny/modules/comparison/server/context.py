@@ -17,7 +17,6 @@ import duckdb
 import pandas as pd
 from shiny import reactive
 
-from tfbpshiny.config import load_app_config
 from tfbpshiny.datasets import PRESET_NAMES, PROMOTER_SET_LEVELS, SCHEMA_VERSION
 from tfbpshiny.modules.comparison.queries import (
     DEFAULT_DTO_RANKING_COLUMN,
@@ -30,8 +29,11 @@ from tfbpshiny.utils.inputs import read_input
 from tfbpshiny.utils.vdb_init import (
     DEFAULT_RESPONSIVENESS_PRESET,
     DEFAULT_RESPONSIVENESS_PRESETS,
+    binding_method_colors,
     binding_method_labels,
     get_regulator_display_name,
+    peak_calling_notes,
+    promoter_set_info,
     promoter_set_labels,
 )
 
@@ -51,32 +53,19 @@ PRESET_HELP: dict[str, str] = {
 
 assert set(PRESET_HELP) == set(PRESET_NAMES)
 
-_CONFIG = load_app_config()
 
-#: Selector label for each comparable promoter set, numbered in display order, e.g.
-#: ``"Promoter Set 3 (500bp)"``. Display names come from the collection config.
-PROMOTER_SET_ALIAS: dict[str, str] = {
-    ps: f"Promoter Set {i} ({_CONFIG.promoter_sets[ps].display_name})"
-    for i, ps in enumerate(PROMOTER_SET_LEVELS, start=1)
-}
+def promoter_set_alias(info: dict[str, dict[str, str | None]]) -> dict[str, str]:
+    """
+    Selector label for each comparable promoter set, numbered in display order.
 
-#: Tooltip text for each comparable promoter set: its description in the config
-#: (the genome-resources region set it names).
-PROMOTER_TOOLTIPS: dict[str, str] = {
-    ps: _CONFIG.promoter_sets[ps].description for ps in PROMOTER_SET_LEVELS
-}
+    :param info: ``promoter_set_id -> {display_name, ...}`` (``promoter_set_info``).
+    :returns: e.g. ``{"500bp": "Promoter Set 3 (500bp)", ...}``.
 
-#: Publication defining each comparable promoter set, where there is one.
-PROMOTER_SET_REFERENCES: dict[str, str | None] = {
-    ps: _CONFIG.promoter_sets[ps].reference for ps in PROMOTER_SET_LEVELS
-}
-
-#: How each assay's peak calls were made, keyed by primary ``db_name``.
-PEAK_CALLER_NOTES: dict[str, str] = {
-    d.db_name: d.peak_calling_note
-    for d in _CONFIG.datasets.values()
-    if d.peak_calling_note
-}
+    """
+    return {
+        ps: f"Promoter Set {i} ({info[ps]['display_name']})"
+        for i, ps in enumerate(PROMOTER_SET_LEVELS, start=1)
+    }
 
 
 def inputs_ready(input: Any, *names: str) -> bool:
@@ -163,6 +152,11 @@ class ComparisonContext:
     :param base_label: ``db_name -> base_label`` for every registry row.
     :param promoter_set_labels: ``promoter_set_id -> display_name``.
     :param method_labels: ``binding_method_id -> display_name``.
+    :param method_colors: ``binding_method_id -> colour``.
+    :param promoter_set_alias: Selector label per comparable promoter set.
+    :param promoter_tooltips: Description per comparable promoter set.
+    :param promoter_references: Defining publication per comparable promoter set.
+    :param peak_notes: How each assay's peak calls were made, by primary.
 
     """
 
@@ -181,6 +175,11 @@ class ComparisonContext:
     base_label: dict[str, str] = field(default_factory=dict)
     promoter_set_labels: dict[str, str] = field(default_factory=dict)
     method_labels: dict[str, str] = field(default_factory=dict)
+    method_colors: dict[str, str] = field(default_factory=dict)
+    promoter_set_alias: dict[str, str] = field(default_factory=dict)
+    promoter_tooltips: dict[str, str] = field(default_factory=dict)
+    promoter_references: dict[str, str] = field(default_factory=dict)
+    peak_notes: dict[str, str] = field(default_factory=dict)
 
     @property
     def dto_available(self) -> bool:
@@ -233,6 +232,18 @@ def build_context(
     )
     ctx.promoter_set_labels = promoter_set_labels(conn)
     ctx.method_labels = binding_method_labels(conn)
+    ctx.method_colors = binding_method_colors(conn)
+    ps_info = promoter_set_info(conn)
+    ctx.promoter_set_alias = promoter_set_alias(ps_info)
+    ctx.promoter_tooltips = {
+        ps: str(ps_info[ps]["description"] or "") for ps in PROMOTER_SET_LEVELS
+    }
+    ctx.promoter_references = {
+        ps: str(ps_info[ps]["reference"])
+        for ps in PROMOTER_SET_LEVELS
+        if ps_info[ps]["reference"]
+    }
+    ctx.peak_notes = peak_calling_notes(conn)
     ctx.binding_index = build_binding_index(
         ctx.registry_df, ctx.promoter_set_labels, ctx.method_labels
     )
@@ -268,12 +279,9 @@ def build_context(
 
 __all__ = [
     "ComparisonContext",
-    "PEAK_CALLER_NOTES",
     "PRESET_HELP",
-    "PROMOTER_SET_ALIAS",
-    "PROMOTER_SET_REFERENCES",
-    "PROMOTER_TOOLTIPS",
     "build_context",
+    "promoter_set_alias",
     "cell_style",
     "inputs_ready",
     "read_common_regulators_only",

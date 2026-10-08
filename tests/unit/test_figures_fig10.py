@@ -145,18 +145,21 @@ def test_shared_targets_box_figure_has_one_trace_per_pair_in_figure_6_colours() 
 def test_venn_accepts_a_colour_map_for_non_binding_datasets() -> None:
     from matplotlib.colors import to_rgb
 
-    from tfbpshiny.utils.figure import PERTURBATION_COLORS
-
     labels = {"p1": "2014 TFKO", "p2": "2020 Overexpression", "p3": "2025 Degron"}
+    colours = {
+        "2014 TFKO": "#3C5488",
+        "2020 Overexpression": "#F39B7F",
+        "2025 Degron": "#91D1C2",
+    }
     sets = {"p1": {"a", "b"}, "p2": {"b", "c"}, "p3": {"c", "d"}}
     fig, proportional = dto_venn_figure(
-        sets, labels, ["p1", "p2", "p3"], colors=PERTURBATION_COLORS
+        sets, labels, ["p1", "p2", "p3"], colors=colours
     )
     drawn = {
         tuple(round(c, 2) for c in p.get_facecolor()[:3]) for p in fig.axes[0].patches
     }
     for label in labels.values():
-        assert tuple(round(c, 2) for c in to_rgb(PERTURBATION_COLORS[label])) in drawn
+        assert tuple(round(c, 2) for c in to_rgb(colours[label])) in drawn
 
 
 def test_sort_regulators_by_symbol_ignores_case_and_falls_back_to_the_tag() -> None:

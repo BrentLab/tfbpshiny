@@ -72,6 +72,7 @@ def register_fig1_3(
                     ctx.labels,
                     list(BINDING_ORDER),
                     title=f"{ctx.labels.get(p, p)} — {ctx.reg_labels.get(tf, tf)}",
+                    colors=ctx.binding_colors,
                 )
                 panels.append(
                     ui.div(
@@ -105,7 +106,12 @@ def register_fig1_3(
                 if df.empty or not tfs:
                     continue
                 fig = rank_response_facet(
-                    df, ctx.labels, list(BINDING_ORDER), tfs, ctx.reg_labels
+                    df,
+                    ctx.labels,
+                    list(BINDING_ORDER),
+                    tfs,
+                    ctx.reg_labels,
+                    colors=ctx.binding_colors,
                 )
                 blocks.append(
                     ui.div(
@@ -153,6 +159,7 @@ def register_fig1_3(
                     list(BINDING_ORDER),
                     title=f"{ctx.labels.get(p, p)}  (n={len(tfs)} TFs)",
                     y_title=f"% responsive in top {top_n}",
+                    colors=ctx.binding_colors,
                 )
                 panels.append(
                     ui.div(
@@ -191,7 +198,11 @@ def register_fig1_3(
             if not frames:
                 return empty_state(ui.p("No authors'-threshold rows."))
             fig = authors_bound_grid(
-                frames, ctx.labels, list(AUTHORS_PEAK_BINDING), list(PR_ORDER)
+                frames,
+                ctx.labels,
+                list(AUTHORS_PEAK_BINDING),
+                list(PR_ORDER),
+                colors=ctx.binding_colors,
             )
             return ui.div(figure_html(fig, filename="fig3_authors_bound"))
 

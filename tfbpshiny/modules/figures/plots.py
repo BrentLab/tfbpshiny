@@ -18,7 +18,6 @@ from plotly.subplots import make_subplots
 
 from tfbpshiny.utils.figure import (
     AXIS_TITLE_SIZE,
-    BINDING_COLORS,
     FONT_SIZE,
     PAIR_COLORS,
     apply_figure_style,
@@ -180,6 +179,7 @@ def rank_response_figure(
     *,
     title: str | None = None,
     height: int = 480,
+    colors: dict[str, str] | None = None,
 ) -> go.Figure:
     """
     Response rate against binding rank for a single regulator.
@@ -195,9 +195,12 @@ def rank_response_figure(
         :func:`_draw_order` and :func:`_legend_rank_by_top_response`.
     :param title: Optional figure title.
     :param height: Pixel height.
+    :param colors: Display label -> series colour (``dataset_colors``); a label
+        without one falls back to plotly's default.
     :returns: The figure.
 
     """
+    palette = colors or {}
     fig = go.Figure()
     legend_rank = _legend_rank_by_top_response(df, binding_order, labels)
     for db in _draw_order(binding_order):
@@ -212,7 +215,7 @@ def rank_response_figure(
                 mode="lines+markers",
                 name=label,
                 legendrank=legend_rank.get(label),
-                line=dict(width=3, color=BINDING_COLORS.get(label)),
+                line=dict(width=3, color=palette.get(label)),
                 marker=dict(size=9),
                 hovertemplate=f"{label}<br>n=%{{x}}<br>%{{y:.1f}}%<extra></extra>",
             )
@@ -253,6 +256,7 @@ def rank_response_facet(
     *,
     n_cols: int = 6,
     panel_height: int = 200,
+    colors: dict[str, str] | None = None,
 ) -> go.Figure:
     """
     Small-multiples grid of rank-response curves, one panel per regulator.
@@ -270,9 +274,12 @@ def rank_response_facet(
     :param reg_labels: locus tag -> display label.
     :param n_cols: Panels per row.
     :param panel_height: Pixel height per row of panels.
+    :param colors: Display label -> series colour (``dataset_colors``); a label
+        without one falls back to plotly's default.
     :returns: The figure.
 
     """
+    palette = colors or {}
     if not regulators:
         return go.Figure()
     n_rows = (len(regulators) + n_cols - 1) // n_cols
@@ -310,7 +317,7 @@ def rank_response_facet(
                     # Only the first panel contributes to the legend, otherwise every
                     # dataset appears once per panel.
                     showlegend=(i == 0),
-                    line=dict(width=2, color=BINDING_COLORS.get(label)),
+                    line=dict(width=2, color=palette.get(label)),
                     hovertemplate=(
                         f"{reg_labels.get(reg, reg)}<br>{label}"
                         "<br>n=%{x}<br>%{y:.1f}%<extra></extra>"
@@ -353,6 +360,7 @@ def percent_responsive_boxes(
     title: str | None = None,
     y_title: str = "% responsive in top 25",
     height: int = 460,
+    colors: dict[str, str] | None = None,
 ) -> go.Figure:
     """
     Box plot of per-regulator percent responsive, one box per binding dataset.
@@ -365,9 +373,12 @@ def percent_responsive_boxes(
     :param title: Optional figure title.
     :param y_title: Y axis title.
     :param height: Pixel height.
+    :param colors: Display label -> series colour (``dataset_colors``); a label
+        without one falls back to plotly's default.
     :returns: The figure.
 
     """
+    palette = colors or {}
     fig = go.Figure()
     for db in binding_order:
         sub = df[df["binding_db"] == db]
@@ -378,7 +389,7 @@ def percent_responsive_boxes(
             go.Box(
                 y=sub["percent_responsive"],
                 name=label,
-                marker=dict(color=BINDING_COLORS.get(label), size=7),
+                marker=dict(color=palette.get(label), size=7),
                 line=dict(width=2),
                 boxpoints="outliers",
                 showlegend=False,
@@ -406,6 +417,7 @@ def dto_significance_bars(
     *,
     row_height: int = 340,
     panel_width: int = 420,
+    colors: dict[str, str] | None = None,
 ) -> go.Figure:
     """
     DTO-significant regulators as a fraction of each binding/perturbation pair's shared
@@ -424,9 +436,12 @@ def dto_significance_bars(
     :param row_height: Pixel height.
     :param panel_width: Pixel width per column. The dataset names are long, so the
         figure is given an explicit width rather than squeezed to its container.
+    :param colors: Display label -> series colour (``dataset_colors``); a label
+        without one falls back to plotly's default.
     :returns: The figure.
 
     """
+    palette = colors or {}
     fig = make_subplots(
         rows=1,
         cols=len(pr_order),
@@ -440,7 +455,7 @@ def dto_significance_bars(
             continue
         sub = sub.set_index("binding_db").reindex(binding_order).dropna(how="all")
         names = [labels.get(b, b) for b in sub.index]
-        colours = [BINDING_COLORS.get(n) for n in names]
+        colours = [palette.get(n, "#888888") for n in names]
         fig.add_trace(
             go.Bar(
                 x=names,
@@ -516,8 +531,8 @@ def dto_venn_figure(
         approximate optimizer that trades exactness for robustness -- it stays
         proportional on inputs the default solver cannot represent exactly, at the
         cost of the areas being an approximation rather than an exact match).
-    :param colors: display label -> colour. Defaults to :data:`BINDING_COLORS`; pass
-        :data:`PERTURBATION_COLORS` for perturbation datasets.
+    :param colors: Display label -> colour (``dataset_colors``); a label without
+        one is drawn grey.
     :returns: ``(figure, proportional)``: the ``matplotlib.figure.Figure``, and whether
         the circle areas are proportional to the set sizes (``False`` when the
         default layout had to fall back to equal circles).
@@ -534,7 +549,7 @@ def dto_venn_figure(
     ordered = [sets.get(b, set()) for b in binding_order]
     names = tuple(labels.get(b, b) for b in binding_order)
     # Same dataset colours as every other figure; overlaps blend automatically.
-    palette = BINDING_COLORS if colors is None else colors
+    palette = colors or {}
     set_colors = tuple(palette.get(n, "#888888") for n in names)
 
     if layout == DTO_VENN_LAYOUT_COST_BASED:
@@ -612,6 +627,7 @@ def authors_bound_grid(
     *,
     panel_width: int = 420,
     row_height: int = 380,
+    colors: dict[str, str] | None = None,
 ) -> go.Figure:
     """
     Response rate (row A) and bound-set size (row B) over the authors' bound targets.
@@ -630,9 +646,12 @@ def authors_bound_grid(
     :param pr_order: Perturbation db_names, one column each.
     :param panel_width: Pixel width per column.
     :param row_height: Pixel height per row.
+    :param colors: Display label -> series colour (``dataset_colors``); a label
+        without one falls back to plotly's default.
     :returns: The figure.
 
     """
+    palette = colors or {}
     cols = [p for p in pr_order if p in frames and not frames[p].empty]
     if not cols:
         return go.Figure()
@@ -665,7 +684,7 @@ def authors_bound_grid(
                         legendgroup=label,
                         # One legend entry per dataset, from the first panel only.
                         showlegend=(row == 1 and j == 1),
-                        marker=dict(color=BINDING_COLORS.get(label), size=7),
+                        marker=dict(color=palette.get(label), size=7),
                         line=dict(width=2),
                         boxpoints="outliers",
                     ),

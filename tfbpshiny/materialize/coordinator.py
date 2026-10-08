@@ -22,7 +22,6 @@ import duckdb
 import pandas as pd
 from labretriever import VirtualDB
 
-from tfbpshiny.config import load_app_config
 from tfbpshiny.datasets import (
     BINDING_DATASET_COLUMNS,
     PERTURBATION_CORRELATION_COLUMNS,
@@ -83,7 +82,9 @@ from tfbpshiny.materialize.coordinating.sql import (
     column_metadata_sql,
     comparative_registry_sql,
     dataset_registry_sql,
+    promoter_set_descriptions,
     promoter_sets_sql,
+    registry_rows,
     sample_regulator_sql,
     schema_version_sql,
 )
@@ -591,11 +592,15 @@ def materialize(
         # 1. Coordinating layer
         # ------------------------------------------------------------------
         logger.info("=== Phase 1: Coordinating layer ===")
-        # Dataset identity and labels come from the collection config's tags.
-        app_config = load_app_config(args.config)
-        exec_static(conn, promoter_sets_sql(app_config), "promoter_sets")
-        exec_static(conn, binding_methods_sql(app_config), "binding_methods")
-        exec_static(conn, dataset_registry_sql(app_config), "dataset_registry")
+        # Dataset identity and labels come from the collection config's tags, as
+        # labretriever reads them; promoter-set descriptions from its region sets.
+        exec_static(
+            conn,
+            promoter_sets_sql(promoter_set_descriptions(vdb)),
+            "promoter_sets",
+        )
+        exec_static(conn, binding_methods_sql(), "binding_methods")
+        exec_static(conn, dataset_registry_sql(registry_rows(vdb)), "dataset_registry")
         exec_static(conn, comparative_registry_sql(), "comparative_dataset_registry")
 
         col_meta_sql = column_metadata_sql(vdb)
