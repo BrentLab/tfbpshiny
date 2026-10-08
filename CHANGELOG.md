@@ -11,6 +11,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Rebuild to pick up corrections made to the HuggingFace datacards.** The
+  Calling Cards Kang analysis set pointed at the Mindel parquet, so
+  `callingcards_kang` in the current database holds the Mindel analysis set
+  (5,351 targets); it now reads its own file (6,708 targets), and every table
+  computed from it changes on rebuild. The `responsive` column was removed from
+  every perturbation dataset. The app never read it, so only
+  `dataset_column_metadata` loses rows.
 - **Rebuild required.** ChEC-seq `Carbon source` and `Temperature` now follow
   each sample's condition. They were the dataset-wide default (glucose, 30) for
   all 197 samples, so the filter modal's narrowing of conditions by carbon
@@ -356,6 +363,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- The note under figure 4 and the schema document said Harbison has no DTO
+  results. The `dto` table holds 3,848 Harbison rows. The DTO figures are still
+  drawn over the three 500bp promoter-enrichment datasets, because figure 5's
+  Venn diagrams take exactly three, so the note now says Harbison is not
+  included and the comments and documentation describe that choice.
 - The filter modal for the ChEC-seq primary listed both `condition` and
   `Experimental condition` (the same values under the raw and the standardised
   name) and a `mahendrawada_symbol` selectize with 178 regulator symbols; the

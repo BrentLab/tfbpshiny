@@ -341,8 +341,7 @@ def responsive_expr(
     Responsiveness is always decided by the ``(effect, pvalue)`` thresholds passed in,
     which the coordinator resolves per dataset from
     :data:`~tfbpshiny.utils.vdb_init.DEFAULT_RESPONSIVENESS_PRESETS`. The ``Stringent``
-    preset holds each dataset's published criteria. The ``responsive`` boolean some
-    source parquets ship is deprecated upstream and is deliberately not read.
+    preset holds each dataset's published criteria.
 
     :param perturbation_view: Dataset name (key in ``PERTURBATION_DATASET_COLUMNS``).
     :param effect_threshold: Absolute effect magnitude must exceed this.

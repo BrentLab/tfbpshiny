@@ -40,9 +40,10 @@ BINDING_ORDER: tuple[str, ...] = ("harbison", *PROMOTER_ENRICHMENT_500BP)
 #: Perturbation datasets shown, in display order.
 PR_ORDER: tuple[str, ...] = HEADLINE_PERTURBATION
 
-#: Binding datasets that have DTO results. Harbison has **zero** DTO rows -- the
-#: upstream analysis covers 22 binding datasets and none of them is ChIP-chip -- so
-#: the DTO figures are necessarily three-wide rather than four.
+#: Binding datasets the DTO figures are drawn over, in display order. Harbison has DTO
+#: results too, but figure 5's Venn diagrams take exactly three binding datasets (see
+#: ``dto_venn_figure``), so the DTO figures use the three 500bp promoter-enrichment
+#: datasets.
 DTO_BINDING_ORDER: tuple[str, ...] = PROMOTER_ENRICHMENT_500BP
 
 #: The only ranking variant present for all six perturbation datasets.

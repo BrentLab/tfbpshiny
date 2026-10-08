@@ -59,10 +59,7 @@ def register_fig4_5(
                 figure_html(fig, filename="fig4_dto_significance"),
                 ui.p(
                     {"class": "sidebar-text"},
-                    ui.tags.em(
-                        "ChIP-chip is absent because the upstream DTO analysis"
-                        " does not cover it."
-                    ),
+                    ui.tags.em("ChIP-chip (Harbison) is not included in this figure."),
                 ),
             )
 

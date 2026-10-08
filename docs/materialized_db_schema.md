@@ -380,8 +380,9 @@ the DTO partitions.
 - Coverage of `pr_ranking_column` is uneven: Hackett and both Hughes datasets
   exist only as `log2fc`; Kemmeren, Hu and Degron have both. A comparison
   across perturbation datasets should pin one value.
-- `harbison` has no DTO partitions, so the DTO figures are three binding
-  datasets wide rather than four.
+- `harbison` has DTO results (3,848 rows in the current build). The Figures
+  page draws its DTO figures over the three 500bp promoter-enrichment datasets
+  only.
 - DTO does not test every regulator a dataset pair shares. For
   `rossi_peaks_kang` × `kemmeren` it covers 414 of 446 shared regulators, so a
   denominator taken from `sample_regulator` is larger than DTO's own coverage.
@@ -468,7 +469,6 @@ CREATE TABLE topn_results (
   `(0.77, 0.05)`; Degron stores `(0.0, 0.05)` and `(0.38, 0.1)`. **Every read
   must pin the pair**; a query that does not takes a median across both
   definitions of responsive.
-- The `responsive` column some source parquets ship is never read.
 
 ### `topn_agreement`
 
