@@ -10,7 +10,6 @@ from shiny import reactive, render, ui
 
 from tfbpshiny.components import empty_state
 from tfbpshiny.modules.comparison.queries import (
-    PERTURBATION_LABEL_MAP,
     fetch_method_promoter_model,
     fetch_method_promoter_target_universe,
 )
@@ -217,7 +216,7 @@ def register_method_model(
                 panels.append(ui.p(ui.tags.em(caption), style="margin-bottom: 1rem;"))
             for p_db in p_dbs:
                 bundle = data.get(p_db)
-                p_label = PERTURBATION_LABEL_MAP.get(p_db, p_db)
+                p_label = ctx.base_label.get(p_db, p_db)
                 if bundle is None or bundle[1].empty:
                     panels.append(
                         empty_state(

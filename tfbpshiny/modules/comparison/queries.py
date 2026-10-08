@@ -32,54 +32,6 @@ _perf_logger = logging.getLogger("shiny.perf")
 # Constants
 # ---------------------------------------------------------------------------
 
-#: Display label for each ``promoter_sets.promoter_set_id``.
-PROMOTER_SET_LABELS: dict[str, str] = {
-    "kang": "Kang",
-    "mindel": "Mindel",
-    "500bp": "500bp",
-    "intergenic": "Intergenic",
-    "peaks": "Peaks",
-    "array": "Array Probes",
-}
-
-#: Display label for each ``binding_methods.binding_method_id``.
-BINDING_METHOD_LABELS: dict[str, str] = {
-    "promoter_enrichment": "Promoter Enrichment",
-    "peak_calling": "Peak Calling",
-}
-
-#: Color per binding method, used for column/row headers.
-BINDING_METHOD_COLORS: dict[str, str] = {
-    "promoter_enrichment": "#4DBBD5",
-    "peak_calling": "#E64B35",
-}
-
-#: Peak caller used for each primary binding dataset's promoter-set-matched peak
-#: calls, surfaced as a tooltip on the "Peak Calling" row of the Method
-#: Comparison tab.
-PEAK_CALLER_NOTES: dict[str, str] = {
-    "rossi": (
-        "Peaks called with MACS, then intersected with each promoter set."
-        " Targets are ranked by the maximum -log10(q) of the peaks falling in"
-        " the promoter."
-    ),
-    "chec_m2025": (
-        "Peaks called with HOMER, replicating the peak-calling method used in"
-        " the reference publication, then intersected with each promoter set."
-        " A peak is kept when it appears in at least two replicates; targets"
-        " are ranked by the maximum peak score in the promoter."
-    ),
-}
-
-PERTURBATION_LABEL_MAP: dict[str, str] = {
-    "hackett": "2020 Overexpression",
-    "hughes_overexpression": "2006 Overexpression",
-    "hughes_knockout": "2006 TFKO",
-    "hu_reimand": "2007 TFKO",
-    "kemmeren": "2014 TFKO",
-    "degron": "2025 Degron",
-}
-
 
 # ---------------------------------------------------------------------------
 # Binding dataset index (derived from dataset_registry)
@@ -194,7 +146,11 @@ class BindingIndex:
         return bool(self.promoter_sets_with_both_methods(primary))
 
 
-def build_binding_index(registry_df: pd.DataFrame) -> BindingIndex:
+def build_binding_index(
+    registry_df: pd.DataFrame,
+    promoter_set_labels: dict[str, str] | None = None,
+    method_labels: dict[str, str] | None = None,
+) -> BindingIndex:
     """
     Build a :class:`BindingIndex` from ``dataset_registry`` rows.
 
@@ -204,6 +160,10 @@ def build_binding_index(registry_df: pd.DataFrame) -> BindingIndex:
     :param registry_df: ``dataset_registry`` rows with columns ``db_name``,
         ``data_type``, ``display_name``, ``base_label``, ``primary_db_name``,
         ``promoter_set_id`` and ``binding_method_id``.
+    :param promoter_set_labels: ``promoter_set_id -> display_name`` (the
+        ``promoter_sets`` table); an id without a label is shown as itself.
+    :param method_labels: ``binding_method_id -> display_name`` (the
+        ``binding_methods`` table).
     :returns: Populated index.
 
     """
@@ -226,9 +186,9 @@ def build_binding_index(registry_df: pd.DataFrame) -> BindingIndex:
         label[db] = str(row.display_name) if pd.notna(row.display_name) else db
         base_label[db] = str(row.base_label) if pd.notna(row.base_label) else db
         promoter_set_id[db] = ps_id
-        promoter_set[db] = PROMOTER_SET_LABELS.get(ps_id, ps_id)
+        promoter_set[db] = (promoter_set_labels or {}).get(ps_id, ps_id)
         method_id[db] = m_id
-        method[db] = BINDING_METHOD_LABELS.get(m_id, m_id)
+        method[db] = (method_labels or {}).get(m_id, m_id)
         primary[db] = prim
 
         if ps_id and m_id:

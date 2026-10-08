@@ -21,7 +21,6 @@ from tfbpshiny.modules.comparison.queries import (
     DTO_PVALUE_THRESHOLD,
     METHOD_LEVELS,
     METRIC_DTO,
-    PERTURBATION_LABEL_MAP,
     PROMOTER_SET_LEVELS,
     fetch_dto_results,
     fetch_dto_results_method_intersected,
@@ -220,9 +219,7 @@ def register_shared(input: Any, session: Any, ctx: ComparisonContext) -> Shared:
             raw["binding_db"].map(binding_index.method_id).fillna("")
         )
         raw["perturbation_source"] = (
-            raw["perturbation_db"]
-            .map(PERTURBATION_LABEL_MAP)
-            .fillna(raw["perturbation_db"])
+            raw["perturbation_db"].map(ctx.base_label).fillna(raw["perturbation_db"])
         )
         raw["val"] = raw["percent_significant"].round(4)
         raw["n_regulators"] = raw["n_intersect"]

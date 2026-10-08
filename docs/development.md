@@ -88,6 +88,29 @@ config, each contacting HuggingFace even on a warm cache — which is the reason
 app does not initialize it at runtime. `HF_HOME` controls where the downloads land;
 `HF_TOKEN` (or `--token`) is needed only for private repositories.
 
+### Dataset identity and presentation: the collection config
+
+`tfbpshiny/brentlab_yeast_collection.yaml` is the one place a dataset's identity and
+presentation are declared, as labretriever `tags` (repository-level tags apply to every
+dataset in the repository; dataset-level tags override them):
+
+| Tag | Meaning |
+|---|---|
+| `data_type` | `binding` or `perturbation`; datasets without one (the comparative `dto`) are not in the registry |
+| `display_name`, `base_label` | full label, and the label shared by every variant of one experiment |
+| `primary` | `db_name` of the primary this dataset is a variant of (a primary names itself or nothing) |
+| `promoter_set`, `binding_method` | binding only; keys of the `tfbpshiny` section below |
+| `assay`, `active_default`, `color`, `peak_calling_note` | assay name; on in a new session; series colour and peak-caller tooltip (primaries) |
+
+The YAML's top-level `tfbpshiny` section (ignored by labretriever) declares the promoter
+sets and binding methods those tags refer to: display name, colour, publication, and
+description (taken from the genome-resources `region_sets` where one is named).
+
+`tfbpshiny/config.py` reads and validates all of it. `materialize` writes the
+`dataset_registry`, `promoter_sets` and `binding_methods` tables from it; the app reads
+labels from those tables (they are used inside SQL) and colours, tooltips and notes from
+the config. Adding or relabelling a dataset is a YAML edit plus a rebuild.
+
 ### Dataset-level configuration in code
 
 Per-dataset facts the app needs that are not in the database live in

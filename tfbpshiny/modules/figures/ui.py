@@ -222,7 +222,7 @@ def figures_ui() -> ui.Tag:
                         "By default, every binding series compares each assay's 500"
                         " bp promoter-window variant, so series are named after the"
                         ' dataset alone (e.g. "2021 ChIP-exo"). A series only'
-                        " names its promoter set when it isn't 500 bp -- picking Kang,"
+                        " names its promoter set when it isn't 500bp -- picking Kang,"
                         " Mindel or Intergenic below -- and only names its method"
                         " when it's peak calling rather than promoter enrichment."
                     )
@@ -316,7 +316,7 @@ def figures_ui() -> ui.Tag:
             sidebar_text(
                 ui.p(
                     "Distribution across TFs of the top-N percent responsive, one"
-                    " box per promoter set (Kang, Mindel, 500 bp, Intergenic),"
+                    " box per promoter set (Kang, Mindel, 500bp, Intergenic),"
                     " scored by promoter enrichment throughout. Faceted by binding"
                     " dataset (rows) and perturbation dataset (columns) -- the same"
                     " comparison as the Comparison page's \"Compare Promoter"
@@ -361,7 +361,7 @@ def figures_ui() -> ui.Tag:
                 ui.p(
                     "The same two comparisons as figures 7 and 8, but instead of"
                     " varying the promoter set (with promoter enrichment"
-                    " throughout), the 500 bp promoter set is used throughout and"
+                    " throughout), the 500bp promoter set is used throughout and"
                     " the two bars per cell are the binding method: promoter"
                     " enrichment vs. peak calling. Top grid: top-N percent"
                     " responsive. Bottom grid: percent of shared TFs that are"
@@ -388,7 +388,7 @@ def figures_ui() -> ui.Tag:
                 ),
                 ui.p(
                     ui.tags.em(
-                        "Binding datasets are the 500 bp promoter-enrichment"
+                        "Binding datasets are the 500bp promoter-enrichment"
                         " variants. Samples follow the dataset filters, which by"
                         " default leave one sample per TF in each dataset."
                     )

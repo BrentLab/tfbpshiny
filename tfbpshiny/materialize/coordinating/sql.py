@@ -11,71 +11,8 @@ from __future__ import annotations
 
 from labretriever import VirtualDB
 
+from tfbpshiny.config import AppConfig, load_app_config
 from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS
-
-# ---------------------------------------------------------------------------
-# Mapping: db_name → (hf_repo, hf_config)
-# Derived from brentlab_yeast_collection.yaml.
-# ---------------------------------------------------------------------------
-
-DATASET_HF_COORDS: dict[str, tuple[str, str]] = {
-    "callingcards_kang": (
-        "BrentLab/callingcards",
-        "annotated_feature_reprocess_yiming_analysis",
-    ),
-    "callingcards_mindel": (
-        "BrentLab/callingcards",
-        "annotated_feature_reprocess_mindel_analysis",
-    ),
-    "callingcards_500bp": (
-        "BrentLab/callingcards",
-        "annotated_feature_reprocess_start_codon_500bp_analysis",
-    ),
-    "callingcards_intergenic": (
-        "BrentLab/callingcards",
-        "annotated_feature_reprocess_intergenic_analysis",
-    ),
-    "harbison": ("BrentLab/harbison_2004", "harbison_2004"),
-    "rossi": ("BrentLab/rossi_2021", "rossi_2021_af_combined"),
-    "rossi_mindel": ("BrentLab/rossi_2021", "rossi_2021_af_combined_mindel"),
-    "rossi_500bp": ("BrentLab/rossi_2021", "rossi_2021_af_combined_start_codon_500bp"),
-    "rossi_intergenic": ("BrentLab/rossi_2021", "rossi_2021_af_combined_intergenic"),
-    "rossi_peaks": ("BrentLab/rossi_2021", "yep_filtered_peaks_combined"),
-    "rossi_peaks_kang": ("BrentLab/rossi_2021", "macs_kang"),
-    "rossi_peaks_mindel": ("BrentLab/rossi_2021", "macs_mindel"),
-    "rossi_peaks_500bp": ("BrentLab/rossi_2021", "macs_bp500"),
-    "rossi_peaks_intergenic": ("BrentLab/rossi_2021", "macs_intergenic"),
-    "chec_m2025": (
-        "BrentLab/mahendrawada_2025",
-        "chec_mahendrawada_m2025_af_combined",
-    ),
-    "chec_m2025_mindel": (
-        "BrentLab/mahendrawada_2025",
-        "chec_mahendrawada_m2025_af_combined_mindel",
-    ),
-    "chec_m2025_500bp": (
-        "BrentLab/mahendrawada_2025",
-        "chec_mahendrawada_m2025_af_combined_start_codon_500bp",
-    ),
-    "chec_m2025_intergenic": (
-        "BrentLab/mahendrawada_2025",
-        "chec_mahendrawada_m2025_af_combined_intergenic",
-    ),
-    "chec_m2025_peaks": ("BrentLab/mahendrawada_2025", "mahendrawada_chec_seq"),
-    "chec_m2025_peaks_kang": ("BrentLab/mahendrawada_2025", "kang_peaks"),
-    "chec_m2025_peaks_mindel": ("BrentLab/mahendrawada_2025", "mindel_peaks"),
-    "chec_m2025_peaks_500bp": ("BrentLab/mahendrawada_2025", "bp500_peaks"),
-    "chec_m2025_peaks_intergenic": (
-        "BrentLab/mahendrawada_2025",
-        "intergenic_peaks",
-    ),
-    "kemmeren": ("BrentLab/kemmeren_2014", "kemmeren_2014"),
-    "degron": ("BrentLab/mahendrawada_2025", "rnaseq_reprocessed"),
-    "hackett": ("BrentLab/hackett_2020", "hackett_2020_analysis_set"),
-    "hu_reimand": ("BrentLab/hu_2007_reimand_2010", "hu_2007_reimand_2010"),
-    "hughes_overexpression": ("BrentLab/hughes_2006", "overexpression"),
-    "hughes_knockout": ("BrentLab/hughes_2006", "knockout"),
-}
 
 
 def schema_version_sql(version: int, git_sha: str | None) -> str:
@@ -102,15 +39,31 @@ INSERT INTO schema_version VALUES ({int(version)}, now()::TIMESTAMP, {sha});
 """
 
 
-def promoter_sets_sql() -> str:
+def _lit(value: object) -> str:
+    """A SQL literal for a config value: NULL, TRUE/FALSE, or a quoted string."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def promoter_sets_sql(config: AppConfig | None = None) -> str:
     """
     Return SQL to create and populate the ``promoter_sets`` table.
 
+    Rows are the ``tfbpshiny.promoter_sets`` section of the collection config.
+
+    :param config: Parsed collection config; the packaged one when ``None``.
     :returns: ``CREATE TABLE`` + ``INSERT`` SQL string.
-    :rtype: str
 
     """
-    return """
+    config = config or load_app_config()
+    rows = ",\n".join(
+        f"    ({_lit(v.id)}, {_lit(v.display_name)}, {_lit(v.description or None)})"
+        for v in config.promoter_sets.values()
+    )
+    return f"""
 CREATE TABLE promoter_sets (
     promoter_set_id  VARCHAR  PRIMARY KEY,
     display_name     VARCHAR  NOT NULL,
@@ -118,70 +71,78 @@ CREATE TABLE promoter_sets (
 );
 
 INSERT INTO promoter_sets VALUES
-    ('kang',
-     'Kang',
-     '700 bp upstream of each start codon, truncated when a feature lies within '
-     || '700 bp of the ORF'),
-    ('mindel',
-     'Mindel',
-     'Start codon to >= 700 bp upstream of the TSS (Park 2014 / Pelechano 2013 / '
-     || 'Policastro 2020); start codon used when no TSS is defined'),
-    ('500bp',
-     '500 bp',
-     'Exactly 500 bp upstream of the start codon; no truncation or extension'),
-    ('intergenic',
-     'Intergenic',
-     'Full intergenic region upstream of the 5'' end of the feature; 1 410 '
-     || 'of 6 040 features are divergently transcribed'),
-    ('peaks',
-     'Peaks',
-     'Regions as called by the original authors'' peak-calling pipeline; not '
-     || 'a fixed promoter window'),
-    ('array',
-     'Array Probes',
-     'Regions fixed by the ChIP-chip microarray platform. Not a promoter '
-     || 'window and not re-quantifiable over one: the source ships per-target '
-     || 'binding ratios with no underlying signal track to re-summarise');
+{rows};
 """
 
 
-def binding_methods_sql() -> str:
+def binding_methods_sql(config: AppConfig | None = None) -> str:
     """
     Return SQL to create and populate the ``binding_methods`` table.
 
+    Rows are the ``tfbpshiny.binding_methods`` section of the collection config.
+
+    :param config: Parsed collection config; the packaged one when ``None``.
     :returns: ``CREATE TABLE`` + ``INSERT`` SQL string.
-    :rtype: str
 
     """
-    return """
+    config = config or load_app_config()
+    rows = ",\n".join(
+        f"    ({_lit(v.id)}, {_lit(v.display_name)})"
+        for v in config.binding_methods.values()
+    )
+    return f"""
 CREATE TABLE binding_methods (
     binding_method_id  VARCHAR  PRIMARY KEY,
     display_name       VARCHAR  NOT NULL
 );
 
 INSERT INTO binding_methods VALUES
-    ('promoter_enrichment', 'Promoter Enrichment'),
-    ('peak_calling',        'Peak Calling');
+{rows};
 """
 
 
-def dataset_registry_sql() -> str:
+def dataset_registry_sql(config: AppConfig | None = None) -> str:
     """
     Return SQL to create and populate the ``dataset_registry`` table.
 
-    One row per ``db_name`` covering all binding and perturbation datasets.
-    Includes HuggingFace coordinates, display metadata, and promoter-set /
-    method references for binding datasets.
+    One row per binding or perturbation dataset declared in the collection config,
+    from its merged labretriever ``tags`` (see :mod:`tfbpshiny.config`).
 
-    Two INSERTs are used: primary rows (``primary_db_name IS NULL``) first,
-    variant rows second, so that the self-referential FK constraint is
-    satisfied when DuckDB checks it row-by-row.
+    Primaries are inserted in a statement of their own before the variants, so the
+    self-referential FK is satisfied when DuckDB checks the second statement.
 
-    :returns: ``CREATE TABLE`` + two ``INSERT`` SQL blocks.
-    :rtype: str
+    :param config: Parsed collection config; the packaged one when ``None``.
+    :returns: ``CREATE TABLE`` + ``INSERT`` SQL string.
 
     """
-    return """
+    config = config or load_app_config()
+
+    def _values(primaries: bool) -> str:
+        return ",\n".join(
+            "("
+            + ", ".join(
+                _lit(v)
+                for v in (
+                    d.db_name,
+                    d.hf_repo,
+                    d.hf_config,
+                    d.data_type,
+                    d.assay,
+                    d.display_name,
+                    d.base_label,
+                    d.is_primary,
+                    d.is_active_default,
+                    d.primary_db_name,
+                    d.promoter_set_id,
+                    d.binding_method_id,
+                )
+            )
+            + ")"
+            for d in config.datasets.values()
+            if d.is_primary == primaries
+        )
+
+    return f"""
 CREATE TABLE dataset_registry (
     db_name              VARCHAR  PRIMARY KEY,
     hf_repo              VARCHAR  NOT NULL,
@@ -197,171 +158,12 @@ CREATE TABLE dataset_registry (
     binding_method_id    VARCHAR  REFERENCES binding_methods(binding_method_id)
 );
 
--- Pass 1: primary rows (primary_db_name IS NULL) inserted first so the
--- self-referential FK is satisfied when Pass 2 variant rows reference them.
+-- Primaries first, in their own statement: the FK is checked per statement.
 INSERT INTO dataset_registry VALUES
--- binding primaries
--- The 500 bp start-codon window is the primary promoter definition for every
--- promoter-enrichment assay: it is the one definition all three assays share, so
--- making it primary is what lets the figures compare assays without silently
--- comparing promoter definitions too. The Kang/Mindel/intergenic quantifications
--- of the same experiment are variants of it.
-('callingcards_500bp',
- 'BrentLab/callingcards', 'annotated_feature_reprocess_start_codon_500bp_analysis',
- 'binding', 'CallingCards',
- '2026 Calling Cards', '2026 Calling Cards',
- TRUE, TRUE, NULL, '500bp', 'promoter_enrichment'),
--- Harbison's regions come from the microarray, not a promoter definition. It was
--- tagged 'kang', which put it in the Kang column of the promoter-definition grid and
--- implied a comparison that cannot be made: there are no Mindel/500bp/intergenic
--- variants of it and no signal track from which to build any.
-('harbison',
- 'BrentLab/harbison_2004', 'harbison_2004',
- 'binding', 'ChIP-chip',
- '2004 ChIP-chip (Harbison)', '2004 ChIP-chip',
- TRUE, FALSE, NULL, 'array', 'promoter_enrichment'),
-('rossi_500bp',
- 'BrentLab/rossi_2021', 'rossi_2021_af_combined_start_codon_500bp',
- 'binding', 'ChIPexo',
- '2021 ChIP-exo (Rossi)', '2021 ChIP-exo',
- TRUE, TRUE, NULL, '500bp', 'promoter_enrichment'),
-('chec_m2025_500bp',
- 'BrentLab/mahendrawada_2025', 'chec_mahendrawada_m2025_af_combined_start_codon_500bp',
- 'binding', 'ChEC-seq',
- '2025 ChEC-seq (Mahendrawada)', '2025 ChEC-seq',
- TRUE, TRUE, NULL, '500bp', 'promoter_enrichment'),
--- perturbation primaries (all have primary_db_name = NULL)
-('kemmeren',
- 'BrentLab/kemmeren_2014', 'kemmeren_2014',
- 'perturbation', 'TFKO',
- '2014 TFKO (Kemmeren)', '2014 TFKO',
- TRUE, TRUE, NULL, NULL, NULL),
-('degron',
- 'BrentLab/mahendrawada_2025', 'rnaseq_reprocessed',
- 'perturbation', 'RNA-seq',
- '2025 Degron (Mahendrawada)', '2025 Degron',
- TRUE, TRUE, NULL, NULL, NULL),
-('hackett',
- 'BrentLab/hackett_2020', 'hackett_2020_analysis_set',
- 'perturbation', 'overexpression',
- '2020 Overexpression (Hackett)', '2020 Overexpression',
- TRUE, TRUE, NULL, NULL, NULL),
-('hu_reimand',
- 'BrentLab/hu_2007_reimand_2010', 'hu_2007_reimand_2010',
- 'perturbation', 'TFKO',
- '2007 TFKO (Hu)', '2007 TFKO',
- TRUE, FALSE, NULL, NULL, NULL),
-('hughes_overexpression',
- 'BrentLab/hughes_2006', 'overexpression',
- 'perturbation', 'overexpression',
- '2006 Overexpression (Hughes)', '2006 Overexpression',
- TRUE, FALSE, NULL, NULL, NULL),
-('hughes_knockout',
- 'BrentLab/hughes_2006', 'knockout',
- 'perturbation', 'TFKO',
- '2006 Knockout (Hughes)', '2006 Knockout',
- TRUE, FALSE, NULL, NULL, NULL);
+{_values(True)};
 
--- Pass 2: variant rows — primary rows above now exist so FK is satisfied
 INSERT INTO dataset_registry VALUES
--- callingcards variants
-('callingcards_mindel',
- 'BrentLab/callingcards', 'annotated_feature_reprocess_mindel_analysis',
- 'binding', 'CallingCards',
- '2026 Calling Cards (Mindel)', '2026 Calling Cards',
- FALSE, FALSE, 'callingcards_500bp', 'mindel', 'promoter_enrichment'),
-('callingcards_kang',
- 'BrentLab/callingcards', 'annotated_feature_reprocess_yiming_analysis',
- 'binding', 'CallingCards',
- '2026 Calling Cards (Kang)', '2026 Calling Cards',
- FALSE, FALSE, 'callingcards_500bp', 'kang', 'promoter_enrichment'),
-('callingcards_intergenic',
- 'BrentLab/callingcards', 'annotated_feature_reprocess_intergenic_analysis',
- 'binding', 'CallingCards',
- '2026 Calling Cards (Intergenic)', '2026 Calling Cards',
- FALSE, FALSE, 'callingcards_500bp', 'intergenic', 'promoter_enrichment'),
--- rossi variants
-('rossi_mindel',
- 'BrentLab/rossi_2021', 'rossi_2021_af_combined_mindel',
- 'binding', 'ChIPexo',
- '2021 ChIP-exo (Rossi, Mindel)', '2021 ChIP-exo',
- FALSE, FALSE, 'rossi_500bp', 'mindel', 'promoter_enrichment'),
-('rossi',
- 'BrentLab/rossi_2021', 'rossi_2021_af_combined',
- 'binding', 'ChIPexo',
- '2021 ChIP-exo (Rossi, Kang)', '2021 ChIP-exo',
- FALSE, FALSE, 'rossi_500bp', 'kang', 'promoter_enrichment'),
-('rossi_intergenic',
- 'BrentLab/rossi_2021', 'rossi_2021_af_combined_intergenic',
- 'binding', 'ChIPexo',
- '2021 ChIP-exo (Rossi, Intergenic)', '2021 ChIP-exo',
- FALSE, FALSE, 'rossi_500bp', 'intergenic', 'promoter_enrichment'),
-('rossi_peaks',
- 'BrentLab/rossi_2021', 'yep_filtered_peaks_combined',
- 'binding', 'ChIPexo',
- '2021 ChIP-exo Peaks', '2021 ChIP-exo',
- FALSE, FALSE, 'rossi_500bp', 'peaks', 'peak_calling'),
-('rossi_peaks_kang',
- 'BrentLab/rossi_2021', 'macs_kang',
- 'binding', 'ChIPexo',
- '2021 ChIP-exo Peaks (MACS, Kang)', '2021 ChIP-exo',
- FALSE, FALSE, 'rossi_500bp', 'kang', 'peak_calling'),
-('rossi_peaks_mindel',
- 'BrentLab/rossi_2021', 'macs_mindel',
- 'binding', 'ChIPexo',
- '2021 ChIP-exo Peaks (MACS, Mindel)', '2021 ChIP-exo',
- FALSE, FALSE, 'rossi_500bp', 'mindel', 'peak_calling'),
-('rossi_peaks_500bp',
- 'BrentLab/rossi_2021', 'macs_bp500',
- 'binding', 'ChIPexo',
- '2021 ChIP-exo Peaks (MACS, 500bp)', '2021 ChIP-exo',
- FALSE, FALSE, 'rossi_500bp', '500bp', 'peak_calling'),
-('rossi_peaks_intergenic',
- 'BrentLab/rossi_2021', 'macs_intergenic',
- 'binding', 'ChIPexo',
- '2021 ChIP-exo Peaks (MACS, Intergenic)', '2021 ChIP-exo',
- FALSE, FALSE, 'rossi_500bp', 'intergenic', 'peak_calling'),
--- chec_m2025 variants
-('chec_m2025_mindel',
- 'BrentLab/mahendrawada_2025', 'chec_mahendrawada_m2025_af_combined_mindel',
- 'binding', 'ChEC-seq',
- '2025 ChEC-seq (Mahendrawada, Mindel)', '2025 ChEC-seq',
- FALSE, FALSE, 'chec_m2025_500bp', 'mindel', 'promoter_enrichment'),
-('chec_m2025',
- 'BrentLab/mahendrawada_2025', 'chec_mahendrawada_m2025_af_combined',
- 'binding', 'ChEC-seq',
- '2025 ChEC-seq (Mahendrawada, Kang)', '2025 ChEC-seq',
- FALSE, FALSE, 'chec_m2025_500bp', 'kang', 'promoter_enrichment'),
-('chec_m2025_intergenic',
- 'BrentLab/mahendrawada_2025', 'chec_mahendrawada_m2025_af_combined_intergenic',
- 'binding', 'ChEC-seq',
- '2025 ChEC-seq (Mahendrawada, Intergenic)', '2025 ChEC-seq',
- FALSE, FALSE, 'chec_m2025_500bp', 'intergenic', 'promoter_enrichment'),
-('chec_m2025_peaks',
- 'BrentLab/mahendrawada_2025', 'mahendrawada_chec_seq',
- 'binding', 'ChEC-seq',
- '2025 ChEC-seq Peaks (Mahendrawada)', '2025 ChEC-seq',
- FALSE, FALSE, 'chec_m2025_500bp', 'peaks', 'peak_calling'),
-('chec_m2025_peaks_kang',
- 'BrentLab/mahendrawada_2025', 'kang_peaks',
- 'binding', 'ChEC-seq',
- '2025 ChEC-seq Peaks (HOMER, Kang)', '2025 ChEC-seq',
- FALSE, FALSE, 'chec_m2025_500bp', 'kang', 'peak_calling'),
-('chec_m2025_peaks_mindel',
- 'BrentLab/mahendrawada_2025', 'mindel_peaks',
- 'binding', 'ChEC-seq',
- '2025 ChEC-seq Peaks (HOMER, Mindel)', '2025 ChEC-seq',
- FALSE, FALSE, 'chec_m2025_500bp', 'mindel', 'peak_calling'),
-('chec_m2025_peaks_500bp',
- 'BrentLab/mahendrawada_2025', 'bp500_peaks',
- 'binding', 'ChEC-seq',
- '2025 ChEC-seq Peaks (HOMER, 500bp)', '2025 ChEC-seq',
- FALSE, FALSE, 'chec_m2025_500bp', '500bp', 'peak_calling'),
-('chec_m2025_peaks_intergenic',
- 'BrentLab/mahendrawada_2025', 'intergenic_peaks',
- 'binding', 'ChEC-seq',
- '2025 ChEC-seq Peaks (HOMER, Intergenic)', '2025 ChEC-seq',
- FALSE, FALSE, 'chec_m2025_500bp', 'intergenic', 'peak_calling');
+{_values(False)};
 """
 
 

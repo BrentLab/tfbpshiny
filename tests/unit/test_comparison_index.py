@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from tfbpshiny.config import load_app_config
 from tfbpshiny.modules.comparison.queries import (
     METHOD_LEVELS,
     PROMOTER_SET_LEVELS,
@@ -137,7 +138,12 @@ def test_perturbation_rows_are_ignored(registry_df: pd.DataFrame) -> None:
 
 def test_labels_come_from_the_registry(registry_df: pd.DataFrame) -> None:
     """display_name and base_label are read through, not reconstructed."""
-    index = build_binding_index(registry_df)
+    cfg = load_app_config()
+    index = build_binding_index(
+        registry_df,
+        {k: v.display_name for k, v in cfg.promoter_sets.items()},
+        {k: v.display_name for k, v in cfg.binding_methods.items()},
+    )
     assert index.label["rossi"] == "2021 ChIP-exo (Rossi)"
     assert index.base_label["rossi_peaks_mindel"] == "2021 ChIP-exo"
     assert index.promoter_set["rossi_peaks_500bp"] == "500bp"

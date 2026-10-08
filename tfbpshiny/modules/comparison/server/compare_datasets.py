@@ -13,7 +13,6 @@ from shiny import reactive, render, ui
 from tfbpshiny.components import empty_state
 from tfbpshiny.modules.comparison.queries import (
     METRIC_DTO,
-    PERTURBATION_LABEL_MAP,
     fetch_topn_results,
 )
 from tfbpshiny.modules.comparison.server.context import (
@@ -94,9 +93,7 @@ def register_compare_datasets(
             raw["binding_db"].map(binding_index.label).fillna(raw["binding_db"])
         )
         raw["perturbation_source"] = (
-            raw["perturbation_db"]
-            .map(PERTURBATION_LABEL_MAP)
-            .fillna(raw["perturbation_db"])
+            raw["perturbation_db"].map(ctx.base_label).fillna(raw["perturbation_db"])
         )
         raw["regulator_label"] = (
             raw["regulator_locus_tag"]
@@ -176,7 +173,7 @@ def register_compare_datasets(
                 display_names={
                     **ctx.display_names,
                     **binding_index.label,
-                    **PERTURBATION_LABEL_MAP,
+                    **{p: ctx.base_label.get(p, p) for p in p_dbs},
                 },
                 selected_binding=cd_selected_binding(),
                 selected_perturbation=cd_selected_perturbation(),

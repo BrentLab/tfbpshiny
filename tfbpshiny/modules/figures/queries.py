@@ -18,7 +18,10 @@ import pandas as pd
 from tfbpshiny.datasets import (
     DTO_PVALUE_THRESHOLD,
     GENE_UNIVERSE,
+    HEADLINE_PERTURBATION,
+    METHOD_COMPARISON_ASSAYS,
     METHOD_LEVELS,
+    PROMOTER_ENRICHMENT_500BP,
     PROMOTER_SET_LEVELS,
     TOP_N_ALL,
 )
@@ -32,24 +35,15 @@ from tfbpshiny.utils.vdb_init import DEFAULT_RESPONSIVENESS_PRESETS
 
 #: Binding datasets shown in the figures, in display order. These are the *primary*
 #: db_names -- the promoter-set and peak variants are not separate figure series.
-BINDING_ORDER: tuple[str, ...] = (
-    "harbison",
-    "callingcards_500bp",
-    "rossi_500bp",
-    "chec_m2025_500bp",
-)
+BINDING_ORDER: tuple[str, ...] = ("harbison", *PROMOTER_ENRICHMENT_500BP)
 
 #: Perturbation datasets shown, in display order.
-PR_ORDER: tuple[str, ...] = ("kemmeren", "hackett", "degron")
+PR_ORDER: tuple[str, ...] = HEADLINE_PERTURBATION
 
 #: Binding datasets that have DTO results. Harbison has **zero** DTO rows -- the
 #: upstream analysis covers 22 binding datasets and none of them is ChIP-chip -- so
 #: the DTO figures are necessarily three-wide rather than four.
-DTO_BINDING_ORDER: tuple[str, ...] = (
-    "callingcards_500bp",
-    "rossi_500bp",
-    "chec_m2025_500bp",
-)
+DTO_BINDING_ORDER: tuple[str, ...] = PROMOTER_ENRICHMENT_500BP
 
 #: The only ranking variant present for all six perturbation datasets.
 DTO_RANKING_COLUMN = "log2fc"
@@ -67,21 +61,17 @@ AUTHORS_PEAK_BINDING: tuple[str, ...] = (
     "callingcards_500bp",
 )
 
-#: Datasets figure 6 compares by default: promoter enrichment over the 500 bp
+#: Datasets figure 6 compares by default: promoter enrichment over the 500bp
 #: start-codon window, so the assays are compared on one promoter definition rather
 #: than on whichever one happens to be each dataset's primary.
 #:
 #: Harbison is absent, and cannot be added to a promoter-matched comparison at all:
-#: its regions are microarray probes fixed by the platform, so it has no 500 bp
+#: its regions are microarray probes fixed by the platform, so it has no 500bp
 #: variant and no way to acquire one. It remains selectable -- figure 6 intersects
 #: *target sets*, not genomic regions, so the overlap is still well defined -- but a
 #: pair involving it compares one assay's promoter-window ranking against another's
 #: probe-level ranking, and the promoter definition is not held fixed.
-AGREEMENT_DEFAULT_BINDING: tuple[str, ...] = (
-    "callingcards_500bp",
-    "rossi_500bp",
-    "chec_m2025_500bp",
-)
+AGREEMENT_DEFAULT_BINDING: tuple[str, ...] = PROMOTER_ENRICHMENT_500BP
 
 #: Perturbation datasets figure 6 compares by default. These have no promoter
 #: variants, so the default is simply the three headline datasets.
@@ -127,7 +117,7 @@ AGREEMENT_PAIR_WARN = 12
 #: Binding primaries with a peak-calling arm at every promoter set, for figure 9.
 #: Calling Cards has none (confirmed: no `callingcards_*_peaks` registry rows), so it
 #: is excluded here rather than shown as an empty row.
-METHOD_COMPARISON_BINDING: tuple[str, ...] = ("rossi_500bp", "chec_m2025_500bp")
+METHOD_COMPARISON_BINDING: tuple[str, ...] = METHOD_COMPARISON_ASSAYS
 
 
 def scoring_clause(
@@ -616,7 +606,7 @@ def agreement_dataset_choices(
 
     Ordered assay, then method (promoter enrichment before peak calling), then
     promoter set, so the variants of one experiment sit together and a reader
-    scanning for "the 500 bp row" finds it in the same place under each assay.
+    scanning for "the 500bp row" finds it in the same place under each assay.
 
     Datasets in :data:`~tfbpshiny.materialize.comparison.agreement.AGREEMENT_EXCLUDED`
     are omitted -- ``topn_agreement`` holds no rows for them.

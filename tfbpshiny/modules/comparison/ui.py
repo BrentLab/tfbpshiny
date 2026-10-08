@@ -10,6 +10,11 @@ from tfbpshiny.modules.comparison.queries import (
     METRIC_LABELS,
     METRIC_TOPN,
 )
+from tfbpshiny.modules.comparison.server.context import (
+    PROMOTER_SET_ALIAS,
+    PROMOTER_SET_REFERENCES,
+    PROMOTER_TOOLTIPS,
+)
 
 
 @module.ui
@@ -132,43 +137,22 @@ def comparison_ui() -> ui.Tag:
                     ui.h4("Promoter Set Definitions", style="display:inline;")
                 ),
                 ui.tags.dl(
-                    ui.tags.dt(
-                        ui.tags.a(
-                            "Promoter Set 1 (Kang)",
-                            href="https://doi.org/10.1101/gr.259655.119",
-                            target="_blank",
+                    *(
+                        tag
+                        for ps, alias in PROMOTER_SET_ALIAS.items()
+                        for tag in (
+                            ui.tags.dt(
+                                ui.tags.a(
+                                    alias,
+                                    href=PROMOTER_SET_REFERENCES[ps],
+                                    target="_blank",
+                                )
+                                if PROMOTER_SET_REFERENCES[ps]
+                                else alias
+                            ),
+                            ui.tags.dd(PROMOTER_TOOLTIPS[ps]),
                         )
-                    ),
-                    ui.tags.dd(
-                        "700 bp upstream of each start codon, truncated if there"
-                        " exists a feature within 700 bp of the ORF."
-                    ),
-                    ui.tags.dt(
-                        ui.tags.a(
-                            "Promoter Set 2 (Mindel)",
-                            href="https://doi.org/10.1101/2025.10.12.681120",
-                            target="_blank",
-                        )
-                    ),
-                    ui.tags.dd(
-                        "Promoter regions defined from the start codon to at least"
-                        " 700 bp upstream of the TSS defined by Park et al., 2014;"
-                        " Pelechano et al., 2013; Policastro et al., 2020 (provided"
-                        " in the SGD annotations). If no TSS is defined, the start"
-                        " codon is used."
-                    ),
-                    ui.tags.dt("Promoter Set 3 (500bp)"),
-                    ui.tags.dd(
-                        "Promoter regions defined as exactly 500 bp upstream of the"
-                        " start codon. No truncation or extension; all promoters are"
-                        " the same length."
-                    ),
-                    ui.tags.dt("Promoter Set 4 (Intergenic)"),
-                    ui.tags.dd(
-                        "Promoter regions defined as the full intergenic region"
-                        " upstream of the 5' end of each feature. 1410"
-                        " of 6040 features are divergently transcribed."
-                    ),
+                    )
                 ),
             ),
         ),

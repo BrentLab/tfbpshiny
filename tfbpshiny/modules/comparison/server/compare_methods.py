@@ -13,17 +13,13 @@ from tfbpshiny.materialize.comparison.method_promoter_model import (
     pair_methods_on_regulators,
 )
 from tfbpshiny.modules.comparison.queries import (
-    BINDING_METHOD_COLORS,
-    BINDING_METHOD_LABELS,
     METHOD_LEVELS,
     METRIC_DTO,
-    PEAK_CALLER_NOTES,
-    PERTURBATION_LABEL_MAP,
-    PROMOTER_SET_LABELS,
     PROMOTER_SET_LEVELS,
     fetch_topn_results,
 )
 from tfbpshiny.modules.comparison.server.context import (
+    PEAK_CALLER_NOTES,
     PROMOTER_TOOLTIPS,
     ComparisonContext,
     cell_style,
@@ -35,6 +31,7 @@ from tfbpshiny.modules.comparison.server.context import (
     read_top_n,
 )
 from tfbpshiny.modules.comparison.server.shared import Shared
+from tfbpshiny.utils.figure import METHOD_COLORS
 from tfbpshiny.utils.perf import perf
 
 
@@ -245,7 +242,7 @@ def register_compare_methods(
 
             cards: list[ui.Tag] = []
             for p_db in p_dbs:
-                p_label = PERTURBATION_LABEL_MAP.get(p_db, p_db)
+                p_label = ctx.base_label.get(p_db, p_db)
                 sub_agg = agg[agg["perturbation_db"] == p_db]
                 if sub_agg.empty:
                     continue
@@ -260,7 +257,7 @@ def register_compare_methods(
                     header_cells.append(
                         ui.tags.th(
                             ui.tooltip(
-                                ui.span(PROMOTER_SET_LABELS.get(ps, ps)),
+                                ui.span(ctx.promoter_set_labels.get(ps, ps)),
                                 PROMOTER_TOOLTIPS.get(ps, ""),
                             ),
                             style=f"{_th_style} font-weight: 600;",
@@ -269,8 +266,8 @@ def register_compare_methods(
 
                 data_rows_cm: list[ui.Tag] = []
                 for method_id in methods_present:
-                    method_label = BINDING_METHOD_LABELS.get(method_id, method_id)
-                    color = BINDING_METHOD_COLORS.get(method_id, "#888888")
+                    method_label = ctx.method_labels.get(method_id, method_id)
+                    color = METHOD_COLORS.get(method_id, "#888888")
                     if method_id == "peak_calling":
                         label_tag: Any = ui.tooltip(
                             ui.span(method_label), peak_note, placement="right"

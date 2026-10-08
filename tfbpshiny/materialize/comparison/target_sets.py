@@ -24,18 +24,16 @@ executes them.
 
 from __future__ import annotations
 
+from tfbpshiny.datasets import HEADLINE_PERTURBATION, PROMOTER_ENRICHMENT_500BP
+
 #: Largest Top N the Figures sidebar offers. Ranks beyond this are not stored.
 TARGET_SET_MAX_N = 100
 
-#: Binding datasets figure 10 compares: the three 500 bp promoter-enrichment variants.
-TARGET_SET_BINDING: tuple[str, ...] = (
-    "callingcards_500bp",
-    "rossi_500bp",
-    "chec_m2025_500bp",
-)
+#: Binding datasets figure 10 compares: the three 500bp promoter-enrichment variants.
+TARGET_SET_BINDING: tuple[str, ...] = PROMOTER_ENRICHMENT_500BP
 
 #: Perturbation datasets figure 10 compares: the three headline datasets.
-TARGET_SET_PERTURBATION: tuple[str, ...] = ("kemmeren", "hackett", "degron")
+TARGET_SET_PERTURBATION: tuple[str, ...] = HEADLINE_PERTURBATION
 
 
 def target_sets_schema_sql() -> str:

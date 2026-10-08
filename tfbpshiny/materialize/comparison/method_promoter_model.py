@@ -43,7 +43,11 @@ from typing import Any
 import pandas as pd
 import statsmodels.formula.api as smf
 
-from tfbpshiny.datasets import METHOD_LEVELS, PROMOTER_SET_LEVELS
+from tfbpshiny.datasets import (
+    METHOD_COMPARISON_ASSAYS,
+    METHOD_LEVELS,
+    PROMOTER_SET_LEVELS,
+)
 from tfbpshiny.utils.corr_query import (
     expand_filters_to_variants,
     get_filtered_sample_ids,
@@ -57,7 +61,7 @@ logger = logging.getLogger("shiny")
 #: peak-calling arm. Calling Cards has no peak-calling arm (excluded: would unbalance
 #: the method contrast and contributes nothing to the interaction); Harbison's regions
 #: are microarray probes with no re-quantifiable window (`promoter_set_id='array'`).
-ASSAY_PRIMARIES: tuple[str, ...] = ("rossi_500bp", "chec_m2025_500bp")
+ASSAY_PRIMARIES: tuple[str, ...] = METHOD_COMPARISON_ASSAYS
 
 #: Minimum distinct regulators required to fit -- below this a regulator fixed effect
 #: and cluster-robust SEs are not meaningful.

@@ -15,7 +15,7 @@ conditions, etc) and provide some
 
 | Layer | Tables | Description |
 |-------|--------|-------------|
-| Coordinating | `promoter_sets`, `binding_methods`, `dataset_registry`, `comparative_dataset_registry` | Registry + display metadata; single source of truth for the dicts currently hardcoded in `vdb_init.py` and `comparison/queries.py` |
+| Coordinating | `promoter_sets`, `binding_methods`, `dataset_registry`, `comparative_dataset_registry` | Registry + display metadata, written from the collection config's `tags` and `tfbpshiny` section (see `tfbpshiny/config.py`) |
 | Metadata | `{db_name}_meta` (one per dataset) | Materialized verbatim from VirtualDB `_meta` views; schema is dataset-specific |
 | Comparison — HF-sourced | `{analysis_name}` (one per configured comparative dataset) | Materialized verbatim from the raw HuggingFace Parquet; composite `source_sample` IDs preserved |
 | Comparison — computed | `topn_results`, `correlations` | Pairwise analysis results computed at materialization time; same `source_sample` format |

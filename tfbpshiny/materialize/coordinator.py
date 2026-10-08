@@ -22,6 +22,7 @@ import duckdb
 import pandas as pd
 from labretriever import VirtualDB
 
+from tfbpshiny.config import load_app_config
 from tfbpshiny.datasets import (
     BINDING_DATASET_COLUMNS,
     PERTURBATION_CORRELATION_COLUMNS,
@@ -78,7 +79,6 @@ from tfbpshiny.materialize.comparison.topn import (
     topn_schema_sql,
 )
 from tfbpshiny.materialize.coordinating.sql import (
-    DATASET_HF_COORDS,
     binding_methods_sql,
     column_metadata_sql,
     comparative_registry_sql,
@@ -192,6 +192,11 @@ def _git_sha() -> str | None:
     except (OSError, subprocess.SubprocessError):
         return None
     return out.stdout.strip() or None
+
+
+def _hf_coords(vdb: VirtualDB, db_name: str) -> tuple[str, str]:
+    """``(hf_repo, hf_config)`` VirtualDB loaded ``db_name`` from."""
+    return vdb.db_name_map.get(db_name, ("", ""))
 
 
 def _stage_table(
@@ -323,7 +328,7 @@ def stage_topn(
 
         for b_db in binding_views:
             b_cfg = BINDING_TOPN_CONFIGS[b_db]
-            b_hf_repo, b_hf_config = DATASET_HF_COORDS.get(b_db, ("", ""))
+            b_hf_repo, b_hf_config = _hf_coords(vdb, b_db)
 
             # Stage A: once per binding dataset, dropped before the next one.
             b_sql, b_params = binding_stage_sql(
@@ -343,7 +348,7 @@ def stage_topn(
 
             try:
                 for p_db in perturbation_views:
-                    p_hf_repo, p_hf_config = DATASET_HF_COORDS.get(p_db, ("", ""))
+                    p_hf_repo, p_hf_config = _hf_coords(vdb, p_db)
                     cutoffs, pairs = _topn_plan(
                         b_db,
                         p_db,
@@ -477,7 +482,7 @@ def stage_method_promoter_topn(
                 )
                 continue
             b_cfg = BINDING_TOPN_CONFIGS[b_db]
-            b_hf_repo, b_hf_config = DATASET_HF_COORDS.get(b_db, ("", ""))
+            b_hf_repo, b_hf_config = _hf_coords(vdb, b_db)
 
             b_sql, b_params = binding_stage_sql(
                 binding_view=b_db,
@@ -496,7 +501,7 @@ def stage_method_promoter_topn(
 
             try:
                 for p_db in perturbation_views:
-                    p_hf_repo, p_hf_config = DATASET_HF_COORDS.get(p_db, ("", ""))
+                    p_hf_repo, p_hf_config = _hf_coords(vdb, p_db)
                     cutoffs, pairs = _topn_plan(
                         b_db, p_db, top_n_values, [], [], preset_names
                     )
@@ -586,9 +591,11 @@ def materialize(
         # 1. Coordinating layer
         # ------------------------------------------------------------------
         logger.info("=== Phase 1: Coordinating layer ===")
-        exec_static(conn, promoter_sets_sql(), "promoter_sets")
-        exec_static(conn, binding_methods_sql(), "binding_methods")
-        exec_static(conn, dataset_registry_sql(), "dataset_registry")
+        # Dataset identity and labels come from the collection config's tags.
+        app_config = load_app_config(args.config)
+        exec_static(conn, promoter_sets_sql(app_config), "promoter_sets")
+        exec_static(conn, binding_methods_sql(app_config), "binding_methods")
+        exec_static(conn, dataset_registry_sql(app_config), "dataset_registry")
         exec_static(conn, comparative_registry_sql(), "comparative_dataset_registry")
 
         col_meta_sql = column_metadata_sql(vdb)
@@ -741,11 +748,11 @@ def materialize(
             for binding_view, bound_cfg in AUTHORS_BOUND_CONFIGS.items():
                 if binding_view not in datasets:
                     continue
-                b_hf = DATASET_HF_COORDS.get(binding_view, ("", ""))
+                b_hf = _hf_coords(vdb, binding_view)
                 for perturbation_db in sorted(
                     db for db in datasets if db in PERTURBATION_TOPN_DATASETS
                 ):
-                    pert_hf = DATASET_HF_COORDS.get(perturbation_db, ("", ""))
+                    pert_hf = _hf_coords(vdb, perturbation_db)
                     # The presets' pairs only; the CLI threshold axes are not crossed
                     # in here.
                     _, threshold_pairs = _topn_plan(
@@ -804,8 +811,8 @@ def materialize(
                     len(views) * (len(views) - 1) // 2,
                 )
                 for view_a, view_b in itertools.combinations(views, 2):
-                    hf_a = DATASET_HF_COORDS.get(view_a, ("", ""))
-                    hf_b = DATASET_HF_COORDS.get(view_b, ("", ""))
+                    hf_a = _hf_coords(vdb, view_a)
+                    hf_b = _hf_coords(vdb, view_b)
                     if ctype == "binding":
                         cfg_a = BINDING_TOPN_CONFIGS[view_a]
                         cfg_b = BINDING_TOPN_CONFIGS[view_b]
@@ -880,7 +887,7 @@ def materialize(
                 for view in set_views:
                     if view not in datasets:
                         continue
-                    hf = DATASET_HF_COORDS.get(view, ("", ""))
+                    hf = _hf_coords(vdb, view)
                     if ctype == "binding":
                         cfg = BINDING_TOPN_CONFIGS[view]
                         sample_col = cfg["binding_sample_col"]
@@ -928,8 +935,8 @@ def materialize(
             for view_a, view_b in itertools.combinations(sorted(binding_corr_views), 2):
                 effect_a, pvalue_a = BINDING_DATASET_COLUMNS[view_a]
                 effect_b, pvalue_b = BINDING_DATASET_COLUMNS[view_b]
-                hf_a = DATASET_HF_COORDS.get(view_a, ("", ""))
-                hf_b = DATASET_HF_COORDS.get(view_b, ("", ""))
+                hf_a = _hf_coords(vdb, view_a)
+                hf_b = _hf_coords(vdb, view_b)
                 for method in methods:
                     sql, params = correlation_pair_select_sql(
                         view_a=view_a,
@@ -964,8 +971,8 @@ def materialize(
             for view_a, view_b in itertools.combinations(sorted(pert_corr_views), 2):
                 effect_a, pvalue_a = PERTURBATION_CORRELATION_COLUMNS[view_a]
                 effect_b, pvalue_b = PERTURBATION_CORRELATION_COLUMNS[view_b]
-                hf_a = DATASET_HF_COORDS.get(view_a, ("", ""))
-                hf_b = DATASET_HF_COORDS.get(view_b, ("", ""))
+                hf_a = _hf_coords(vdb, view_a)
+                hf_b = _hf_coords(vdb, view_b)
                 for method in methods:
                     sql, params = correlation_pair_select_sql(
                         view_a=view_a,

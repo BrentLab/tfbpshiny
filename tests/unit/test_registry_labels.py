@@ -20,7 +20,7 @@ def _registry_conn() -> duckdb.DuckDBPyConnection:
 
 def test_promoter_set_labels_read_the_registry_display_names() -> None:
     labels = promoter_set_labels(_registry_conn())
-    assert labels["500bp"] == "500 bp"
+    assert labels["500bp"] == "500bp"
     assert labels["kang"] == "Kang"
     assert labels["mindel"] == "Mindel"
     assert labels["intergenic"] == "Intergenic"

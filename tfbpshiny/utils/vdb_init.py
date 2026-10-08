@@ -205,7 +205,8 @@ def promoter_set_labels(conn: duckdb.DuckDBPyConnection) -> dict[str, str]:
     Display label for every promoter set, from the ``promoter_sets`` registry table.
 
     :param conn: Open read-only DuckDB connection to the materialized database.
-    :returns: ``promoter_set_id`` -> ``display_name`` (e.g. ``"500bp" -> "500 bp"``).
+    :returns: ``promoter_set_id`` -> ``display_name``, e.g.
+        ``"intergenic" -> "Intergenic"``.
 
     """
     rows = conn.execute(

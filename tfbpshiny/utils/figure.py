@@ -17,28 +17,24 @@ import plotly.graph_objects as go
 from plotly.io import to_html
 from shiny import ui
 
+from tfbpshiny.config import load_app_config
+
+#: Palettes are declared in the collection config (``color`` tags and the
+#: ``tfbpshiny`` vocabularies), so a dataset's colour lives next to its label.
+_CONFIG = load_app_config()
+
 #: Base font size. Deliberately large -- these figures are meant to be readable when
 #: dropped into a slide or a manuscript, not just on a wide monitor.
 FONT_SIZE = 16
 AXIS_TITLE_SIZE = 18
 TITLE_SIZE = 20
 
-#: Colour per binding dataset, keyed by ``dataset_registry.base_label``. Extends the
-#: npg-style pair already used for binding methods in
-#: ``modules/comparison/queries.py``.
-BINDING_COLORS: dict[str, str] = {
-    "2004 ChIP-chip": "#7B4F9E",
-    "2021 ChIP-exo": "#E64B35",
-    "2025 ChEC-seq": "#00A087",
-    "2026 Calling Cards": "#4DBBD5",
-}
+#: Colour per binding dataset, keyed by ``dataset_registry.base_label``. Declared as
+#: the ``color`` tag of each binding primary in the collection config.
+BINDING_COLORS: dict[str, str] = _CONFIG.colors_by_base_label("binding")
 
-#: Colour per perturbation dataset, keyed by ``base_label``.
-PERTURBATION_COLORS: dict[str, str] = {
-    "2014 TFKO": "#3C5488",
-    "2020 Overexpression": "#F39B7F",
-    "2025 Degron": "#91D1C2",
-}
+#: Colour per perturbation dataset, keyed by ``base_label`` (the ``color`` tag).
+PERTURBATION_COLORS: dict[str, str] = _CONFIG.colors_by_base_label("perturbation")
 
 #: Colour cycle for figures that plot *pairs* of datasets (figure 6's overlap
 #: agreement) rather than one dataset per series. Deliberately avoids every hue family
@@ -71,19 +67,12 @@ PAIR_COLORS: tuple[str, ...] = (
 #: exclude Harbison, the one dataset colour with a similar purple), so a fresh
 #: qualitative set is fine.
 PROMOTER_SET_COLORS: dict[str, str] = {
-    "kang": "#377EB8",
-    "mindel": "#4DAF4A",
-    "500bp": "#984EA3",
-    "intergenic": "#FF7F00",
+    k: v.color for k, v in _CONFIG.promoter_sets.items() if v.color
 }
 
-#: Colour per binding method (figure 9's box axis). Matches the exact hex values
-#: ``modules/comparison/queries.py``'s ``BINDING_METHOD_COLORS`` already uses for
-#: Promoter Enrichment/Peak Calling, defined fresh here (not imported) per this app's
-#: module-isolation convention -- keep the two in sync if either changes.
+#: Colour per binding method (figure 9's box axis, the Comparison method rows).
 METHOD_COLORS: dict[str, str] = {
-    "promoter_enrichment": "#4DBBD5",
-    "peak_calling": "#E64B35",
+    k: v.color for k, v in _CONFIG.binding_methods.items() if v.color
 }
 
 

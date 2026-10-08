@@ -11,13 +11,10 @@ from shiny import reactive, render, ui
 from tfbpshiny.components import empty_state, scroll_row
 from tfbpshiny.modules.comparison.queries import (
     METRIC_DTO,
-    PERTURBATION_LABEL_MAP,
-    PROMOTER_SET_LABELS,
     PROMOTER_SET_LEVELS,
     fetch_topn_results,
 )
 from tfbpshiny.modules.comparison.server.context import (
-    BINDING_ORDER_LABELS,
     PROMOTER_SET_ALIAS,
     PROMOTER_TOOLTIPS,
     ComparisonContext,
@@ -163,16 +160,14 @@ def register_compare_promoters(
 
             cards: list[ui.Tag] = []
             for p_db in p_dbs:
-                p_label = PERTURBATION_LABEL_MAP.get(p_db, p_db)
+                p_label = ctx.base_label.get(p_db, p_db)
                 sub_agg = agg[agg["perturbation_db"] == p_db]
                 if sub_agg.empty:
                     continue
 
-                binding_base_labels = [
-                    b
-                    for b in BINDING_ORDER_LABELS
-                    if b in set(sub_agg["binding_base_label"])
-                ]
+                # Base labels lead with the publication year, so sorting them
+                # orders the rows chronologically.
+                binding_base_labels = sorted(set(sub_agg["binding_base_label"]))
 
                 header_cells = [
                     ui.tags.th(
@@ -184,7 +179,7 @@ def register_compare_promoters(
                     header_cells.append(
                         ui.tags.th(
                             ui.tooltip(
-                                ui.span(PROMOTER_SET_LABELS.get(ps, ps)),
+                                ui.span(ctx.promoter_set_labels.get(ps, ps)),
                                 PROMOTER_TOOLTIPS.get(ps, ""),
                             ),
                             style=_th_style,

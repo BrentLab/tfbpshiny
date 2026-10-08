@@ -11,6 +11,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Rebuild required (registry labels).** Dataset identity and presentation are
+  declared once, as labretriever `tags` in `brentlab_yeast_collection.yaml`
+  (plus a `tfbpshiny:` section for the promoter-set and method vocabularies),
+  loaded by `tfbpshiny/config.py`. The `dataset_registry`, `promoter_sets` and
+  `binding_methods` tables are generated from it instead of hand-written SQL, HF
+  coordinates come from VirtualDB, and the Comparison page's label, colour and
+  note dicts, the figure palettes and the duplicated dataset lists are gone.
+  Label changes: promoter set "500 bp" is now "500bp" everywhere, and the Hughes
+  knockout dataset is "2006 TFKO" everywhere (it was "2006 Knockout" in the
+  registry and the figures). The YAML's own tags, which disagreed with the
+  registry (e.g. degron's assay was `ChIPexo`), now match it. Promoter-set
+  descriptions are the genome-resources region-set text.
 - **Rebuild required (schema version 1).** Every computed table now also carries
   plain identity columns beside its composite `source_sample` key: `binding_db`,
   `binding_sample_id`, `perturbation_db`, `perturbation_sample_id` on
@@ -284,6 +296,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- The Compare Analysis Methods tab's peak-caller tooltip (MACS / HOMER) was
+  keyed by `rossi` / `chec_m2025` but looked up with the primary
+  (`rossi_500bp`), so it always showed the generic fallback after the 500bp
+  primaries change. It now reads the primary's `peak_calling_note` tag.
 - Six samples (three per Hughes dataset: YIL101C, YER161C, YKL109W) were silently
   dropped from `hughes_knockout_meta` / `hughes_overexpression_meta` because the
   materializer discarded any row containing a NULL (their `found_domain` is

@@ -17,7 +17,8 @@ import duckdb
 import pandas as pd
 from shiny import reactive
 
-from tfbpshiny.datasets import PRESET_NAMES, SCHEMA_VERSION
+from tfbpshiny.config import load_app_config
+from tfbpshiny.datasets import PRESET_NAMES, PROMOTER_SET_LEVELS, SCHEMA_VERSION
 from tfbpshiny.modules.comparison.queries import (
     DEFAULT_DTO_RANKING_COLUMN,
     DEFAULT_TOP_N,
@@ -29,16 +30,10 @@ from tfbpshiny.utils.inputs import read_input
 from tfbpshiny.utils.vdb_init import (
     DEFAULT_RESPONSIVENESS_PRESET,
     DEFAULT_RESPONSIVENESS_PRESETS,
+    binding_method_labels,
     get_regulator_display_name,
+    promoter_set_labels,
 )
-
-#: Row order of the Compare Promoter Definitions tables, by binding base label.
-BINDING_ORDER_LABELS = [
-    "2004 ChIP-chip",
-    "2021 ChIP-exo",
-    "2025 ChEC-seq",
-    "2026 Calling Cards",
-]
 
 #: Tooltip for each responsiveness preset, keyed by name.
 PRESET_HELP: dict[str, str] = {
@@ -56,35 +51,31 @@ PRESET_HELP: dict[str, str] = {
 
 assert set(PRESET_HELP) == set(PRESET_NAMES)
 
-#: Selector label for each promoter set, keyed by ``promoter_set_id``.
+_CONFIG = load_app_config()
+
+#: Selector label for each comparable promoter set, numbered in display order, e.g.
+#: ``"Promoter Set 3 (500bp)"``. Display names come from the collection config.
 PROMOTER_SET_ALIAS: dict[str, str] = {
-    "kang": "Promoter Set 1 (Kang)",
-    "mindel": "Promoter Set 2 (Mindel)",
-    "500bp": "Promoter Set 3 (500bp)",
-    "intergenic": "Promoter Set 4 (Intergenic)",
+    ps: f"Promoter Set {i} ({_CONFIG.promoter_sets[ps].display_name})"
+    for i, ps in enumerate(PROMOTER_SET_LEVELS, start=1)
 }
 
-#: Tooltip text for each promoter set, keyed by ``promoter_set_id``.
+#: Tooltip text for each comparable promoter set: its description in the config
+#: (the genome-resources region set it names).
 PROMOTER_TOOLTIPS: dict[str, str] = {
-    "kang": (
-        "700 bp upstream of each start codon, truncated if there exists a feature "
-        "within 700 bp of the ORF."
-    ),
-    "mindel": (
-        "Promoter regions defined from the start codon to at least 700 bp upstream "
-        "of the TSS defined by Park et al., 2014; Pelechano et al., 2013; Policastro "
-        "et al., 2020 (provided in the SGD annotations). If no TSS is defined, the "
-        "start codon is used."
-    ),
-    "500bp": (
-        "Promoter regions defined as exactly 500 bp upstream of the start codon. "
-        "No truncation or extension; all promoters are the same length."
-    ),
-    "intergenic": (
-        "Promoter regions defined as the full intergenic region upstream of the 5' "
-        "end of each feature. Note that approximately 1410 of 6040 features are "
-        "divergently transcribed."
-    ),
+    ps: _CONFIG.promoter_sets[ps].description for ps in PROMOTER_SET_LEVELS
+}
+
+#: Publication defining each comparable promoter set, where there is one.
+PROMOTER_SET_REFERENCES: dict[str, str | None] = {
+    ps: _CONFIG.promoter_sets[ps].reference for ps in PROMOTER_SET_LEVELS
+}
+
+#: How each assay's peak calls were made, keyed by primary ``db_name``.
+PEAK_CALLER_NOTES: dict[str, str] = {
+    d.db_name: d.peak_calling_note
+    for d in _CONFIG.datasets.values()
+    if d.peak_calling_note
 }
 
 
@@ -169,6 +160,9 @@ class ComparisonContext:
     :param reg_labels: ``locus tag -> "SYMBOL (tag)"`` (or the tag alone).
     :param all_binding_dbs: Every binding db_name in the registry.
     :param all_perturbation_dbs: Every perturbation db_name in the registry.
+    :param base_label: ``db_name -> base_label`` for every registry row.
+    :param promoter_set_labels: ``promoter_set_id -> display_name``.
+    :param method_labels: ``binding_method_id -> display_name``.
 
     """
 
@@ -184,6 +178,9 @@ class ComparisonContext:
     reg_labels: dict[str, str] = field(default_factory=dict)
     all_binding_dbs: list[str] = field(default_factory=list)
     all_perturbation_dbs: list[str] = field(default_factory=list)
+    base_label: dict[str, str] = field(default_factory=dict)
+    promoter_set_labels: dict[str, str] = field(default_factory=dict)
+    method_labels: dict[str, str] = field(default_factory=dict)
 
     @property
     def dto_available(self) -> bool:
@@ -231,7 +228,14 @@ def build_context(
     ctx.display_names = dict(
         zip(ctx.registry_df["db_name"], ctx.registry_df["display_name"])
     )
-    ctx.binding_index = build_binding_index(ctx.registry_df)
+    ctx.base_label = dict(
+        zip(ctx.registry_df["db_name"], ctx.registry_df["base_label"])
+    )
+    ctx.promoter_set_labels = promoter_set_labels(conn)
+    ctx.method_labels = binding_method_labels(conn)
+    ctx.binding_index = build_binding_index(
+        ctx.registry_df, ctx.promoter_set_labels, ctx.method_labels
+    )
 
     if not ctx.dto_available:
         logger.warning(
@@ -263,10 +267,11 @@ def build_context(
 
 
 __all__ = [
-    "BINDING_ORDER_LABELS",
     "ComparisonContext",
+    "PEAK_CALLER_NOTES",
     "PRESET_HELP",
     "PROMOTER_SET_ALIAS",
+    "PROMOTER_SET_REFERENCES",
     "PROMOTER_TOOLTIPS",
     "build_context",
     "cell_style",

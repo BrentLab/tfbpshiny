@@ -123,6 +123,28 @@ GENE_UNIVERSE = 6000
 DTO_PVALUE_THRESHOLD = 0.01
 
 # ---------------------------------------------------------------------------
+# Dataset groups the analyses and figures are built over
+# ---------------------------------------------------------------------------
+
+#: The promoter-enrichment primaries quantified over the 500bp start-codon window:
+#: the one promoter definition every re-quantified assay shares, so comparing them
+#: compares assays rather than promoter definitions. Figures 4-10 and the
+#: ``topn_target_sets`` table are built over these.
+PROMOTER_ENRICHMENT_500BP: tuple[str, ...] = (
+    "callingcards_500bp",
+    "rossi_500bp",
+    "chec_m2025_500bp",
+)
+
+#: The headline perturbation datasets, in display order.
+HEADLINE_PERTURBATION: tuple[str, ...] = ("kemmeren", "hackett", "degron")
+
+#: Assay primaries with both a promoter-enrichment and a promoter-set-matched
+#: peak-calling arm. Calling Cards has no peak-calling arm; Harbison's regions are
+#: microarray probes with no re-quantifiable window.
+METHOD_COMPARISON_ASSAYS: tuple[str, ...] = ("rossi_500bp", "chec_m2025_500bp")
+
+# ---------------------------------------------------------------------------
 # Database schema
 # ---------------------------------------------------------------------------
 
@@ -138,6 +160,9 @@ SCHEMA_VERSION = 1
 
 __all__ = [
     "SCHEMA_VERSION",
+    "HEADLINE_PERTURBATION",
+    "METHOD_COMPARISON_ASSAYS",
+    "PROMOTER_ENRICHMENT_500BP",
     "BINDING_DATASET_COLUMNS",
     "PERTURBATION_DATASET_COLUMNS",
     "PERTURBATION_CORRELATION_COLUMNS",
