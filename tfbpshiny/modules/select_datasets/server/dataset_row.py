@@ -236,7 +236,6 @@ def dataset_row_server(
             db_name,
             existing_filters,
             app_datasets.upstream_cols.get(db_name, []),
-            db_meta,
         )
 
         ui.modal_show(

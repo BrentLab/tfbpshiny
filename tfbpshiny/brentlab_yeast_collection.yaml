@@ -333,6 +333,19 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
+        # The datacard states a carbon source and temperature only where a condition
+        # departs from the dataset default (D-glucose, 30 C): the galactose induction
+        # (raffinose then galactose), the raffinose control and the 37 C heat shock.
+        # A field+path mapping would label every other condition "unspecified", so the
+        # defaults are spelled out here. Declared once and reused by anchor.
+        Carbon source: &chec_carbon_source
+          expression: >-
+            CASE condition
+            WHEN 'galactose' THEN 'raffinose, galactose'
+            WHEN 'raffinose' THEN 'raffinose'
+            ELSE 'glucose' END
+        Temperature: &chec_temperature
+          expression: "CASE condition WHEN '37' THEN '37' ELSE '30' END"
       chec_mahendrawada_m2025_af_combined_mindel:
         tags:
           data_type: "binding"
@@ -355,6 +368,8 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
       chec_mahendrawada_m2025_af_combined_start_codon_500bp:
         tags:
           data_type: "binding"
@@ -380,6 +395,8 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
       chec_mahendrawada_m2025_af_combined_intergenic:
         tags:
           data_type: "binding"
@@ -402,6 +419,8 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
       mahendrawada_chec_seq:
         tags:
           data_type: "binding"
@@ -458,6 +477,8 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
       mindel_peaks:
         tags:
           data_type: "binding"
@@ -483,6 +504,8 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
       bp500_peaks:
         tags:
           data_type: "binding"
@@ -508,6 +531,8 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
       intergenic_peaks:
         tags:
           data_type: "binding"
@@ -533,6 +558,8 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
       # perturbation
       rnaseq_reprocessed:
         tags:

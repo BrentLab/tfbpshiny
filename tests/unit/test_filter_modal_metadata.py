@@ -91,24 +91,21 @@ def test_upstream_selection_narrows_the_condition_levels() -> None:
 
 def test_modal_opens_on_the_upstream_levels_the_filters_imply() -> None:
     filters = {"Experimental condition": {"type": "categorical", "value": ["HEAT"]}}
-    augmented, view = initial_modal_view(
-        _df(), "harbison", filters, ["Carbon source"], META
-    )
+    augmented, view = initial_modal_view(_df(), "harbison", filters, ["Carbon source"])
     assert augmented["Carbon source"] == {"type": "categorical", "value": ["glucose"]}
     assert set(view["Experimental condition"]) == {"YPD", "HEAT"}
 
 
-def test_condition_filters_narrow_when_upstream_cannot() -> None:
+def test_constant_upstream_columns_offer_every_condition() -> None:
     df = _df().assign(**{"Carbon source": "glucose"})
     filters = {"Experimental condition": {"type": "categorical", "value": ["YPD"]}}
-    _, view = initial_modal_view(df, "harbison", filters, ["Carbon source"], META)
-    assert set(view["Experimental condition"]) == {"YPD"}
+    augmented, view = initial_modal_view(df, "harbison", filters, ["Carbon source"])
+    assert augmented["Carbon source"] == {"type": "categorical", "value": ["glucose"]}
+    assert set(view["Experimental condition"]) == {"YPD", "HEAT", "GAL"}
 
 
 def test_no_filters_open_on_every_row() -> None:
-    augmented, view = initial_modal_view(
-        _df(), "harbison", None, ["Carbon source"], META
-    )
+    augmented, view = initial_modal_view(_df(), "harbison", None, ["Carbon source"])
     assert augmented == {}
     assert len(view) == 4
 

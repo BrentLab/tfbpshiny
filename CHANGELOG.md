@@ -11,6 +11,22 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Rebuild required.** ChEC-seq `Carbon source` and `Temperature` now follow
+  each sample's condition. They were the dataset-wide default (glucose, 30) for
+  all 197 samples, so the filter modal's narrowing of conditions by carbon
+  source or temperature had nothing to act on. The galactose induction is now
+  "raffinose, galactose", the raffinose control "raffinose" and the heat shock
+  37; every other condition stays glucose at 30. The values are `expression`
+  mappings in the collection config, declared once with YAML anchors for the
+  eight ChEC-seq datasets that have a `condition` column. A `field` plus `path`
+  mapping, as Harbison uses, would label the 16 conditions the datacard does not
+  restate "unspecified", including `standard`. Only the eight ChEC-seq `_meta`
+  tables change; every computed table is identical.
+- The filter modal opens on the conditions that co-occur with the dataset's
+  other characteristics as set by its filters, and offers every condition when
+  those characteristics do not vary. Previously a dataset whose characteristics
+  were constant (ChEC-seq) offered only the conditions already selected, so
+  `standard` was the only checkbox.
 - **Rebuild required (schema version 4).** `dataset_column_metadata` gains
   `description` and `level_definitions`, labretriever's column metadata. The
   Dataset selection filter modal uses them again, as it did when it read from

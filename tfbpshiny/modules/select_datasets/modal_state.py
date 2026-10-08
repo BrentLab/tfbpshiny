@@ -96,7 +96,6 @@ def initial_modal_view(
     db_name: str,
     existing_filters: dict[str, Any] | None,
     upstream_cols: list[str],
-    db_meta: dict[str, ColumnMeta],
 ) -> tuple[dict[str, Any], pd.DataFrame]:
     """
     The filter values and rows the modal opens with.
@@ -104,16 +103,14 @@ def initial_modal_view(
     Upstream columns the filters do not set are pre-selected with the levels that
     co-occur with the filters, so that, e.g., Harbison filtered to YPD opens with only
     glucose under Carbon source. The rows are then narrowed to those upstream levels,
-    so condition checkboxes offer only conditions that co-occur with them. When the
-    upstream columns narrow nothing (every row shares one carbon source, say), the
-    active condition filters are applied instead, unless that would leave no rows.
+    so condition checkboxes offer only conditions that co-occur with them. A dataset
+    whose upstream columns do not vary offers every condition.
 
     :param df: The dataset's unfiltered metadata.
     :param db_name: Dataset name.
     :param existing_filters: The dataset's staged or applied filter spec, or
         ``None``.
     :param upstream_cols: The dataset's upstream column names.
-    :param db_meta: The dataset's column metadata.
     :returns: ``(filters, rows)``: the filter spec to pre-populate the modal with,
         and the metadata rows its controls are built from.
 
@@ -147,24 +144,5 @@ def initial_modal_view(
         if col in augmented and augmented[col].get("type") == "categorical"
     }
     view = df[upstream_mask(df, db_name, selections)]
-
-    if len(view) == len(df) and augmented:
-        cond_mask = pd.Series(True, index=view.index)
-        applied = False
-        for col, spec in augmented.items():
-            meta = db_meta.get(col)
-            if (
-                col not in view.columns
-                or meta is None
-                or meta.role != "experimental_condition"
-                or meta.level_definitions is None
-            ):
-                continue
-            fval = spec.get("value") or []
-            if spec.get("type") == "categorical" and fval:
-                cond_mask &= view[col].astype(str).isin([str(v) for v in fval])
-                applied = True
-        if applied and cond_mask.any():
-            view = view[cond_mask]
 
     return augmented, view
