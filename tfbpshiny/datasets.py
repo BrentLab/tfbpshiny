@@ -2,10 +2,8 @@
 Per-dataset facts shared by the materializer and the app.
 
 Pure constants, no imports from the rest of the package, so both ``materialize/`` and
-``modules/`` can depend on it without a cycle. Everything here used to be declared in
-two to four places under a "modules stay self-contained" convention; a value that the
-build writes and the app reads back has to be the same object on both sides, so it is
-declared once.
+``modules/`` can depend on it without a cycle. A value that the build writes and the
+app reads back has to be the same object on both sides, so it is declared once, here.
 
 What stays elsewhere: app policy such as ``DEFAULT_DATASET_FILTERS`` and the preset
 threshold tables (``utils/vdb_init.py``), and per-figure dataset orderings
@@ -220,13 +218,7 @@ METHOD_COMPARISON_ASSAYS: tuple[str, ...] = ("rossi_500bp", "chec_m2025_500bp")
 #: stamps it into the ``schema_version`` table and the app compares the stamp with this
 #: constant at startup (``utils.schema_check``); a database built at a different version
 #: is reported on every page and the figures refuse to draw from it. Bump it whenever a
-#: table the app reads changes shape.
-#:
-#: 1 -- first stamped layout: plain ``*_db`` / ``*_sample_id`` identity columns beside
-#:      the composite ``source_sample`` keys on every computed table.
-#: 2 -- presentation columns on the registry tables: ``color`` and
-#:      ``peak_calling_note`` on ``dataset_registry``, ``color`` and ``reference`` on
-#:      ``promoter_sets``, ``color`` on ``binding_methods``.
+#: table the app reads changes shape, and record what changed in ``CHANGELOG.md``.
 SCHEMA_VERSION = 2
 
 __all__ = [

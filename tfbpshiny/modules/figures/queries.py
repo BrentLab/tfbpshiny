@@ -103,8 +103,8 @@ _AGREEMENT_LABEL_SQL = """
 #: top of the ranking matters" to "weight the whole grid almost evenly".
 #:
 #: The default of 10 concentrates roughly half the weight on N=10. For reference, a
-#: half-life of 20 reproduces the balance of the ``1/N`` weighting this replaced
-#: (29.3% of the mass on N=10, against 1/N's 27.8%).
+#: half-life of 20 puts 29.3% of the mass on N=10, close to a ``1/N`` weighting's
+#: 27.8%.
 AGREEMENT_HALF_LIFE_DEFAULT = 10
 AGREEMENT_HALF_LIFE_MIN = 10
 AGREEMENT_HALF_LIFE_MAX = 200
@@ -844,8 +844,8 @@ def weighted_agreement(
     group is ever missing cutoffs (e.g. a sparser grid, or a regulator absent from one
     side of the LEFT JOIN in ``topn_agreement``).
 
-    This replaces a ``1/N`` weighting, whose decay was fixed by the choice of units and
-    could not be tuned. Exponential decay makes the emphasis an explicit parameter: at
+    A ``1/N`` weighting would fix the decay by the choice of units, with nothing to
+    tune. Exponential decay makes the emphasis an explicit parameter: at
     ``half_life = 10`` the smallest cutoff carries about half the mass, while at 200 the
     weighting is nearly flat across the 10-200 grid.
 

@@ -46,8 +46,7 @@ def build_correlation_matrix_ui(
 
     :param all_possible_pairs: Full universe of ``(db_a, db_b)`` tuples
         registered at server start.  Used to derive stable canonical ordering.
-    :param active_pairs: Pairs present in the completed ``_run_analysis``
-        result (already filtered by included-datasets checkbox).
+    :param active_pairs: Pairs of active datasets to show.
     :param active_datasets: Ordered list of active dataset names.
     :param corr_data: Mapping from canonical pair tuple to a DataFrame with a
         ``"correlation"`` column containing per-regulator values.

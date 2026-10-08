@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 # TODO: open a labretriever issue to expose datacard field types (e.g. factor vs numeric)
-# via VirtualDB so this hard-coding is no longer necessary.
+# via VirtualDB, so this override can come from the datacard.
 # The datacard for hackett_2020 marks `time` as a factor, but the _meta view
 # exposes it as a numeric column (DOUBLE). Override it here so the filter modal
 # renders a sorted selectize instead of a slider.
@@ -253,7 +253,7 @@ def regulator_conditions_query(
     :param candidate_cols: Non-identity, non-regulator, non-hidden columns to
         include alongside ``sample_id``.
     :param filters: Active filters for this dataset, used only to compute
-        ``__matches_filters`` — they no longer restrict which rows come back.
+        ``__matches_filters``; they do not restrict which rows come back.
     :return: ``(sql_string, params_dict)`` — rows ordered with
         filter-matching samples first, then by ``sample_id``.
 

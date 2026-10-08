@@ -294,11 +294,10 @@ def stage_topn(
     """
     Fill ``topn_results`` by scanning each source once (stages A, B and C).
 
-    The legacy path rescanned both parquet sources for every ``(top_n, effect,
-    pvalue)`` variant -- roughly 1170 full scans for a complete build, with Rossi's
-    8.7 M-row config re-read some 60 times. Here each perturbation dataset is
-    materialized once up front and each binding dataset once as its loop iteration
-    begins, so the per-pair query touches only those two tables.
+    Each perturbation dataset is materialized once up front and each binding dataset
+    once as its loop iteration begins, so the per-pair query touches only those two
+    tables and every ``(top_n, effect, pvalue)`` combination comes from one scan,
+    rather than one scan of the parquet sources per combination.
 
     Binding is the outer loop so at most one binding intermediate is resident.
 
@@ -1124,10 +1123,3 @@ def materialize(
 
     finally:
         conn.close()
-
-
-# Names before the public rename; kept for one release so notebooks that imported them
-# keep running.
-_exec_static = exec_static
-_vdb_to_table = vdb_to_table
-_method_promoter_topn_staged = stage_method_promoter_topn

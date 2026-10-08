@@ -72,8 +72,8 @@ def test_every_threshold_pair_is_a_pair_of_floats() -> None:
     """
     Responsiveness is decided by thresholds and nothing else.
 
-    The deprecated per-row `responsive` column used to give a second, thresholdless
-    way to score a row; this asserts no such variant survives.
+    The source parquets' per-row `responsive` column would give a second,
+    thresholdless way to score a row; this asserts no such variant exists.
 
     """
     cutoffs, pairs = _topn_plan("rossi", "degron", [10, 25], [0.0], [0.05], BOTH)

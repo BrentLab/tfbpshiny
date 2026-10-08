@@ -1,12 +1,12 @@
 """
-The original per-variant top-N query, kept as a test oracle.
+The per-variant top-N query, used as a test oracle.
 
 ``topn_pair_select_sql`` computes one ``(top_n, effect, pvalue)`` variant of one
 (binding, perturbation) pair by scanning the source views directly. The app materializes
 with ``topn_pair_select_sql_v2`` (``tfbpshiny/materialize/comparison/topn.py``), which
 emits every variant from one staged scan-and-rank. The two must agree row for row;
 ``test_topn_equivalence.py`` and ``test_topn_tie_rule.py`` run both on synthetic data
-and compare. This copy is not used by the application.
+and compare. The application does not use this query.
 
 """
 

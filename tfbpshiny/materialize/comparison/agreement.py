@@ -141,13 +141,14 @@ def agreement_pair_select_sql(
 
     ``ROW_NUMBER()`` alone is **not deterministic across runs** when the ranking column
     ties: it numbers equal values in whatever order the scan produced them, so which
-    targets fall inside the cutoff varies build to build. Two builds of the same
-    database disagreed on ``n_intersect`` for 30,829 of 609,450 rows across 219 of 225
-    dataset pairs, and re-running one pair twice in a single process disagreed on 24.4%
-    of its rows. ``target_locus_tag`` is therefore appended as a final sort key: it is
+    targets fall inside the cutoff varies build to build. Ranked that way, two builds
+    of the same database were measured to disagree on ``n_intersect`` for 30,829 of
+    609,450 rows across 219 of 225 dataset pairs, and re-running one pair twice in a
+    single process on 24.4% of its rows. ``target_locus_tag`` is therefore appended as
+    a final sort key: it is
     unique within a (sample, regulator) group for every dataset except degron, so the
     ordering becomes total and the result reproducible. Where a cutoff still lands
-    inside a tie the chosen subset remains arbitrary -- but it is now the *same*
+    inside a tie the chosen subset remains arbitrary -- but it is the *same*
     arbitrary subset every run, which is what makes builds comparable.
 
     **Perturbation datasets are ranked by absolute effect**, so a knockout and an

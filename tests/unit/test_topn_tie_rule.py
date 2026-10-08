@@ -1,8 +1,8 @@
 """
 The top-N membership rule for binding scores, and the no-signal value.
 
-``"rank"`` is the original rule (``RANK() <= N``: a tie group is in when its first
-member's rank is within N). ``"avg_rank"`` keeps a tie group only when its *average*
+``"rank"`` is ``RANK() <= N``: a tie group is in when its first member's rank is
+within N. ``"avg_rank"`` keeps a tie group only when its *average*
 rank is within N, so a large group straddling the cutoff drops out whole, and a group
 kept whole can push ``n`` above N. A NULL score ("reported, no signal") ranks as
 ``no_signal_value`` and forms one tie group at the bottom, which never qualifies unless
@@ -18,7 +18,7 @@ import duckdb
 import pandas as pd
 import pytest
 
-from tests.unit._legacy_topn_oracle import topn_pair_select_sql
+from tests.unit._topn_oracle import topn_pair_select_sql
 from tfbpshiny.materialize.comparison.topn import (
     binding_stage_sql,
     perturbation_stage_sql,
@@ -93,7 +93,7 @@ def _staged(
     return conn.execute(sql, params).df()
 
 
-def _legacy(
+def _oracle(
     conn: duckdb.DuckDBPyConnection,
     top_n: int,
     tie_rule: str,
@@ -158,7 +158,7 @@ def test_membership_under_each_rule(name: str) -> None:
 def test_the_two_builders_agree_under_either_rule(name: str, rule: str) -> None:
     scores, top_n, *_ = CASES[name]
     conn = _conn(scores)
-    assert _n(_legacy(conn, top_n, rule)) == _n(_staged(conn, top_n, rule))
+    assert _n(_oracle(conn, top_n, rule)) == _n(_staged(conn, top_n, rule))
 
 
 def test_a_group_kept_whole_can_exceed_n_but_a_dropped_one_leaves_it_short() -> None:
@@ -182,8 +182,8 @@ def test_the_no_signal_group_is_dropped_when_the_pool_is_large() -> None:
     assert int(out["n_intersecting_targets"].iloc[0]) == 103
 
 
-def test_the_legacy_rule_sweeps_the_whole_no_signal_group_in() -> None:
-    """The reason the rule changed: with fewer than N peaks, RANK() lets the whole
+def test_the_rank_rule_sweeps_the_whole_no_signal_group_in() -> None:
+    """Why the default is ``avg_rank``: with fewer than N peaks, RANK() lets the whole
     no-peak group in, so n is the size of the pool, not a top-N."""
     conn = _conn([9.0, 8.0, 7.0] + [None] * 100)
     assert _n(_staged(conn, 5, "rank", no_signal_value=0.0)) == 103

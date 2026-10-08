@@ -76,10 +76,9 @@ def dto_select_sql() -> str:
     columns are already aliased to our ``db_name`` values, and whose ``*_id_id``
     columns hold the third (sample id) component of each composite identifier.
 
-    Columns are projected explicitly rather than ``SELECT *`` because the coordinator's
-    ``_vdb_to_table`` drops any row with a NULL in *any* column; carrying unused
-    nullable columns (``binding_rank_threshold``, ``perturbation_rank_threshold``)
-    would silently discard rows.
+    Columns are projected explicitly rather than ``SELECT *`` so the table holds only
+    the columns the app reads; the source also carries ``binding_rank_threshold`` and
+    ``perturbation_rank_threshold``, which nothing uses.
 
     :returns: ``SELECT`` SQL string.
     :rtype: str

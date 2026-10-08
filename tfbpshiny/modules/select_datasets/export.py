@@ -1,11 +1,11 @@
 """
 Pure-function helpers for exporting selected datasets as a client-side fetch kit.
 
-The exported ``.tar.gz`` no longer contains pre-queried CSVs. Instead it bundles
-the VirtualDB yaml config, a generated ``fetch_data.py`` script (embedding each
-active dataset's SQL + bound params), a ``requirements.txt``, and a top-level
-``README.md`` -- the user runs the script locally to pull the data via
-``labretriever``. See ``docs/select_datasets_workflow.md`` ("export datasets").
+The exported ``.tar.gz`` holds no data. It bundles the VirtualDB yaml config, a
+generated ``fetch_data.py`` script (embedding each active dataset's SQL + bound
+params), a ``requirements.txt``, and a top-level ``README.md`` -- the user runs the
+script locally to pull the data via ``labretriever``. See
+``docs/select_datasets_workflow.md`` ("Export").
 
 :func:`fetch_and_write_dataset` and :func:`run_fetch` are never called inside the
 running app -- their source is extracted verbatim via ``inspect.getsource()`` and

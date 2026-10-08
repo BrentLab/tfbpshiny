@@ -182,8 +182,7 @@ def register_shared(input: Any, session: Any, ctx: ComparisonContext) -> Shared:
         return empty_state(
             ui.p(
                 ui.strong("DTO results are not in this database."),
-                " The `dto` and `sample_regulator` tables are missing, which means"
-                " the database predates DTO materialization.",
+                " The `dto` and `sample_regulator` tables are missing.",
             ),
             ui.p(
                 "Rebuild it with ",

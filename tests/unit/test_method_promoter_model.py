@@ -354,7 +354,7 @@ def _populate_method_promoter_topn(
 
 #: The default-filter column and passing value for each assay primary, as in
 #: ``DEFAULT_DATASET_FILTERS``. Fixture meta tables must carry the column, because the
-#: panel now (correctly) applies that filter to these datasets.
+#: panel applies that filter to these datasets.
 _ASSAY_FILTER_COLUMN = {
     "rossi_500bp": ("treatment", "Normal"),
     "chec_m2025_500bp": ("Experimental condition", "standard"),
@@ -659,12 +659,14 @@ def test_rossi_and_chec_default_filters_apply_and_give_one_sample_per_regulator(
     None
 ):
     """
-    Regression: ``DEFAULT_DATASET_FILTERS`` used to be keyed ``rossi`` / ``chec_m2025``
-    while the panel looks filters up under the assay primaries ``rossi_500bp`` /
-    ``chec_m2025_500bp``. The lookup found nothing, so both assays kept every sample --
-    e.g. 14 ChEC-seq conditions for one regulator -- and a regulator appeared several
-    times per cell. With the filter keyed correctly, only the default condition
-    survives, which is one sample per regulator.
+    ``DEFAULT_DATASET_FILTERS`` must be keyed by the assay primaries ``rossi_500bp`` /
+    ``chec_m2025_500bp``, the names the panel looks filters up under.
+
+    Keyed any other way, the lookup finds nothing, both assays keep every sample (e.g.
+    14 ChEC-seq conditions for one regulator) and a regulator appears several times per
+    cell. Keyed correctly, only the default condition survives: one sample per
+    regulator.
+
     """
     conn = duckdb.connect()
     for db in ASSAY_PRIMARIES:

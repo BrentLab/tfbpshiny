@@ -29,13 +29,11 @@ TITLE_SIZE = 20
 #: red-orange, teal,
 #: light blue, navy, salmon, mint) -- reusing those, even approximately, risks a reader
 #: mistaking a pair's colour for one specific dataset's, since a pair isn't "the
-#: dataset that happens to be tinted red" the way a single-series figure's line is. An
-#: earlier version of this palette (ColorBrewer Dark2) still clashed: its teal and
-#: purple-blue read as near-duplicates of the ChEC-seq and ChIP-chip dataset colours. A
-#: later revision of *this* palette paired an olive and a true green that, despite
-#: being 40 degrees apart on the wheel, still read as "both green" at line/marker
-#: sizes -- replaced with a plain blue, the one common hue family the rest of this
-#: palette hadn't used yet.
+#: dataset that happens to be tinted red" the way a single-series figure's line is.
+#: ColorBrewer Dark2 does not work here: its teal and purple-blue read as
+#: near-duplicates of the ChEC-seq and ChIP-chip dataset colours. Two greens, even 40
+#: degrees apart on the wheel, read as "both green" at line and marker sizes, so the
+#: palette has one green and uses a plain blue for the other slot.
 #: Cycles if more than 8 pairs are selected; figure 6 already warns above
 #: AGREEMENT_PAIR_WARN pairs that the plot becomes hard to read regardless.
 PAIR_COLORS: tuple[str, ...] = (

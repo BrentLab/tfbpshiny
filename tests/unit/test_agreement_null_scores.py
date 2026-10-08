@@ -1,10 +1,10 @@
 """
 Figure 6 / 10 rank with ``ROW_NUMBER`` for exactly-N sets.
 
-The recalled peak-calling datasets now report every promoter, with a NULL score where
-there was no peak. Ranking those rows would pad a regulator that has fewer than N peaks
-up to exactly N with no-peak promoters in alphabetical order, so the overlap would
-measure nothing.
+The recalled peak-calling datasets report every promoter, with a NULL score where there
+was no peak. Ranking those rows would pad a regulator that has fewer than N peaks up to
+exactly N with no-peak promoters in alphabetical order, so the overlap would measure
+nothing.
 
 """
 

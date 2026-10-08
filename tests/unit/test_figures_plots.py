@@ -151,10 +151,9 @@ def test_dto_bars_single_row_annotated_with_shared_count() -> None:
     """
     One bar per (binding, perturbation) pair, in a single row.
 
-    The count row was dropped: the fraction's own raw counts (``n_significant`` over
-    ``n_shared``, the two-way regulator intersection of that pair) are exactly what a
-    reader would have read off the count row, so they are annotated directly on the
-    fraction bar instead, as "significant/shared".
+    There is no separate count row: the fraction's raw counts (``n_significant`` over
+    ``n_shared``, the two-way regulator intersection of that pair) are annotated
+    directly on the fraction bar, as "significant/shared".
 
     """
     rows = [
@@ -172,7 +171,7 @@ def test_dto_bars_single_row_annotated_with_shared_count() -> None:
     fig = dto_significance_bars(
         pd.DataFrame(rows), LABELS, list(DTO_BINDING_ORDER), list(PR_ORDER)
     )
-    # one bar per perturbation column now, not two
+    # one bar per perturbation column, not two
     assert sum(1 for t in fig.data if t.type == "bar") == len(PR_ORDER)
     assert not any(t.type == "scatter" for t in fig.data)
     # one panel (one y axis) per perturbation column, not two

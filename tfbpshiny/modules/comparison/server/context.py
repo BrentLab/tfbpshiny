@@ -217,8 +217,7 @@ def build_context(
         db_schema_version,
     )
     # Pre-load the registry once. `binding_index` decomposes every binding
-    # dataset into promoter set x method, replacing the label dicts this module
-    # used to hand-maintain alongside the collection YAML.
+    # dataset into promoter set x method.
     ctx.registry_df = conn.execute(
         "SELECT db_name, data_type, display_name, base_label,"
         " primary_db_name, promoter_set_id, binding_method_id"

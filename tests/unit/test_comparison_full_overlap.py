@@ -2,8 +2,8 @@
 "Require full overlap" on the Comparison tab keeps a (regulator, sample pair) only when
 its top-N list is complete after the tie rule: ``n >= top_n``. ``n`` counts the targets
 that passed the rule, so a regulator with too few scored targets -- or a large tie group
-around rank N that the average-rank rule excluded -- is removed. The old test,
-``n_intersecting_targets >= top_n`` (pool size), is vacuous once peak-calling tables
+around rank N that the average-rank rule excluded -- is removed. Testing the pool size,
+``n_intersecting_targets >= top_n``, would be vacuous, because peak-calling tables
 report every promoter.
 """
 

@@ -2,8 +2,7 @@
 
 Navigation is exercised through the top navbar. These tests assert on static UI
 (the navbar, the selection sidebar, the Binding workspace heading) that renders
-immediately, so they do not depend on the background data initialization /
-materialization completing first.
+immediately, without waiting on any output to compute.
 """
 
 from playwright.sync_api import Page, expect

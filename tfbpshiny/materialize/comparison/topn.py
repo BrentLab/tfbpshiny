@@ -380,12 +380,12 @@ def responsive_expr(
 # Staged SQL generators
 # ---------------------------------------------------------------------------
 #
-# The original per-variant query rescanned both parquet sources for every
+# A per-variant query would rescan both parquet sources for every
 # ``(top_n, effect, pvalue)`` variant of every pair -- ~1170 full scans for a complete
-# build, with Rossi's 8.7 M-row config re-read some 60 times. It survives only as the
-# oracle in ``tests/unit/_legacy_topn_oracle.py``, which the equivalence tests run
-# against :func:`topn_pair_select_sql_v2`. The three functions below split the work
-# into a scan phase and a compute phase:
+# build, with Rossi's 8.7 M-row config re-read some 60 times. That query is the oracle
+# in ``tests/unit/_topn_oracle.py``, which the equivalence tests run against
+# :func:`topn_pair_select_sql_v2`. The three functions below split the work into a scan
+# phase and a compute phase:
 #
 #   A. :func:`binding_stage_sql`       -- once per binding dataset      (23 scans)
 #   B. :func:`perturbation_stage_sql`  -- once per perturbation dataset  (6 scans)
@@ -542,7 +542,7 @@ def topn_pair_select_sql_v2(
 
     Reads the stage A and stage B tables, never parquet. Ranking, the
     intersecting-target restriction and the aggregation are identical to the
-    per-variant query (``tests/unit/_legacy_topn_oracle.py``); the difference is that
+    per-variant query (``tests/unit/_topn_oracle.py``); the difference is that
     all ``top_n`` cutoffs and all threshold pairs are emitted from a single
     scan-and-rank instead of one query each.
 
@@ -716,7 +716,3 @@ def topn_pair_select_sql_v2(
         AND s.perturbation_sample_id = ic.perturbation_sample_id
     """
     return sql, params
-
-
-# Name before the public rename; kept for one release.
-_HARBISON_DEDUP_CTE = HARBISON_DEDUP_CTE

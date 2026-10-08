@@ -183,7 +183,7 @@ def test_expectation_uses_observed_set_sizes() -> None:
     assert len(df) == 1
     got = float(df["log2_enrichment"].iloc[0])
     assert math.isclose(got, math.log2(20 * GENE_UNIVERSE / (500 * 30)), rel_tol=1e-9)
-    # The old top_n^2 denominator would have been far lower.
+    # A top_n^2 denominator would give a far lower value.
     assert got > math.log2(20 * GENE_UNIVERSE / (500 * 500))
 
 

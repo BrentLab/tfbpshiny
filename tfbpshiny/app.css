@@ -145,10 +145,9 @@
 }
 
 /* --- Binding / Perturbation workspace: centered, stacked layout --------- */
-/* Replaces the old tabbed Correlation Matrix / Pair Distribution view: both
-   sections stack vertically (like the Select Datasets workspace) and are
-   centered horizontally instead of stretching left-aligned across the full
-   width. `align-items: center` shrinks each block (heading, description,
+/* The Correlation Matrix and Pair Distribution sections stack vertically
+   (like the Select Datasets workspace) and are centered horizontally instead
+   of stretching left-aligned across the full width. `align-items: center` shrinks each block (heading, description,
    matrix, boxplot row) to its own content width and centers it, rather than
    stretching to the container's full width with left-aligned content. */
 .workspace-centered {

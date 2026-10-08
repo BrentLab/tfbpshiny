@@ -1,9 +1,10 @@
 """
 Determinism of the materialized numbers.
 
-Two builds of the same database from the same commit must agree. Two things broke that:
-floating-point summation order in DuckDB's parallel aggregation, and `ROW_NUMBER()`
-numbering tied values arbitrarily. These pin both fixes.
+Two builds of the same database from the same commit must agree. Two things would
+break that: floating-point summation order in DuckDB's parallel aggregation, and
+`ROW_NUMBER()` numbering tied values arbitrarily. These tests pin the rounding and the
+tiebreak that prevent both.
 
 """
 

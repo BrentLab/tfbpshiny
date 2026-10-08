@@ -1,13 +1,13 @@
 """
-The staged top-N SQL must produce exactly what the per-variant SQL produced.
+The staged top-N SQL must produce exactly what the per-variant SQL produces.
 
 `topn_pair_select_sql` runs once per (top_n, effect, pvalue) variant;
-`topn_pair_select_sql_v2` emits every variant from one scan-and-rank. That is a pure
-performance change, so any difference in the rows is a bug. These tests run both against
-the same synthetic data and compare the result *sets*.
+`topn_pair_select_sql_v2` emits every variant from one scan-and-rank. The two differ
+only in performance, so any difference in the rows is a bug. These tests run both
+against the same synthetic data and compare the result *sets*.
 
-Row order is not compared -- the new query groups differently and emits in a different
-order -- but content and row count are.
+Row order is not compared -- the staged query groups differently and emits in a
+different order -- but content and row count are.
 
 """
 
@@ -19,7 +19,7 @@ import duckdb
 import pandas as pd
 import pytest
 
-from tests.unit._legacy_topn_oracle import topn_pair_select_sql
+from tests.unit._topn_oracle import topn_pair_select_sql
 from tfbpshiny.materialize.comparison.topn import (
     TOP_N_ALL,
     binding_stage_sql,
@@ -71,7 +71,7 @@ def _conn(
     return conn
 
 
-def _legacy(
+def _oracle(
     conn: duckdb.DuckDBPyConnection,
     top_n_values: tuple[int, ...],
     pairs: tuple[tuple[float, float], ...],
@@ -153,9 +153,9 @@ def _norm(df: pd.DataFrame) -> pd.DataFrame:
     return out.sort_values(COLS).reset_index(drop=True)
 
 
-def _assert_same(legacy: pd.DataFrame, staged: pd.DataFrame) -> None:
-    assert len(legacy) == len(staged), f"row count {len(legacy)} != {len(staged)}"
-    pd.testing.assert_frame_equal(_norm(legacy), _norm(staged), check_dtype=False)
+def _assert_same(oracle: pd.DataFrame, staged: pd.DataFrame) -> None:
+    assert len(oracle) == len(staged), f"row count {len(oracle)} != {len(staged)}"
+    pd.testing.assert_frame_equal(_norm(oracle), _norm(staged), check_dtype=False)
 
 
 # --- fixtures ---------------------------------------------------------------------
@@ -179,7 +179,7 @@ def test_matches_on_the_ordinary_case() -> None:
     """Several cutoffs and two threshold pairs over well-separated scores."""
     conn = _conn(*_plain_rows())
     args = ((2, 3, 5), ((0.0, 0.05), (0.77, 0.05)))
-    _assert_same(_legacy(conn, *args), _staged(conn, *args))
+    _assert_same(_oracle(conn, *args), _staged(conn, *args))
 
 
 def test_matches_when_scores_tie_at_the_cutoff() -> None:
@@ -196,17 +196,17 @@ def test_matches_when_scores_tie_at_the_cutoff() -> None:
     p += [(7, "REG1", f"S{i}", 0.1, 0.9) for i in range(3)]
     conn = _conn(b, p)
     args = ((1, 2, 5), ((0.0, 0.05),))
-    legacy, staged = _legacy(conn, *args), _staged(conn, *args)
+    oracle, staged = _oracle(conn, *args), _staged(conn, *args)
     # Guard the guard: the fixture must actually produce n > top_n.
-    assert (legacy["n"] > legacy["top_n"]).any(), "fixture does not exercise ties"
-    _assert_same(legacy, staged)
+    assert (oracle["n"] > oracle["top_n"]).any(), "fixture does not exercise ties"
+    _assert_same(oracle, staged)
 
 
 def test_matches_when_a_regulator_has_fewer_targets_than_top_n() -> None:
     """A cutoff larger than the candidate set must not invent rows."""
     conn = _conn(*_plain_rows())
     args = ((100,), ((0.0, 0.05),))
-    _assert_same(_legacy(conn, *args), _staged(conn, *args))
+    _assert_same(_oracle(conn, *args), _staged(conn, *args))
 
 
 def test_matches_for_the_all_targets_sentinel() -> None:
@@ -219,24 +219,24 @@ def test_matches_for_the_all_targets_sentinel() -> None:
     """
     conn = _conn(*_plain_rows())
     args = ((TOP_N_ALL,), ((0.0, 0.05),))
-    legacy, staged = _legacy(conn, *args), _staged(conn, *args)
+    oracle, staged = _oracle(conn, *args), _staged(conn, *args)
     assert not staged.empty
-    _assert_same(legacy, staged)
+    _assert_same(oracle, staged)
 
 
 def test_matches_with_the_sentinel_alongside_real_cutoffs() -> None:
     """The sentinel and ordinary cutoffs are emitted from one query; both must hold."""
     conn = _conn(*_plain_rows())
     args = ((TOP_N_ALL, 2, 5), ((0.0, 0.05), (0.77, 0.1)))
-    _assert_same(_legacy(conn, *args), _staged(conn, *args))
+    _assert_same(_oracle(conn, *args), _staged(conn, *args))
 
 
 def test_matches_with_a_target_blacklist() -> None:
-    """The blacklist moved into stage A; it must still exclude before ranking."""
+    """The blacklist is applied in stage A; it must still exclude before ranking."""
     conn = _conn(*_plain_rows())
     args = ((3,), ((0.0, 0.05),))
     kw: dict[str, Any] = {"blacklist": ("T0", "T1")}
-    _assert_same(_legacy(conn, *args, **kw), _staged(conn, *args, **kw))
+    _assert_same(_oracle(conn, *args, **kw), _staged(conn, *args, **kw))
 
 
 def test_matches_with_a_regulator_subset() -> None:
@@ -244,9 +244,9 @@ def test_matches_with_a_regulator_subset() -> None:
     conn = _conn(*_plain_rows())
     args = ((3,), ((0.0, 0.05),))
     kw: dict[str, Any] = {"regulators": ("REG2",)}
-    legacy, staged = _legacy(conn, *args, **kw), _staged(conn, *args, **kw)
+    oracle, staged = _oracle(conn, *args, **kw), _staged(conn, *args, **kw)
     assert set(staged["regulator_locus_tag"]) == {"REG2"}
-    _assert_same(legacy, staged)
+    _assert_same(oracle, staged)
 
 
 def test_matches_when_effect_or_pvalue_is_null() -> None:
@@ -266,9 +266,9 @@ def test_matches_when_effect_or_pvalue_is_null() -> None:
     ]
     conn = _conn(b, p)
     args = ((4,), ((0.0, 0.05),))
-    legacy, staged = _legacy(conn, *args), _staged(conn, *args)
+    oracle, staged = _oracle(conn, *args), _staged(conn, *args)
     assert int(staged["n_responsive"].iloc[0]) == 1, "only T2 should be responsive"
-    _assert_same(legacy, staged)
+    _assert_same(oracle, staged)
 
 
 def test_no_pvalue_column_thresholds_on_effect_only() -> None:
@@ -277,7 +277,7 @@ def test_no_pvalue_column_thresholds_on_effect_only() -> None:
 
     Stage B emits NULL for the missing column, so a staged query that forgot
     `has_pvalue=False` would compare against NULL and score everything zero. This pins
-    the flag against the legacy expression for `hackett`.
+    the flag against the oracle's expression for `hackett`.
 
     """
     conn = duckdb.connect()
@@ -314,7 +314,7 @@ def test_no_pvalue_column_thresholds_on_effect_only() -> None:
         effect_threshold=0.5,
         pvalue_threshold=0.05,
     )
-    legacy = conn.execute(sql, params).df()
+    oracle = conn.execute(sql, params).df()
 
     b_sql, b_params = binding_stage_sql(
         binding_view="fake_binding",
@@ -342,8 +342,8 @@ def test_no_pvalue_column_thresholds_on_effect_only() -> None:
         has_pvalue=False,
     )
     staged = conn.execute(sql2, params2).df()
-    assert int(legacy["n_responsive"].iloc[0]) > 0, "fixture scores nothing responsive"
-    _assert_same(legacy, staged)
+    assert int(oracle["n_responsive"].iloc[0]) > 0, "fixture scores nothing responsive"
+    _assert_same(oracle, staged)
 
 
 def test_ascending_rank_column_matches() -> None:
@@ -352,7 +352,7 @@ def test_ascending_rank_column_matches() -> None:
     p = [(7, "REG1", f"T{i}", 2.0 - 0.4 * i, 0.01) for i in range(6)]
     conn = _conn(b, p)
 
-    def legacy_asc():
+    def oracle_asc():
         frames = []
         for top_n in (2, 4):
             sql, params = topn_pair_select_sql(
@@ -395,7 +395,7 @@ def test_ascending_rank_column_matches() -> None:
         threshold_pairs=((0.0, 0.05),),
         has_pvalue=True,
     )
-    _assert_same(legacy_asc(), conn.execute(sql2, params2).df())
+    _assert_same(oracle_asc(), conn.execute(sql2, params2).df())
 
 
 def test_empty_variant_lists_are_rejected() -> None:

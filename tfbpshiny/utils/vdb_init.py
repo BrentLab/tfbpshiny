@@ -27,10 +27,8 @@ HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
         "Regulator locus tag",
         "Regulator symbol",
     },
-    # All four callingcards configs share a schema, so they share these. The primary
-    # previously spelled them background_total_hops / experiment_total_hops; the
-    # yiming config conforms to the variants' total_* order. Only the primary had an
-    # entry here, so the variants were exposing these as filter options.
+    # All four callingcards configs share a schema, so they share these hidden
+    # fields; each variant needs its own entry, or it exposes them as filter options.
     "callingcards_kang": _CC_HOP_FIELDS,
     "callingcards_mindel": _CC_HOP_FIELDS,
     "callingcards_500bp": _CC_HOP_FIELDS,

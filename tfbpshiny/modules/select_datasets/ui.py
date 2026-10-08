@@ -255,7 +255,7 @@ def dataset_filter_modal_ui(
     which uses the column's ``ColumnMeta.description`` for boolean toggle labels.
 
     :param db_name: Internal dataset key (used for filter IDs).
-    :param df: Metadata DataFrame from ``vdb.query(metadata_query(db_name, ...))``.
+    :param df: The dataset's ``{db_name}_meta`` rows (``metadata_query``).
     :param saved_filters: Previously applied filters for this dataset, used to
         pre-populate controls.
     :param common_fields: Characteristic names shared across all datasets. If
@@ -268,9 +268,10 @@ def dataset_filter_modal_ui(
     :param regulator_display_labels: Maps ``locus_tag`` to ``"SYMBOL (LOCUS_TAG)"``
         display strings. When provided, a Regulator card is prepended to the Common
         Characteristics column with a combined searchable selectize.
-    :param col_meta: Per-column metadata from ``VirtualDB.get_column_metadata``.
-        Used to identify condition columns (for checkbox rendering) and to supply
-        descriptions for boolean toggle labels.
+    :param col_meta: Per-column labretriever ``ColumnMeta``. Used to identify
+        condition columns (for checkbox rendering) and to supply descriptions for
+        boolean toggle labels. The app passes ``None``, so every column is rendered
+        with ``_filter_control``.
     :param ns: Namespace function applied to all input IDs in the modal. Pass
         ``session.ns`` from the calling module server so inputs are registered
         under the correct module scope.

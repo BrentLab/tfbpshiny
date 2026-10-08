@@ -47,8 +47,7 @@ def comparison_ui() -> ui.Tag:
             open="open",
         ),
         # Tables recompute live as sidebar controls change; some fetches take a
-        # couple of seconds, so show a busy indicator in place of the Execute
-        # button that used to signal pending work.
+        # couple of seconds, so a busy indicator shows while one runs.
         ui.busy_indicators.use(spinners=True, pulse=True),
         ui.h1("Binding/Perturbation Comparisons"),
         sidebar_text(

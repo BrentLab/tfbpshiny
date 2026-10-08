@@ -38,7 +38,7 @@ def test_topn_matrix_namespaces_button_ids():
 
 
 def test_matrix_builders_default_ns_is_identity():
-    # Without an explicit ns (e.g. standalone page_test usage), ids are bare.
+    # Without an explicit ns, ids are bare.
     html = str(
         build_topn_matrix_ui(
             binding_datasets=["rossi"],

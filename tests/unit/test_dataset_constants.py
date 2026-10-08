@@ -1,11 +1,8 @@
 """
 ``tfbpshiny.datasets`` is the one declaration of each per-dataset fact.
 
-Written before the duplicate declarations were removed: each assertion pinned an
-existing copy to the new module so the consolidation could not change a value. The
-copies are gone now; the surviving assertions check that the modules which re-export
-or build on a constant still hold the same object, and that the invariants the UI
-relies on hold.
+These tests check that the modules which re-export or build on a constant hold the same
+object, and that the invariants the UI relies on hold.
 
 """
 
