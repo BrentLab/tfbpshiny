@@ -1,19 +1,24 @@
-"""One-time application initialization for VirtualDB and dataset metadata."""
+"""App-level dataset metadata and DuckDB initialization helpers."""
 
 from __future__ import annotations
 
+import json
 import logging
-import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+import duckdb
 import pandas as pd
-from labretriever import VirtualDB
-from labretriever.constants import get_cache_dir
-from labretriever.models import MetadataConfig
+from labretriever import ColumnMeta
+
+from tfbpshiny.datasets import DEFAULT_PRESET, PERTURBATION_DATASET_COLUMNS
 
 logger = logging.getLogger("shiny")
 
 # Metadata fields to suppress from the filter UI, keyed by db_name.
+#: Library-size columns carried by every callingcards config. Not experimental
+#: conditions, so they do not belong in the filter UI.
+_CC_HOP_FIELDS: set[str] = {"total_background_hops", "total_experiment_hops"}
+
 # Use "*" for fields hidden across all datasets; use the db_name key for
 # dataset-specific exclusions. The effective hidden set for a given dataset
 # is the union of "*" and its own entry.
@@ -24,7 +29,12 @@ HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
         "Regulator locus tag",
         "Regulator symbol",
     },
-    "callingcards": {"background_total_hops", "experiment_total_hops"},
+    # All four callingcards configs share a schema, so they share these hidden
+    # fields; each variant needs its own entry, or it exposes them as filter options.
+    "callingcards_kang": _CC_HOP_FIELDS,
+    "callingcards_mindel": _CC_HOP_FIELDS,
+    "callingcards_500bp": _CC_HOP_FIELDS,
+    "callingcards_intergenic": _CC_HOP_FIELDS,
     "harbison": {"condition"},
     "chec_m2025": {"condition", "mahendrawada_symbol"},
     "degron": {"env_condition", "timepoint"},
@@ -35,38 +45,9 @@ HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
     "hughes_knockout": {"oe_passed_qc", "sgd_description"},
 }
 
-# The canonical db_name for each underlying dataset. When multiple db_names exist for
-# the same experiment called against different promoter sets (e.g. rossi vs
-# rossi_mindel), only the entry in this set is shown in the dataset selector. Alternate
-# promoter variants remain registered in VirtualDB and are accessible to analysis
-# modules once a promoter selector is wired up.
-PRIMARY_DATASETS: frozenset[str] = frozenset(
-    {
-        "callingcards",
-        "harbison",
-        "rossi",
-        "chec_m2025",
-        "hackett",
-        "hu_reimand",
-        "hughes_overexpression",
-        "hughes_knockout",
-        "kemmeren",
-        "degron",
-    }
-)
-
-# Datasets whose toggles are on by default. A superset of DEFAULT_DATASET_FILTERS
-# — datasets with no preset conditions are listed here but not in the filter dict.
-DEFAULT_ACTIVE_DATASETS: frozenset[str] = frozenset(
-    {
-        "rossi",
-        "chec_m2025",
-        "hackett",
-        "callingcards",
-        "kemmeren",
-        "degron",
-    }
-)
+# Which datasets are primary and which are on by default is recorded in the
+# materialized ``dataset_registry`` (``is_primary`` / ``is_active_default``), which the
+# selection tab reads directly; it is not restated here.
 
 # Default filter state applied on first load. The structure is identical to the
 # dict stored in the ``dataset_filters`` reactive value so it can be used as
@@ -75,10 +56,16 @@ DEFAULT_DATASET_FILTERS: dict[str, dict] = {
     "harbison": {
         "Experimental condition": {"type": "categorical", "value": ["YPD"]},
     },
-    "rossi": {
+    # Filters are keyed by the *primary* dataset the selection tab shows; every variant
+    # (other promoter sets, peak calls) inherits its primary's -- see
+    # ``utils.corr_query.expand_filters_to_variants``. Unfiltered, Rossi has 792 samples
+    # for 777 regulators (heat-shock repeats) and ChEC-seq 197 for 178 (non-standard
+    # conditions such as galactose or the activation-domain mutants); filtered they are
+    # one sample per regulator.
+    "rossi_500bp": {
         "treatment": {"type": "categorical", "value": ["Normal"]},
     },
-    "chec_m2025": {
+    "chec_m2025_500bp": {
         "Experimental condition": {"type": "categorical", "value": ["standard"]},
     },
     "hackett": {
@@ -103,10 +90,10 @@ FIELD_TYPE_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
 ResponsivenessPreset = dict[str, tuple[float, float]]
 
 # Named presets for per-dataset responsiveness definitions in the Comparison module.
-# Add or modify entries here to tune what counts as a "responsive" target.
-# Columns used per dataset are defined in perturbation/queries.py::DATASET_COLUMNS.
-# NOTE: degron uses the "pvalue" column (raw DESeq2 p-value), NOT padj. If padj
-# is preferred, add "padj" to DATASET_COLUMNS["degron"] and update the comment.
+# Add or modify entries here to tune what counts as a "responsive" target. The keys
+# must be exactly ``tfbpshiny.datasets.PRESET_NAMES``; the columns each threshold
+# applies to are ``tfbpshiny.datasets.PERTURBATION_DATASET_COLUMNS`` (degron is
+# thresholded on ``padj``).
 
 # provide two options: author settings (more stringent) and relaxed thresholds
 # (chose reasonable, with result)
@@ -114,17 +101,17 @@ DEFAULT_RESPONSIVENESS_PRESETS: dict[str, ResponsivenessPreset] = {
     "Stringent": {
         "*": (1.0, 0.05),
         "degron": (0.38, 0.1),  # |fold change| > log2(1.3) and padj < 0.1
-        "hackett": (0.0, 1.0),  # |log2_shrunken_timecourses| > 0 (no pvalue col)
+        # hackett/hughes have no pvalue column; materialized with pvalue_threshold=0.05.
+        # Use effect_threshold only to distinguish Stringent from Relaxed.
+        "hackett": (0.1, 0.05),
         "kemmeren": (0.77, 0.05),  # |Madj| > log2(1.7) and pval < 0.05
         "hu_reimand": (0.0, 0.05),  # pval < 0.05 (no effect threshold)
-        # Hughes effect is mean_norm_log2fc (no pvalue col); original authors used
-        # a z-score threshold ~1.58 which returns very few DE genes; lowered here.
-        "hughes_overexpression": (1.0, 1.0),
-        "hughes_knockout": (1.0, 1.0),
+        "hughes_overexpression": (1.0, 0.05),
+        "hughes_knockout": (1.0, 0.05),
     },
     "Relaxed": {
         "*": (0.0, 0.05),
-        "hackett": (0.0, 1.0),  # |log2_shrunken_timecourses| > 0 (no pvalue col)
+        # hackett/hughes have no pvalue column; omit override so they use "*" default.
     },
 }
 
@@ -133,8 +120,8 @@ def get_responsiveness_label(preset_name: str, p_db: str) -> str:
     """
     Generate a human-readable threshold description from the preset and column tables.
 
-    Derives the label directly from :data:`DEFAULT_RESPONSIVENESS_PRESETS` and the
-    ``DATASET_COLUMNS`` mapping in ``perturbation/queries.py``, so there is a single
+    Derives the label directly from :data:`DEFAULT_RESPONSIVENESS_PRESETS` and
+    :data:`tfbpshiny.datasets.PERTURBATION_DATASET_COLUMNS`, so there is a single
     source of truth for threshold values.
 
     :param preset_name: Active preset name (key in
@@ -144,8 +131,6 @@ def get_responsiveness_label(preset_name: str, p_db: str) -> str:
     :rtype: str
 
     """
-    from tfbpshiny.modules.perturbation.queries import DATASET_COLUMNS
-
     preset = DEFAULT_RESPONSIVENESS_PRESETS.get(preset_name)
     if preset is None:
         return ""
@@ -153,9 +138,7 @@ def get_responsiveness_label(preset_name: str, p_db: str) -> str:
     thresholds = preset.get(p_db, preset.get("*", (0.0, 0.05)))
     effect_thresh, pval_thresh = thresholds
 
-    cols = DATASET_COLUMNS.get(
-        p_db, DATASET_COLUMNS.get("*", ("effect", "pvalue", "", ""))
-    )
+    cols = PERTURBATION_DATASET_COLUMNS.get(p_db, ("effect", "pvalue"))
     effect_col = cols[0] if cols[0] else "effect"
     pval_col = cols[1] if len(cols) > 1 else ""
 
@@ -170,68 +153,19 @@ def get_responsiveness_label(preset_name: str, p_db: str) -> str:
 
 
 # The default preset shown in the Comparison module sidebar.
-# Must be a key in DEFAULT_RESPONSIVENESS_PRESETS.
-DEFAULT_RESPONSIVENESS_PRESET: str = "Relaxed"
+DEFAULT_RESPONSIVENESS_PRESET: str = DEFAULT_PRESET
 
-
-_REGULATOR_DISPLAY_NAME_TABLE = "regulator_display_names"
-
-_BUILD_REGULATOR_DISPLAY_NAMES_SQL = """
-CREATE OR REPLACE TABLE {table} AS
-SELECT
-    regulator_locus_tag,
-    FIRST(regulator_symbol) AS regulator_symbol,
-    CASE
-        WHEN FIRST(regulator_symbol) IS NOT NULL
-             AND FIRST(regulator_symbol) != ''
-             AND FIRST(regulator_symbol) != FIRST(regulator_locus_tag)
-        THEN FIRST(regulator_symbol) || ' (' || regulator_locus_tag || ')'
-        ELSE regulator_locus_tag
-    END AS display_name
-FROM ({union_sql}) __all
-GROUP BY regulator_locus_tag
-ORDER BY regulator_locus_tag
-"""
-
-
-def _build_regulator_display_names(vdb: VirtualDB) -> None:
-    """
-    Build the ``regulator_display_names`` DuckDB table from all dataset meta views.
-
-    Queries each ``{db_name}_meta`` view for distinct ``(regulator_locus_tag,
-    regulator_symbol)`` rows, unions them, and stores the result as a persistent
-    in-memory table.  The ``display_name`` column is ``"SYMBOL (LOCUS_TAG)"`` when a
-    non-empty symbol different from the tag is present; otherwise it equals the tag.
-
-    :param vdb: The application VirtualDB instance.
-
-    """
-    db_names = [
-        db
-        for db in vdb.get_datasets()
-        if "regulator_locus_tag" in vdb.get_fields(f"{db}_meta")
-    ]
-    if not db_names:
-        return
-    union_sql = " UNION ALL ".join(
-        f"SELECT DISTINCT regulator_locus_tag, regulator_symbol FROM {db}_meta"
-        for db in db_names
-    )
-    sql = _BUILD_REGULATOR_DISPLAY_NAMES_SQL.format(
-        table=_REGULATOR_DISPLAY_NAME_TABLE,
-        union_sql=union_sql,
-    )
-    vdb._conn.execute(sql)
+assert DEFAULT_RESPONSIVENESS_PRESET in DEFAULT_RESPONSIVENESS_PRESETS
 
 
 def get_regulator_display_name(
-    vdb: VirtualDB,
+    conn: duckdb.DuckDBPyConnection,
     locus_tags: list[str] | None = None,
 ) -> pd.DataFrame:
     """
     Return a DataFrame of regulator display names from the pre-built lookup table.
 
-    :param vdb: The application VirtualDB instance.
+    :param conn: Open read-only DuckDB connection to the materialized database.
     :param locus_tags: Optional list of locus tags to restrict results. When
         ``None`` all regulators in the table are returned.
     :returns: DataFrame with columns ``regulator_locus_tag``, ``regulator_symbol``,
@@ -240,10 +174,9 @@ def get_regulator_display_name(
 
     """
     if locus_tags is None:
-        return vdb._conn.execute(f"SELECT * FROM {_REGULATOR_DISPLAY_NAME_TABLE}").df()
-    return vdb._conn.execute(
-        f"SELECT * FROM {_REGULATOR_DISPLAY_NAME_TABLE} "
-        f"WHERE regulator_locus_tag = ANY(?)",
+        return conn.execute("SELECT * FROM regulator_display_names").df()
+    return conn.execute(
+        "SELECT * FROM regulator_display_names WHERE regulator_locus_tag = ANY(?)",
         [locus_tags],
     ).df()
 
@@ -253,145 +186,183 @@ class AppDatasets:
     """
     App-level dataset metadata derived at startup.
 
-    Holds the column classification that requires :data:`HIDDEN_FILTER_FIELDS`
-    and cannot be produced by VirtualDB alone.
+    Holds the column classification and labels from the ``dataset_column_metadata``
+    table in the materialized DuckDB.
 
     :param condition_cols: Mapping from db_name to list of column names with
-        role ``experimental_condition`` and non-None ``level_definitions``,
-        excluding hidden fields.
-    :param upstream_cols: Mapping from db_name to list of non-condition
-        categorical columns that drive the cascade filter, excluding hidden
-        fields, ``sample_id``, and identifier-role columns.
+        role ``condition``, excluding hidden fields.
+    :param upstream_cols: Mapping from db_name to list of column names with
+        role ``upstream``, excluding hidden fields.
+    :param column_meta: ``db_name -> column -> ColumnMeta`` for every filterable
+        column: its description, labretriever role and per-level definitions. The
+        filter modal labels its controls from these.
 
     """
 
     condition_cols: dict[str, list[str]]
     upstream_cols: dict[str, list[str]]
+    column_meta: dict[str, dict[str, ColumnMeta]] = field(default_factory=dict)
 
 
-def check_local_cache(virtualdb_config: str) -> list[str]:
+def promoter_set_labels(conn: duckdb.DuckDBPyConnection) -> dict[str, str]:
     """
-    Return a list of repo IDs from the config whose HuggingFace snapshot cache is
-    absent.
+    Display label for every promoter set, from the ``promoter_sets`` registry table.
 
-    Checks for ``{cache_dir}/datasets--{owner}--{repo}/snapshots/`` with at least one
-    entry. Respects ``HF_CACHE_DIR`` (set via ``--cache-dir`` CLI flag) so that a
-    bundled cache directory is correctly detected. An empty list means all repos are
-    cached and ``local_files_only=True`` is safe to use.
-
-    :param virtualdb_config: Path to the VirtualDB YAML config file.
-    :returns: List of uncached HuggingFace repo IDs (empty when all are cached).
-    :rtype: list[str]
+    :param conn: Open read-only DuckDB connection to the materialized database.
+    :returns: ``promoter_set_id`` -> ``display_name``, e.g.
+        ``"intergenic" -> "Intergenic"``.
 
     """
-    config = MetadataConfig.from_yaml(virtualdb_config)
-    hub_cache = get_cache_dir()
-    missing: list[str] = []
-    for repo_id, repo_cfg in config.repositories.items():
-        if repo_cfg.genome_resources is not None and not repo_cfg.dataset:
-            continue  # genome-resource-only repo — nothing to download from HuggingFace
-        # HF cache path: datasets--{owner}--{repo_name}
-        cache_dir = hub_cache / ("datasets--" + repo_id.replace("/", "--"))
-        snapshots = cache_dir / "snapshots"
-        if not snapshots.exists() or not any(snapshots.iterdir()):
-            missing.append(repo_id)
-    return missing
+    rows = conn.execute(
+        "SELECT promoter_set_id, display_name FROM promoter_sets"
+    ).fetchall()
+    return {str(k): str(v) for k, v in rows}
 
 
-def initialize_data(
-    virtualdb_config: str,
-    hf_token: str | None = None,
-    local_files_only: bool = True,
-) -> tuple[VirtualDB, AppDatasets]:
+def binding_method_labels(conn: duckdb.DuckDBPyConnection) -> dict[str, str]:
     """
-    Construct the VirtualDB, run one-time setup, and compute app-level dataset metadata.
+    Display label for every binding method, from the ``binding_methods`` table.
 
-    :param virtualdb_config: Path to the VirtualDB YAML config file.
-    :param hf_token: Optional HuggingFace token for private repo access.
-    :param local_files_only: Passed to ``VirtualDB``; skips HuggingFace network checks
-        and uses only locally cached files. Eliminates 11 sequential ``repo_info`` HTTP
-        round-trips on every startup. Defaults to ``True``; pass ``False`` only when
-        populating the cache for the first time (``tfbpshiny initialize``).
-    :returns: Tuple of ``(vdb, app_datasets)``.
-    :rtype: tuple[VirtualDB, AppDatasets]
+    :param conn: Open read-only DuckDB connection to the materialized database.
+    :returns: ``binding_method_id`` -> ``display_name``.
 
     """
-    _t0 = time.monotonic()
+    rows = conn.execute(
+        "SELECT binding_method_id, display_name FROM binding_methods"
+    ).fetchall()
+    return {str(k): str(v) for k, v in rows}
 
-    t = time.monotonic()
-    vdb = VirtualDB(virtualdb_config, token=hf_token, local_files_only=local_files_only)
-    logger.debug(
-        "initialize_data: VirtualDB() completed in %.3fs", time.monotonic() - t
-    )
 
-    t = time.monotonic()
-    _build_regulator_display_names(vdb)
-    logger.debug(
-        "initialize_data: _build_regulator_display_names completed in %.3fs",
-        time.monotonic() - t,
-    )
+def promoter_set_info(
+    conn: duckdb.DuckDBPyConnection,
+) -> dict[str, dict[str, str | None]]:
+    """
+    Everything the UI shows about each promoter set, from ``promoter_sets``.
 
-    t = time.monotonic()
+    :param conn: Open read-only DuckDB connection to the materialized database.
+    :returns: ``promoter_set_id -> {display_name, description, color, reference}``.
+
+    """
+    rows = conn.execute(
+        "SELECT promoter_set_id, display_name, description, color, reference"
+        " FROM promoter_sets"
+    ).fetchall()
+    return {
+        str(r[0]): {
+            "display_name": r[1],
+            "description": r[2],
+            "color": r[3],
+            "reference": r[4],
+        }
+        for r in rows
+    }
+
+
+def binding_method_colors(conn: duckdb.DuckDBPyConnection) -> dict[str, str]:
+    """
+    Series colour of each binding method, from ``binding_methods``.
+
+    :param conn: Open read-only DuckDB connection to the materialized database.
+    :returns: ``binding_method_id -> color``.
+
+    """
+    rows = conn.execute(
+        "SELECT binding_method_id, color FROM binding_methods WHERE color IS NOT NULL"
+    ).fetchall()
+    return {str(k): str(v) for k, v in rows}
+
+
+def dataset_colors(conn: duckdb.DuckDBPyConnection, data_type: str) -> dict[str, str]:
+    """
+    Series colour of each experiment of one data type, keyed by ``base_label``.
+
+    Colours are declared on primaries; every variant of a primary shares its
+    ``base_label``, so one entry per experiment covers them all.
+
+    :param conn: Open read-only DuckDB connection to the materialized database.
+    :param data_type: ``'binding'`` or ``'perturbation'``.
+    :returns: ``base_label -> color``.
+
+    """
+    rows = conn.execute(
+        "SELECT base_label, color FROM dataset_registry"
+        " WHERE data_type = ? AND is_primary AND color IS NOT NULL",
+        [data_type],
+    ).fetchall()
+    return {str(k): str(v) for k, v in rows}
+
+
+def peak_calling_notes(conn: duckdb.DuckDBPyConnection) -> dict[str, str]:
+    """
+    How each assay's peak calls were made, keyed by its primary ``db_name``.
+
+    :param conn: Open read-only DuckDB connection to the materialized database.
+    :returns: ``db_name -> note`` for primaries that have one.
+
+    """
+    rows = conn.execute(
+        "SELECT db_name, peak_calling_note FROM dataset_registry"
+        " WHERE peak_calling_note IS NOT NULL"
+    ).fetchall()
+    return {str(k): str(v) for k, v in rows}
+
+
+def load_app_datasets(conn: duckdb.DuckDBPyConnection) -> AppDatasets:
+    """
+    Load AppDatasets from dataset_column_metadata table in the materialized DuckDB.
+
+    :param conn: Open read-only DuckDB connection.
+    :returns: AppDatasets with condition_cols, upstream_cols and column_meta populated.
+
+    """
+    df = conn.execute(
+        "SELECT db_name, column_name, role, description, level_definitions"
+        " FROM dataset_column_metadata"
+    ).df()
+    column_meta: dict[str, dict[str, ColumnMeta]] = {}
+    for row in df.itertuples(index=False):
+        levels = row.level_definitions
+        column_meta.setdefault(str(row.db_name), {})[str(row.column_name)] = ColumnMeta(
+            description=row.description if pd.notna(row.description) else None,
+            # The materializer only marks a column 'condition' when labretriever
+            # gave it the experimental_condition role and level definitions.
+            role="experimental_condition" if row.role == "condition" else None,
+            level_definitions=(
+                {str(k): str(v) for k, v in json.loads(levels).items()}
+                if isinstance(levels, str)
+                else None
+            ),
+        )
     condition_cols: dict[str, list[str]] = {}
     upstream_cols: dict[str, list[str]] = {}
-    hidden_global = HIDDEN_FILTER_FIELDS.get("*", set())
-
-    for db_name in vdb.get_datasets():
-        db_meta = vdb.get_column_metadata(db_name) or {}
-        hidden = hidden_global | HIDDEN_FILTER_FIELDS.get(db_name, set())
-
-        cond = [
-            col
-            for col, m in db_meta.items()
-            if m.role == "experimental_condition"
-            and m.level_definitions is not None
-            and col not in hidden
-        ]
-        upstream = [
-            col
-            for col, m in db_meta.items()
-            if col not in cond
-            and col not in hidden
-            and col != "sample_id"
-            and m.role not in ("regulator_identifier", "target_identifier")
-            and m.level_definitions is None
-        ]
-        if cond and upstream:
-            condition_cols[db_name] = cond
-            upstream_cols[db_name] = upstream
-    logger.debug(
-        "initialize_data: column metadata classification completed in %.3fs",
-        time.monotonic() - t,
+    for db_name, grp in df.groupby("db_name"):
+        cond = grp[grp["role"] == "condition"]["column_name"].tolist()
+        up = grp[grp["role"] == "upstream"]["column_name"].tolist()
+        if cond and up:
+            condition_cols[str(db_name)] = cond
+            upstream_cols[str(db_name)] = up
+    return AppDatasets(
+        condition_cols=condition_cols,
+        upstream_cols=upstream_cols,
+        column_meta=column_meta,
     )
-
-    # Materialize the analysis data views into RAM so per-query parquet scans
-    # (the dominant Comparison cost, especially on slow disk) hit memory instead.
-    # Imported locally to keep the module import graph flat.
-    from tfbpshiny.utils.vdb_materialize import materialize_comparison_views
-
-    t = time.monotonic()
-    materialize_comparison_views(vdb)
-    logger.debug(
-        "initialize_data: materialize_comparison_views completed in %.3fs",
-        time.monotonic() - t,
-    )
-
-    logger.debug("initialize_data: total %.3fs", time.monotonic() - _t0)
-    return vdb, AppDatasets(condition_cols=condition_cols, upstream_cols=upstream_cols)
 
 
 __all__ = [
     "HIDDEN_FILTER_FIELDS",
     "FIELD_TYPE_OVERRIDES",
-    "PRIMARY_DATASETS",
-    "DEFAULT_ACTIVE_DATASETS",
     "DEFAULT_DATASET_FILTERS",
     "ResponsivenessPreset",
     "DEFAULT_RESPONSIVENESS_PRESETS",
     "DEFAULT_RESPONSIVENESS_PRESET",
     "get_responsiveness_label",
     "AppDatasets",
-    "check_local_cache",
+    "binding_method_colors",
+    "binding_method_labels",
+    "dataset_colors",
     "get_regulator_display_name",
-    "initialize_data",
+    "load_app_datasets",
+    "peak_calling_notes",
+    "promoter_set_info",
+    "promoter_set_labels",
 ]

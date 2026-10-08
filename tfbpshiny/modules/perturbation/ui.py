@@ -2,9 +2,36 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from shiny import module, ui
 
-from tfbpshiny.components import sidebar_label
+from tfbpshiny.components import sidebar_label, sidebar_text, workspace_heading
+
+#: Full set of "Column" choices, keyed for ``col_preference``. ``log10pval``
+#: is only valid with Pearson — Spearman is rank-based, so p-value and
+#: -log10(p-value) would be redundant (and the log10pval score type isn't
+#: materialized for spearman at all). The workspace server swaps this for
+#: :data:`COL_PREFERENCE_CHOICES_NO_LOG10` whenever Spearman is selected.
+COL_PREFERENCE_CHOICES: dict[str, Any] = {
+    "log10pval": ui.tooltip(
+        ui.span("-log10(p-value)"),
+        "Negative log10 of the p-value. " "Values below 1e-10 are capped at 10.",
+    ),
+    "effect": ui.tooltip(
+        ui.span("Effect"),
+        "Raw effect size (e.g. log2 fold-change).",
+    ),
+    "pvalue": ui.tooltip(
+        ui.span("P-value"),
+        "Raw p-value. Smaller is more significant.",
+    ),
+}
+
+#: ``COL_PREFERENCE_CHOICES`` without ``log10pval``, used when Spearman is selected.
+COL_PREFERENCE_CHOICES_NO_LOG10: dict[str, Any] = {
+    k: v for k, v in COL_PREFERENCE_CHOICES.items() if k != "log10pval"
+}
 
 
 @module.ui
@@ -12,32 +39,11 @@ def perturbation_ui() -> ui.Tag:
     return ui.layout_sidebar(
         ui.sidebar(
             ui.h2("Perturbation"),
-            ui.output_ui("execute_pending_style"),
-            ui.input_task_button(
-                "execute_analysis",
-                "Execute Analysis",
-                label_busy="Running...",
-                type="danger",
-            ),
             sidebar_label("Column"),
             ui.input_radio_buttons(
                 "col_preference",
                 label=None,
-                choices={
-                    "log10pval": ui.tooltip(
-                        ui.span("-log10(p-value)"),
-                        "Negative log10 of the p-value. "
-                        "Values below 1e-10 are capped at 10.",
-                    ),
-                    "effect": ui.tooltip(
-                        ui.span("Effect"),
-                        "Raw effect size (e.g. log2 fold-change).",
-                    ),
-                    "pvalue": ui.tooltip(
-                        ui.span("P-value"),
-                        "Raw p-value. Smaller is more significant.",
-                    ),
-                },
+                choices=COL_PREFERENCE_CHOICES,
                 selected="effect",
                 inline=True,
             ),
@@ -53,50 +59,37 @@ def perturbation_ui() -> ui.Tag:
             width=320,
             open="open",
         ),
-        ui.h1("Perturbation Analysis"),
         ui.div(
-            {"class": "sidebar-text"},
-            ui.p(
-                "Select score and correlation method in the sidebar, then click "
-                "Execute Analysis to compute pairwise correlations across shared "
-                "regulators."
+            {"class": "workspace-centered"},
+            workspace_heading("Perturbation Analysis"),
+            sidebar_text(
+                ui.p(
+                    "Select score and correlation method in the sidebar. "
+                    "Correlations and distributions update automatically as "
+                    "selections change."
+                ),
+                ui.p(
+                    "The Correlation Matrix below shows median correlation for "
+                    "each active dataset pair."
+                ),
+                ui.p(
+                    "The Pair Distribution section shows the per-regulator "
+                    "correlation distribution for every active pair."
+                ),
             ),
-            ui.p(
-                "The Correlation Matrix tab shows median correlation for each "
-                "dataset pair. Click a cell to select that pair."
-            ),
-            ui.p(
-                "The Pair Distribution tab shows the per-regulator correlation "
-                "distribution for the selected pair. Click a point to select a "
-                "regulator."
-            ),
-            ui.p(
-                "The Gene Scatter tab shows per-target scores for the selected "
-                "regulator. Use the dropdown to change the active regulator."
-            ),
-        ),
-        ui.output_ui("hackett_pvalue_warning"),
-        ui.output_ui("analysis_status"),
-        ui.navset_tab(
-            ui.nav_panel(
-                "Correlation Matrix",
-                ui.output_ui("corr_matrix_container"),
-            ),
-            ui.nav_panel(
-                "Pair Distribution",
-                ui.output_ui("regulator_selector_box"),
-                ui.output_ui("pair_box_status"),
-                ui.output_ui("pair_box_container"),
-            ),
-            ui.nav_panel(
-                "Gene Scatter",
-                ui.output_ui("regulator_selector_scatter"),
-                ui.output_ui("scatter_status"),
-                ui.output_ui("scatter_container"),
-            ),
-            id="perturbation_view_tabs",
+            ui.output_ui("hackett_pvalue_warning"),
+            ui.output_ui("analysis_status"),
+            workspace_heading("Correlation Matrix"),
+            ui.output_ui("corr_matrix_container"),
+            workspace_heading("Pair Distribution"),
+            ui.output_ui("regulator_selector_box"),
+            ui.output_ui("pair_box_container"),
         ),
     )
 
 
-__all__ = ["perturbation_ui"]
+__all__ = [
+    "perturbation_ui",
+    "COL_PREFERENCE_CHOICES",
+    "COL_PREFERENCE_CHOICES_NO_LOG10",
+]

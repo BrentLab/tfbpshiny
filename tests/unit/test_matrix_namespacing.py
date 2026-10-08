@@ -6,35 +6,17 @@ The matrix builders render plain ``<button>`` elements whose ``onclick`` calls
 module-namespaced id (``{ns}-<id>``); a bare id writes to the root namespace and
 never reaches the module effect. These tests pin that the builders apply the
 provided namespace function to every cell button id.
+
+``build_correlation_matrix_ui`` is not covered here: it was made a read-only
+display (no ``ns``, no ``selected_pairs``, no click behavior) in 2f96f57, and
+``build_topn_matrix_ui`` is the only remaining clickable, namespaced matrix builder.
 """
 
-import pandas as pd
-
-from tfbpshiny.utils.correlation_matrix import build_correlation_matrix_ui
 from tfbpshiny.utils.topn_matrix import build_topn_matrix_ui
 
 
 def _ns(prefix: str):
     return lambda s: f"{prefix}-{s}"
-
-
-def test_corr_matrix_namespaces_button_ids():
-    html = str(
-        build_correlation_matrix_ui(
-            all_possible_pairs=[("a", "b")],
-            active_pairs=[("a", "b")],
-            active_datasets=["a", "b"],
-            corr_data={("a", "b"): pd.DataFrame({"correlation": [0.5]})},
-            display_names={"a": "A", "b": "B"},
-            selected_pairs=set(),
-            ns=_ns("binding"),
-        )
-    )
-    # str(tag) HTML-escapes the onclick single quotes to &apos;.
-    assert "setInputValue(&apos;binding-corrpair_a__b&apos;" in html
-    # The bare (root-namespace) id must not appear — it would never reach the
-    # module-scoped click effect.
-    assert "setInputValue(&apos;corrpair_a__b&apos;" not in html
 
 
 def test_topn_matrix_namespaces_button_ids():
@@ -56,7 +38,7 @@ def test_topn_matrix_namespaces_button_ids():
 
 
 def test_matrix_builders_default_ns_is_identity():
-    # Without an explicit ns (e.g. standalone page_test usage), ids are bare.
+    # Without an explicit ns, ids are bare.
     html = str(
         build_topn_matrix_ui(
             binding_datasets=["rossi"],

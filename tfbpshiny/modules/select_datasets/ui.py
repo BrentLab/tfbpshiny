@@ -255,7 +255,7 @@ def dataset_filter_modal_ui(
     which uses the column's ``ColumnMeta.description`` for boolean toggle labels.
 
     :param db_name: Internal dataset key (used for filter IDs).
-    :param df: Metadata DataFrame from ``vdb.query(metadata_query(db_name, ...))``.
+    :param df: The dataset's ``{db_name}_meta`` rows (``metadata_query``).
     :param saved_filters: Previously applied filters for this dataset, used to
         pre-populate controls.
     :param common_fields: Characteristic names shared across all datasets. If
@@ -268,9 +268,10 @@ def dataset_filter_modal_ui(
     :param regulator_display_labels: Maps ``locus_tag`` to ``"SYMBOL (LOCUS_TAG)"``
         display strings. When provided, a Regulator card is prepended to the Common
         Characteristics column with a combined searchable selectize.
-    :param col_meta: Per-column metadata from ``VirtualDB.get_column_metadata``.
-        Used to identify condition columns (for checkbox rendering) and to supply
-        descriptions for boolean toggle labels.
+    :param col_meta: Per-column labretriever ``ColumnMeta``. Used to identify
+        condition columns (for checkbox rendering) and to supply descriptions for
+        boolean toggle labels. The app passes ``None``, so every column is rendered
+        with ``_filter_control``.
     :param ns: Namespace function applied to all input IDs in the modal. Pass
         ``session.ns`` from the calling module server so inputs are registered
         under the correct module scope.
@@ -504,6 +505,19 @@ def selection_ui() -> ui.Tag:
         ),
         workspace_heading("Regulator Counts in Dataset Intersections"),
         ui.output_ui("matrix_content"),
+        workspace_heading("Regulators by Dataset"),
+        ui.input_selectize(
+            "regulator_search",
+            label=None,
+            choices=[],
+            selected=[],
+            multiple=True,
+            options={
+                "plugins": ["remove_button"],
+                "placeholder": "Search regulators…",
+            },
+        ),
+        ui.output_ui("regulator_dataset_table_content"),
     )
 
 
@@ -599,9 +613,79 @@ def off_diagonal_cell_modal_ui(
     )
 
 
+def regulator_cell_modal_ui(
+    display_name: str,
+    regulator_symbol: str,
+    regulator_locus_tag: str,
+    columns: list[str],
+    rows: list[dict[str, Any]],
+    active_sample_ids: set[str],
+) -> ui.Tag:
+    """
+    Modal listing every sample that interrogates a regulator within one dataset,
+    regardless of the dataset's active filters. Samples that pass the active filters are
+    highlighted and sorted to the top (see ``regulator_conditions_query``'s ``ORDER BY
+    __matches_filters DESC``).
+
+    :param display_name: Human-readable dataset name.
+    :param regulator_symbol: Regulator gene symbol (falls back to the locus tag
+        when no symbol is available).
+    :param regulator_locus_tag: Regulator systematic locus tag.
+    :param columns: Column names to display, in order (``sample_id`` first).
+    :param rows: One dict per sample, keyed by ``columns``, pre-sorted with
+        filter-matching samples first.
+    :param active_sample_ids: ``sample_id`` values (as strings) that pass the
+        dataset's active filters; their rows are highlighted.
+
+    """
+    title = f"{regulator_symbol} ({regulator_locus_tag}) in {display_name}"
+    if not rows:
+        body: ui.Tag = ui.p("No samples reference this regulator in this dataset.")
+    else:
+        body_children: list[ui.Tag] = []
+        if 0 < len(active_sample_ids) < len(rows):
+            body_children.append(
+                ui.p(
+                    {"class": "text-muted small mb-2"},
+                    "Bold rows pass the dataset's active filters.",
+                )
+            )
+        body_children.append(
+            ui.div(
+                {"class": "matrix-scroll-container"},
+                ui.tags.table(
+                    {"class": "table table-sm table-bordered mb-0"},
+                    ui.tags.thead(ui.tags.tr(*[ui.tags.th(c) for c in columns])),
+                    ui.tags.tbody(
+                        *[
+                            ui.tags.tr(
+                                (
+                                    {"class": "condition-row-active"}
+                                    if str(row.get("sample_id")) in active_sample_ids
+                                    else {}
+                                ),
+                                *[ui.tags.td(str(row.get(c, ""))) for c in columns],
+                            )
+                            for row in rows
+                        ]
+                    ),
+                ),
+            )
+        )
+        body = ui.div(*body_children)
+    return ui.modal(
+        body,
+        title=title,
+        size="l",
+        easy_close=True,
+        footer=ui.modal_button("Close"),
+    )
+
+
 __all__ = [
     "dataset_filter_modal_ui",
     "diagonal_cell_modal_ui",
     "off_diagonal_cell_modal_ui",
+    "regulator_cell_modal_ui",
     "selection_ui",
 ]

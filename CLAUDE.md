@@ -14,8 +14,8 @@ dashboard interface to visualize and analyze genomics data.
 
 ## Reference Repositories
 
-Two companion repositories are available as workspace folders and online. Use them
-when working with Shiny components or labretriever data access — read their source rather
+These reference repositories are available as workspace folders and online. Use them
+when working with Shiny components, labretriever data access, SQL or plots — read their source rather
 than guessing at APIs.
 
 | Package | Local path | Online source |
@@ -24,7 +24,6 @@ than guessing at APIs.
 | labretriever | `@labretriever (reference)` | https://github.com/cmatKhan/labretriever |
 | duckDB (for SQL query reference) | `@duckdb (reference)` | https://duckdb.org/docs/stable/
 | plotly | `@plotly (reference)`   | https://plotly.com/python/ |
-| terraform | `@terraform (reference)` | https://developer.hashicorp.com/terraform/docs
 
 ## Technology Stack
 
@@ -46,11 +45,12 @@ read the source in `@labretriever (reference)` or check https://brentlab.github.
 
 ### Other Key Dependencies
 
-- **Python**: ^3.11
-- **Plotly**: ^6.0.1 (for visualizations)
-- **shinywidgets**: ^0.5.2
-- **python-dotenv**: ^1.1.0 (environment configuration)
+- **Python**: ^3.12
+- **DuckDB**: the app's only data source at runtime
+- **Plotly**: ^6.0.1 (interactive plots, rendered to HTML with `plotly.io.to_html`)
+- **matplotlib**: static figures on the Figures page
 - **faicons**: ^0.2.2 (icons)
+- Plots do not use shinywidgets; see "Plotly rendering" in `docs/development.md`
 
 ## Application Architecture
 
@@ -61,36 +61,41 @@ tfbpshiny/
 ├── app.py              # Main application shell and orchestration
 ├── app.css             # Global styles and CSS custom properties
 ├── components.py       # Reusable styled UI component library (see below)
+├── datasets.py         # Dataset vocabulary and constants shared by build and app
+├── brentlab_yeast_collection.yaml  # labretriever collection config
+├── www/                # Static assets (images; the Plotly JS bundle, gitignored)
 ├── modules/            # Feature modules
 │   ├── home/           # The home page module (splash screen)
 │   ├── binding/        # TF binding data module
 │   ├── perturbation/   # Perturbation data module
 │   ├── comparison/     # Comparison analysis module
+│   ├── figures/        # Publication figures module
 │   └── select_datasets/# Dataset selection module
+├── materialize/        # Offline build of the DuckDB file (`tfbpshiny materialize`)
 └── utils/              # Shared utilities
 ```
 
 ### Module Pattern
 
 Each module follows a consistent structure:
-- `ui.py` — UI component definitions (sidebar and workspace)
-- `server/sidebar.py` — Sidebar server logic
-- `server/workspace.py` — Workspace server logic
-- `page_test.py` - This is a standalone Shiny app for testing the module in
-  isolation during development. It should not be imported or referenced in
-  the main app. It should set up mock data to pass as input to the module's
-  server functions and render the UI components. As the testing framework
-  is implemented and developed, this may become optional or be removed.
-  However, currently it is required.
-- `queries.py` (optional) — If needed, SQL query templates used in the module against
-  `vdb`. **Note**: queries.py is excluded from flake8 linting due to the presence of
-  long SQL query strings that may exceed typical line length limits. This allows for
-  better readability of SQL queries without triggering linting errors.
-  **Convention**: any function in `queries.py` that executes SQL against `vdb` directly
-  (i.e. calls `vdb.query()` internally) must accept a `sql_only: bool = False` keyword
-  argument. When `sql_only=True` the function returns a `(sql_string, params_dict)`
-  tuple instead of executing the query. This is useful for debugging and
-  notebook-based investigation.
+- `ui.py` — `{module}_ui()`: a `ui.layout_sidebar` with the module's controls in
+  the sidebar and its plots/tables in the main area
+- `server/workspace.py` — `{module}_workspace_server()`, a `@module.server`
+  function taking `conn`, `logger` and the shared reactives it needs
+  (`select_datasets` additionally splits out `server/sidebar.py` and
+  `server/dataset_row.py`, combined by `select_datasets_server`)
+- Larger servers (`comparison`, `figures`) keep `workspace.py` thin: it builds a
+  per-session context (`server/context.py`), registers shared reactives
+  (`server/shared.py`) and then calls one `register_*` function per tab or figure
+  (`server/fig6.py`, `server/compare_methods.py`, ...). Shiny registers a
+  `@render.ui` / `@reactive.calc` against the current session wherever it is
+  created, so those helpers need no decorator of their own. Output ids are fixed
+  by `ui.py`; never rename one without changing both.
+- `queries.py` (optional) — SQL the module runs against the read-only materialized
+  DuckDB connection (`conn`). Builders return `(sql, params)`; `fetch_*` functions
+  execute and return DataFrames. **Note**: queries.py is excluded from flake8 linting
+  due to the presence of long SQL query strings that may exceed typical line length
+  limits. The live builders are catalogued in `docs/sql_operations.md`.
 
 ### Styled Component Library (`components.py`)
 
@@ -99,9 +104,10 @@ styled Shiny UI elements.  Every function maps to one or more CSS classes define
 `app.css` and documents that mapping in its docstring.
 
 **When to use it:**
-- Any time you build a sidebar shell, workspace shell, nav button, group header, dataset
-  row, filter card, empty state, or matrix cell button — use the corresponding function
-  from `components.py` rather than inlining the class string.
+- Any time you build a tooltip, sidebar label or text, workspace heading, empty state,
+  dataset row, filter card, matrix (table, cell, header, row label), scroll row or
+  export control, use the corresponding function from `components.py` rather than
+  inlining the class string.
 - When adding a new CSS class that will be used in more than one place, add a matching
   factory function to `components.py` at the same time.
 
@@ -113,10 +119,12 @@ styled Shiny UI elements.  Every function maps to one or more CSS classes define
 
 **Rules:**
 - No business logic or reactive code belongs here — only pure `ui.Tag` factories.
-- Module `ui.py` files import from `components` (not from each other).
-- `app.py` imports `github_badge` and `nav_button` from `components`.
-- Do **not** inline `class_="nav-btn"`, `class_="empty-state"`, etc. anywhere else in
-  the app — always go through `components.py`.
+- Module `ui.py` and `server/*.py` files import from `components` (not from each
+  other).
+- `app.py` imports `github_badge` from `components`.
+- Do **not** inline `{"class": "empty-state"}`, `{"class": "sidebar-text"}`, etc.
+  anywhere else in the app — use `empty_state(...)`, `sidebar_text(...)` and the other
+  factories. `grep -rn '"empty-state"' tfbpshiny/modules` should return nothing.
 
 **Notable exception:** `select_datasets/ui.py` builds filter-option cards directly
 because it injects a conditional "Apply to all datasets" toggle into the card header,
@@ -125,39 +133,64 @@ contains a comment explaining this.
 
 ### Layout System
 
-The app uses a two-region layout:
-1. **Sidebar region** — Dynamic content based on active module
-2. **Workspace region** — Main content area for visualizations and data
-
-`app.py` orchestrates overall application flow and state. Individual modules own their
-UI and server logic. Navigation uses a top navbar with action buttons.
+`app.py` declares one `ui.page_navbar` with a `ui.nav_panel` per module, so Shiny owns
+tab navigation. Inside its panel each module lays out its own sidebar (controls) and
+workspace (plots, tables). `app.py` orchestrates shared state; modules own their UI and
+server logic.
 
 ### Data Access
 
-`VirtualDB` (`vdb`) is initialized once in `app.py` from `brentlab_yeast_collection.yaml`
-and passed to modules as needed. Supports both local development and Docker deployment.
+The app reads a single pre-built DuckDB file, `brentlab_yeast.duckdb`, produced
+offline by `tfbpshiny materialize` from `brentlab_yeast_collection.yaml` via
+`labretriever.VirtualDB`. `app_server` opens it read-only once per session and passes
+the connection (`conn`) to every module server. `VirtualDB` is used only in
+`tfbpshiny/materialize/` and the notebooks under `tmp/`; nothing on the read side
+touches HuggingFace. See `docs/development.md` and `docs/materialized_db_schema.md`.
+
+Dataset identity and presentation (labels, primary/variant structure, promoter set,
+binding method, default-active, colours, notes) are declared once, as labretriever
+`tags` in `brentlab_yeast_collection.yaml`; the promoter-set and binding-method
+vocabularies are `PROMOTER_SETS` / `BINDING_METHODS` in `tfbpshiny/datasets.py`.
+`materialize` reads the tags through `VirtualDB` (never parse the YAML in tfbpshiny)
+and writes them into the registry tables; the app reads only those tables. Never
+hardcode a dataset label, colour or db_name-to-label map in module code. Measurement
+columns, levels and the dataset groups the figures use also live in `datasets.py`.
 
 ## Common Patterns
 
 ### Adding a New Module
 
 1. Create module directory under `tfbpshiny/modules/`
-2. Implement `ui.py` with `{module}_sidebar_ui()` and `{module}_workspace_ui()`
-3. Implement `server/sidebar.py` with `{module}_sidebar_server()`
-4. Implement `server/workspace.py` with `{module}_workspace_server()`
-5. In `app.py`: add imports, navbar button, cases in `sidebar_region()` and
-   `workspace_region()`, reactive effect for navigation, and module server calls
+2. Implement `ui.py` with `{module}_ui()`
+3. Implement `server/workspace.py` with `{module}_workspace_server()` and re-export
+   it from `server/__init__.py`
+4. If the page needs data the database does not hold, add the table to
+   `tfbpshiny/materialize/` first (see `docs/materialized_db_schema.md`)
+5. In `app.py`: import the UI and server, add a `ui.nav_panel` to `page_navbar` (and
+   to its `fillable` list), and call the module server from `app_server` with `conn`,
+   `logger` and whichever shared reactives it needs
 
-### Working with VirtualDB
+### Working with the database
 
-Use the `vdb` instance to access data sources. Refer to the labretriever docs or
-`@labretriever (reference)` source for available methods and data structures.
+Module servers receive `conn`, a read-only `duckdb.DuckDBPyConnection`. Put SQL in
+the module's `queries.py`; restrict rows to filtered samples with the helpers in
+`utils/corr_query.py` (`get_filtered_sample_ids`, `expand_filters_to_variants`). If a
+page needs a result that is not in the database, add it to `tfbpshiny/materialize/`
+and rebuild rather than computing it at request time. When working on the materialize
+side, refer to the labretriever docs or `@labretriever (reference)` source for
+VirtualDB's methods.
 
 ## Development Commands
 
 ```bash
 # Install dependencies
 poetry install
+
+# Build the database (once, ~20 min; pulls data from HuggingFace). The launch
+# command's default --db-path is tfbpshiny/brentlab_yeast.duckdb
+poetry run python -m tfbpshiny materialize \
+    --config tfbpshiny/brentlab_yeast_collection.yaml \
+    --output tfbpshiny/brentlab_yeast.duckdb
 
 # Run the application (development)
 poetry run python -m tfbpshiny --log-level DEBUG launch \
@@ -193,11 +226,19 @@ official testing guidelines.
 
 ```
 tests/
-├── unit/                       # Pure-function unit tests (no reactive context)
-│   └── test_select_datasets.py # _build_where, query builders, ID generators
-└── e2e/                        # Playwright end-to-end tests
-    └── test_navigation.py      # Navigation smoke tests
+├── unit/                         # Pure-function unit tests (no reactive context)
+│   ├── _collection.py            # VirtualDB stand-in over the real collection config
+│   ├── _topn_oracle.py           # reference top-N SQL the staged builder is checked against
+│   └── test_*.py                 # one file per module or materialize stage
+└── e2e/                          # Playwright end-to-end tests (need brentlab_yeast.duckdb)
+    ├── test_navigation.py        # Navigation smoke tests
+    ├── test_outputs_render.py    # Every output on every page renders; optional text snapshot
+    └── .snapshots/outputs.json   # Rendered text per output, for TFBPSHINY_E2E_SNAPSHOT=compare
 ```
+
+`test_outputs_render.py` renders every page against the real database. Run it with
+`TFBPSHINY_E2E_SNAPSHOT=compare` to check a change leaves every output's text
+unchanged, or `=write` to re-record after an intended change.
 
 ### Unit Testing
 
@@ -207,8 +248,9 @@ that have been extracted from server code (e.g. query builders, ID generators,
 data-transformation helpers). Test those with plain pytest; do not attempt to test
 reactive effects or renders in unit tests.
 
-Key patterns: test pure helper functions directly; mock external dependencies
-(VirtualDB) with simple stubs when needed.
+Key patterns: test pure helper functions directly; for SQL builders, run the generated
+SQL against a small in-memory DuckDB fixture built in the test rather than against
+`brentlab_yeast.duckdb`.
 
 ### End-to-End Testing
 
@@ -220,18 +262,18 @@ interactions, data selection) rather than exhaustive UI states.
 from playwright.sync_api import Page, expect
 from shiny.pytest import create_app_fixture
 
-app = create_app_fixture("path/to/app.py")
+app = create_app_fixture("../../tfbpshiny/app.py")
 
-def test_navigation(page: Page, app):
+def test_navigate_to_selection(page: Page, app):
     page.goto(app.url)
-    page.click("#selection")
-    expect(page.locator(".sidebar")).to_be_visible()
+    page.locator('a.nav-link[data-value="Dataset selection"]').click()
+    expect(page.locator(".selection-sidebar")).to_be_visible()
 ```
 
 ### Testing Best Practices
 
 - Each test must be independent — no shared mutable state between tests
-- Use fixtures for common setup (VirtualDB mocks, sample data)
+- Use fixtures for common setup (in-memory DuckDB tables, sample data)
 - Mock all external dependencies in unit tests
 - E2E tests should mirror real user workflows, not implementation details
 - Include edge cases: empty data, error states, boundary conditions
@@ -241,7 +283,8 @@ def test_navigation(page: Page, app):
 - **Formatter**: Black (line-length: 88)
 - **Import sorting**: isort (black profile)
 - **Type checking**: mypy — use type annotations where possible (Python 3.11+)
-- **Testing**: pytest with `shiny.pytest` (unit) and Playwright (E2E) — see Testing section below
+- **Testing**: plain pytest (unit) and Playwright with `shiny.pytest` (E2E) — see
+  Testing above
 - **Docstrings**: Sphinx style. Document parameters and return values; do not repeat
   types (those go in type hints). Inline comments above the line, not beside it.
   For `@reactive.calc` and `@reactive.event` functions, document what triggers
@@ -262,13 +305,19 @@ def test_navigation(page: Page, app):
   Use `:trigger:` for `@reactive.calc` (what reactive inputs/values it depends on)
   and for `@reactive.effect @reactive.event(...)` (what event fires it).
 - **Pre-commit hooks**: run `pre-commit install` once after cloning
+- **Comments and documentation describe the current state only.** Do not write how
+  a file, function or approach changed, what it replaced, or what an earlier version
+  did ("no longer", "previously", "now uses", "legacy", "kept for backward
+  compatibility"). Say what the code does and why. History belongs in `CHANGELOG.md`,
+  which every change that alters behaviour, the database or the docs should update.
 
 ## Environment Configuration
 
-A `.env` file in the root directory can set `HF_TOKEN` for private HuggingFace repo
-access. `DOCKER_ENV` is set by the Docker environment to suppress `.env` loading.
-The VirtualDB config path is set via `--virtualdb-config` (top-level CLI flag).
-See `python-dotenv` docs for `.env` format.
+- `tfbpshiny materialize` reads `HF_TOKEN` (or `--token`) for private HuggingFace
+  repos and honours `HF_HOME` for the download cache; the collection YAML is passed
+  with `--config`.
+- `tfbpshiny launch --db-path` sets `TFBPSHINY_DB_PATH`, `TFBPSHINY_LOG_LEVEL` and
+  `TFBPSHINY_LOG_HANDLER`, which `app.py` reads. The app needs nothing else.
 
 ## Logging
 
@@ -277,37 +326,6 @@ See `python-dotenv` docs for `.env` format.
 - Controlled via CLI flags on the root parser (available to all subcommands):
   - `--log-level` (choices: DEBUG, INFO, WARNING, ERROR, CRITICAL; default: INFO)
   - `--log-handler` (choices: console, file; default: console)
-
-## Docker Deployment
-
-Production uses Docker Compose (`production.yml`). Environment files in
-`.envs/.production/`. Traefik handles reverse proxy routing.
-
-The shinyapp service mounts a named Docker volume `hf_cache` at `/hf-cache`
-inside the container, and sets `HF_HOME=/hf-cache`. This causes HuggingFace
-downloads to land on the persistent volume rather than the container layer,
-so the cache survives container rebuilds.
-
-## Terraform / Infrastructure as Code
-
-The `terraform/` directory contains Terraform configuration for provisioning
-the EC2 instance on AWS. It manages:
-
-- EC2 instance (Amazon Linux 2023, default `t3.small`, 20 GB gp3 root volume)
-- Security group (ports 22, 80, 443)
-- IAM role with `CloudWatchAgentServerPolicy` (required for the `awslogs` Docker log driver)
-- `user_data.sh` cloud-init script that installs Docker + Compose plugin and clones the repo
-
-It does **not** manage DNS records, SSL certificates (handled by Traefik/Let's Encrypt),
-or secret env files (must be copied to the instance manually after provisioning).
-
-**Key files:**
-- `terraform/main.tf` — resource definitions and `public_ip` output
-- `terraform/variables.tf` — `aws_region`, `instance_type`, `key_name`, `root_volume_gb`
-- `terraform/terraform.tfvars.example` — copy to `terraform.tfvars` (gitignored) and fill in values
-- `terraform/user_data.sh` — cloud-init script run on first boot
-
-**Terraform state files and `terraform.tfvars` are gitignored.** Never commit them.
 
 ## Branch Strategy
 
@@ -327,10 +345,10 @@ when complete.
 3. **Module isolation** — keep modules self-contained with clear interfaces.
 4. **Reactive patterns** — follow Shiny's reactive programming model; avoid
    side effects outside reactive contexts.
-5. **vdb is a singleton** — initialized once in `app.py`, passed to modules as an
-   argument; do not re-instantiate it inside modules.
-6. **Mock vdb in tests** — never hit real data sources in unit tests; create a mock
-   VirtualDB fixture instead.
+5. **`conn` is opened once per session in `app.py`** and passed to modules as an
+   argument; do not open the database file inside modules.
+6. **No real data in unit tests** — never open `brentlab_yeast.duckdb` or hit
+   HuggingFace from a unit test; build a small in-memory DuckDB fixture instead.
 7. **E2E tests should be high-level** — test user workflows, not implementation details
   or extensively test internal state irrelevant to the specific user workflow being
   tested.

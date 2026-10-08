@@ -1,5 +1,7 @@
 import json
 import logging
+import pathlib
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Literal
 
@@ -60,41 +62,44 @@ class _JsonFormatter(logging.Formatter):
         return json.dumps(obj, ensure_ascii=False)
 
 
+def _make_log_path(log_dir: str = "tfbpshiny_logs") -> pathlib.Path:
+    """
+    Return a timestamped log file path inside ``log_dir``, creating the directory.
+
+    :param log_dir: Directory to write log files into.
+    :returns: Full path to the new log file.
+
+    """
+    directory = pathlib.Path(log_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+    return directory / f"tfbpshiny_{ts}.log"
+
+
 def configure_logger(
     name: str,
     level: int = logging.DEBUG,
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handler_type: Literal["console", "file"] = "console",
-    log_file: str = "tfbpmodeling.log",
+    log_dir: str = "tfbpshiny_logs",
 ) -> logging.Logger:
     """
     Configures a logger.
 
     When ``handler_type`` is ``"console"``, emits JSON so that CloudWatch Logs
     Insights can parse ``ts``, ``level``, ``logger``, and ``message`` as
-    structured fields. When ``handler_type`` is ``"file"``, uses the plain-text
-    ``format`` string instead.
+    structured fields. When ``handler_type`` is ``"file"``, writes plain-text
+    records to a timestamped file inside ``log_dir`` (created if absent).
 
-    :param name: Name of the logger
-    :type name: str
-    :param level: Logging level, must be one of logging.DEBUG,
-        logging.INFO, logging.WARNING, logging.ERROR
-    :type level: int
+    :param name: Name of the logger.
+    :param level: Logging level (e.g. ``logging.DEBUG``).
     :param format: Logging format string, used only for the file handler.
-    :type format: str
-    :param handler_type: Type of handler, either 'console' or 'file'
-    :type handler_type: Literal["console", "file"]
-    :param log_file: Path to log file, required if handler_type is 'file'.
-        Default is 'tfbpmodeling.log'
-    :type log_file: str
-
-    :return: Configured logger
-    :rtype: logging.Logger
-
-    :raises ValueError: If any of the parameters have invalid datatypes
-
-    example usage:
-    >>> logger = configure_logger("my_logger", level=logging.INFO)
+    :param handler_type: ``"console"`` (default) or ``"file"``.
+    :param log_dir: Directory for log files when ``handler_type`` is ``"file"``.
+        Defaults to ``"tfbpshiny_logs"``. A timestamped filename is generated
+        automatically.
+    :return: Configured logger.
+    :raises ValueError: If any parameter is invalid.
 
     """
     if not isinstance(name, str):
@@ -107,26 +112,20 @@ def configure_logger(
         raise ValueError("format must be a string")
     if handler_type not in ["console", "file"]:
         raise ValueError("handler_type must be 'console' or 'file'")
-    if handler_type == "file" and not log_file:
-        raise ValueError("log_file must be specified for file handler")
 
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
-    # Remove all handlers associated with the logger object to avoid duplicate logs
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
+    for h in logger.handlers[:]:
+        logger.removeHandler(h)
 
     if handler_type == "console":
-        handler = logging.StreamHandler()
+        handler: logging.Handler = logging.StreamHandler()
         handler.setFormatter(_JsonFormatter())
-    elif handler_type == "file":
-        if not log_file:
-            raise ValueError("log_file must be specified for file handler")
-        handler = logging.FileHandler(log_file)
-        handler.setFormatter(logging.Formatter(format))
     else:
-        raise ValueError("Invalid handler_type. Must be 'console' or 'file'.")
+        log_path = _make_log_path(log_dir)
+        handler = logging.FileHandler(str(log_path))
+        handler.setFormatter(logging.Formatter(format))
 
     handler.setLevel(level)
     logger.addHandler(handler)

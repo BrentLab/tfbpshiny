@@ -2,15 +2,35 @@
 
 from __future__ import annotations
 
+import copy
 from logging import Logger
 from typing import Any
 
+import duckdb
 import pandas as pd
-from labretriever import ColumnMeta, VirtualDB
+from labretriever import ColumnMeta
 from shiny import reactive, render, ui
 from shiny.types import SilentException
 
+from tfbpshiny.components import (
+    empty_state,
+    export_download_button,
+    export_instructions,
+)
+from tfbpshiny.modules.select_datasets.export import (
+    EXPORT_RUN_NAME_PLACEHOLDER,
+    ExportDataset,
+    build_export_archive,
+    new_export_run_name,
+)
+from tfbpshiny.modules.select_datasets.modal_state import (
+    condition_choices,
+    is_categorical,
+    upstream_mask,
+)
 from tfbpshiny.modules.select_datasets.queries import (
+    FIELD_TYPE_OVERRIDES,
+    full_data_query,
     metadata_query,
 )
 from tfbpshiny.modules.select_datasets.server.dataset_row import (
@@ -18,57 +38,16 @@ from tfbpshiny.modules.select_datasets.server.dataset_row import (
     dataset_row_ui,
 )
 from tfbpshiny.modules.select_datasets.ui import _slugify
-from tfbpshiny.utils.perf import perf, reset_render_counts
-from tfbpshiny.utils.vdb_init import (
-    DEFAULT_ACTIVE_DATASETS,
-    DEFAULT_DATASET_FILTERS,
-    FIELD_TYPE_OVERRIDES,
-    PRIMARY_DATASETS,
-    AppDatasets,
-)
-
-
-def _build_experimental_condition_field_choices(
-    df: pd.DataFrame,
-    mask: pd.Series[bool],
-    condition_cols: list[str],
-    db_meta: dict[str, ColumnMeta],
-) -> dict[str, dict[str, str]]:
-    """
-    Return condition column choices filtered by mask, sorted by descending count.
-
-    :param df: Full metadata DataFrame for the dataset.
-    :param mask: Boolean mask to apply before counting levels.
-    :param condition_cols: Column names with role ``experimental_condition``.
-    :param db_meta: Per-column metadata for the dataset.
-    :returns: Dict mapping condition column name to ``{value: label}`` choices.
-
-    """
-    result: dict[str, dict[str, str]] = {}
-    for cond_col in condition_cols:
-        if cond_col not in df.columns:
-            continue
-        valid = (
-            df.loc[mask, cond_col].dropna().astype(str).value_counts().index.tolist()
-        )
-        col_m = db_meta.get(cond_col)
-        level_defs = col_m.level_definitions if col_m else {}
-        result[cond_col] = {
-            v: (f"{level_defs[v]} ({v})" if level_defs and level_defs.get(v) else v)
-            for v in valid
-        }
-    return result
+from tfbpshiny.utils.vdb_init import DEFAULT_DATASET_FILTERS, AppDatasets
 
 
 def select_datasets_sidebar_server(
     input: Any,
     output: Any,
     session: Any,
-    vdb: VirtualDB,
+    conn: duckdb.DuckDBPyConnection,
     app_datasets: AppDatasets,
     logger: Logger,
-    active_tab: reactive.Calc_[str] | None = None,
-    pending_regulator_pair: reactive.Value[dict[str, Any] | None] | None = None,
 ) -> tuple[
     reactive.Calc_[list[str]],
     reactive.Calc_[list[str]],
@@ -79,84 +58,84 @@ def select_datasets_sidebar_server(
     active_perturbation_datasets, dataset_filters).
 
     The sidebar has two sections: "Binding" and "Perturbation".
-    Datasets are sourced from VirtualDB tags (data_type, display_name).
+    Datasets are sourced from the ``dataset_registry`` table.
+
+    :param conn: Read-only DuckDB connection to the materialized database.
+    :param app_datasets: Pre-loaded per-dataset column classification.
+    :param logger: Application logger.
 
     """
+    # Build dataset lookup from the materialized dataset_registry table.
+    # Only show primary datasets (is_primary = TRUE) in the selector.
+    _reg_df = conn.execute(
+        "SELECT db_name, data_type, display_name, is_active_default, description "
+        "FROM dataset_registry WHERE is_primary = TRUE"
+    ).df()
 
-    # dataset_dict: {db_name: {"data_type": "binding"|"perturbation",
-    #                           "display_name": str, "assay": str, ...}}
-    # Kept as a lookup map for display_name (passed to dataset_row_server
-    # for the filter-modal title). The two
-    # sorted lists below are derived views that provide rendering order and
-    # the active-dataset calcs. They also carry description so it is
-    # fetched once at startup rather than on every render.
-    dataset_dict: dict[str, dict[str, str]] = {}
-    for db_name in vdb.get_datasets():
-        tags = vdb.get_tags(db_name)
-        if (
-            tags.get("data_type") in ["binding", "perturbation"]
-            and db_name in PRIMARY_DATASETS
-        ):
-            dataset_dict[db_name] = tags
+    dataset_dict: dict[str, dict[str, Any]] = {}
+    for _, row in _reg_df.iterrows():
+        dataset_dict[str(row["db_name"])] = {
+            "data_type": str(row["data_type"]),
+            "display_name": str(row["display_name"]),
+            "is_active_default": bool(row["is_active_default"]),
+            "description": row["description"] if pd.notna(row["description"]) else "",
+        }
 
-    # list of (db_name, display_name, description) tuples, sorted by year
-    # (display_name always starts with the 4-digit year)
+    # Sorted lists of (db_name, display_name, description) for each data type. The
+    # description is the row label's tooltip.
     binding_datasets: list[tuple[str, str, str]] = sorted(
         [
-            (
-                db_name,
-                tags.get("display_name", db_name),
-                vdb.get_dataset_description(db_name) or "",
-            )
+            (db_name, tags["display_name"], tags["description"])
             for db_name, tags in dataset_dict.items()
-            if tags.get("data_type") == "binding"
+            if tags["data_type"] == "binding"
         ],
         key=lambda t: t[1],
     )
     perturbation_datasets: list[tuple[str, str, str]] = sorted(
         [
-            (
-                db_name,
-                tags.get("display_name", db_name),
-                vdb.get_dataset_description(db_name) or "",
-            )
+            (db_name, tags["display_name"], tags["description"])
             for db_name, tags in dataset_dict.items()
-            if tags.get("data_type") == "perturbation"
+            if tags["data_type"] == "perturbation"
         ],
         key=lambda t: t[1],
     )
-    # there are some common fields across datasets. In the dataset filters,
-    # these common fields are displayed in their own section of the modal, and when
-    # they are set on any dataset, they are applied to all datasets.
-    common_fields = set(vdb.get_common_fields()) - {"sample_id"}
 
-    # Per-column metadata from DataCards: descriptions, roles, level definitions.
-    # {db_name: {col_name: ColumnMeta}}
-    all_col_meta: dict[str, dict[str, ColumnMeta]] = {
-        _db: (vdb.get_column_metadata(_db) or {}) for _db in dataset_dict
-    }
-
-    session.on_flush(lambda: reset_render_counts(session.id))
+    # Common fields: upstream-role columns present in 2+ datasets.
+    # These are eligible for "apply to all datasets" propagation.
+    _col_df = conn.execute(
+        "SELECT column_name, COUNT(DISTINCT db_name) AS n "
+        "FROM dataset_column_metadata WHERE role = 'upstream' "
+        "GROUP BY column_name HAVING COUNT(DISTINCT db_name) >= 2"
+    ).df()
+    common_fields: set[str] = set(_col_df["column_name"].tolist()) - {"sample_id"}
 
     _initial_toggle: dict[str, bool] = {
-        db_name: db_name in DEFAULT_ACTIVE_DATASETS
+        db_name: bool(dataset_dict[db_name].get("is_active_default", False))
         for db_name, _, _ in binding_datasets + perturbation_datasets
     }
 
-    # Two-state model: committed (drives expensive calcs) and pending (staging).
-    # Pending receives all user edits immediately; committed is updated only when
-    # the user clicks Apply. The Apply button is shown whenever pending != committed.
+    # Two-state model: pending receives all user edits immediately; committed is
+    # updated only when the user clicks Apply Changes. The Apply button is shown
+    # whenever pending != committed.
     # {<db_name>: {<field_name>: {"type": "categorical" or "numeric" or "bool",
     #                              "value": list[str] | [lo, hi] | bool}}}
+    # ``dataset_filters`` is the committed state — the only thing passed to
+    # workspace/binding/perturbation/comparison, so it must never change except at
+    # Apply Changes commit time (matching how ``_committed_toggle`` works).
     dataset_filters: reactive.Value[dict[str, Any]] = reactive.value(
-        DEFAULT_DATASET_FILTERS
+        copy.deepcopy(DEFAULT_DATASET_FILTERS)
     )
     _committed_toggle: reactive.Value[dict[str, bool]] = reactive.value(_initial_toggle)
-
-    _pending_filters: reactive.Value[dict[str, Any]] = reactive.value(
-        DEFAULT_DATASET_FILTERS
-    )
     _pending_toggle: reactive.Value[dict[str, bool]] = reactive.value(_initial_toggle)
+
+    # Staged, not-yet-applied filter edits from the filter modal (Queue Filters /
+    # Reset / Clear). Only holds entries that differ from ``dataset_filters()``,
+    # keyed by db_name — an entry (even ``{}``) means "queued"; an absent key means
+    # "no staged change, defer to the committed value". Committed into
+    # ``dataset_filters`` (and cleared) when the user clicks Apply Changes, so
+    # editing filters — even for an already-active dataset — never touches the
+    # workspace/analysis modules until then.
+    _pending_filters: reactive.Value[dict[str, dict[str, Any]]] = reactive.value({})
 
     # tracks which db_name's filter modal is currently open
     modal_open_for: reactive.Value[str | None] = reactive.value(None)
@@ -166,134 +145,84 @@ def select_datasets_sidebar_server(
     @reactive.calc
     def _has_pending_changes() -> bool:
         """
-        True when the pending state differs from the committed state.
+        True when the pending toggle state differs from the committed state, or there
+        are staged (unapplied) filter edits.
 
-        :trigger: ``_pending_toggle``, ``_pending_filters``,
-            ``_committed_toggle``, ``dataset_filters``,
-            ``pending_regulator_pair``.
+        :trigger: ``_pending_toggle``, ``_committed_toggle``, ``_pending_filters``.
 
         """
-        if pending_regulator_pair is not None and pending_regulator_pair() is not None:
-            return True
-        return (
-            _pending_toggle() != _committed_toggle()
-            or _pending_filters() != dataset_filters()
-        )
+        return _pending_toggle() != _committed_toggle() or bool(_pending_filters())
 
-    # Active dataset lists derived from committed toggle state.
     @reactive.calc
     def _active_binding_datasets() -> list[str]:
         """
-        Binding datasets currently toggled on (committed state).
+        Binding datasets currently committed (drives analysis).
 
         :trigger: ``_committed_toggle`` — re-runs when committed state changes.
 
         """
-        with perf(session.id, "select_datasets.sidebar", "_active_binding_datasets"):
-            state = _committed_toggle()
-            return [db for db, _, _ in binding_datasets if state.get(db, False)]
+        state = _committed_toggle()
+        return [db for db, _, _ in binding_datasets if state.get(db, False)]
 
     @reactive.calc
     def _active_perturbation_datasets() -> list[str]:
         """
-        Perturbation datasets currently toggled on (committed state).
+        Perturbation datasets currently committed (drives analysis).
 
         :trigger: ``_committed_toggle`` — re-runs when committed state changes.
 
         """
-        with perf(
-            session.id, "select_datasets.sidebar", "_active_perturbation_datasets"
-        ):
-            state = _committed_toggle()
-            return [db for db, _, _ in perturbation_datasets if state.get(db, False)]
+        state = _committed_toggle()
+        return [db for db, _, _ in perturbation_datasets if state.get(db, False)]
 
-    # Instantiate one row sub-module per dataset. Each module owns the toggle
-    # and filter-open effects for its row; all shared reactive state is passed
-    # by reference so the row module can read and write it directly.
-    @reactive.calc
-    def _cached_meta_dfs() -> dict[str, pd.DataFrame]:
+    def _all_active() -> list[str]:
+        return _active_binding_datasets() + _active_perturbation_datasets()
+
+    def _stage_filters(
+        working: dict[str, dict[str, Any]], all_db_names: list[str]
+    ) -> None:
         """
-        Unfiltered metadata DataFrames for all active datasets.
+        Diff ``working`` against the committed ``dataset_filters`` and write the result
+        to ``_pending_filters``.
 
-        Fetched once per active-dataset change and held in memory so that
-        opening a filter modal does not trigger a redundant parquet scan.
-
-        :trigger: ``_active_binding_datasets``, ``_active_perturbation_datasets`` —
-            re-runs whenever the active dataset list changes.
-
-        """
-        all_active = _active_binding_datasets() + _active_perturbation_datasets()
-        result: dict[str, pd.DataFrame] = {}
-        for db in all_active:
-            try:
-                sql, params = metadata_query(db)
-                result[db] = vdb.query(sql, **params)
-            except Exception:
-                logger.exception("Failed to fetch metadata for %s", db)
-        return result
-
-    @reactive.calc
-    def _common_field_levels() -> dict[str, list[str]]:
-        """
-        Union of categorical levels for each common field across all active datasets.
-
-        Derived from ``_cached_meta_dfs`` so no additional queries are issued.
-
-        :trigger: ``_cached_meta_dfs`` — re-runs whenever the cached DataFrames change.
+        :param working: Full working copy of per-dataset filters (committed merged
+            with the prior overlay, then mutated by the caller).
+        :param all_db_names: Every registered dataset name, so entries that were
+            cleared entirely (popped from ``working``) are still diffed against
+            their committed value.
 
         """
-        dfs = _cached_meta_dfs()
-        result: dict[str, list[str]] = {}
-        for cf_field in common_fields:
-            levels: set[str] = set()
-            for db, df in dfs.items():
-                if cf_field not in df.columns:
-                    continue
-                col_dtype = df[cf_field].dtype
-                type_override = FIELD_TYPE_OVERRIDES.get(
-                    (db, cf_field)
-                ) or FIELD_TYPE_OVERRIDES.get(("", cf_field))
-                override_kind = type_override[0] if type_override else None
-                if override_kind != "categorical" and col_dtype.name not in (
-                    "object",
-                    "category",
-                ):
-                    continue
-                levels |= {str(v) for v in df[cf_field].dropna().unique()}
-            if levels:
-                result[cf_field] = list(levels)
-        return result
+        committed = dataset_filters()
+        new_overlay: dict[str, dict[str, Any]] = {}
+        for ds in set(all_db_names) | set(working) | set(committed):
+            committed_val = committed.get(ds, {})
+            new_val = working.get(ds, {})
+            if new_val != committed_val:
+                new_overlay[ds] = new_val
+        _pending_filters.set(new_overlay)
 
     for db_name, _, _ in binding_datasets + perturbation_datasets:
         dataset_row_server(
             db_name,
             db_name=db_name,
-            vdb=vdb,
+            conn=conn,
             dataset_dict=dataset_dict,
-            all_col_meta=all_col_meta,
+            app_datasets=app_datasets,
             common_fields=common_fields,
-            pending_toggle_state=_pending_toggle,
+            toggle_state=_pending_toggle,
+            dataset_filters=dataset_filters,
             pending_filters=_pending_filters,
             modal_open_for=modal_open_for,
             modal_df=modal_df,
-            common_field_levels_fn=_common_field_levels,
-            meta_dfs_fn=_cached_meta_dfs,
-            upstream_cols=app_datasets.upstream_cols.get(db_name, []),
+            active_datasets_fn=_all_active,
             modal_ns=session.ns,
             logger=logger,
         )
 
-    # One-directional cascade: upstream categoricals (carbon source, temperature, etc.)
-    # narrow the available condition checkbox choices. Condition selections do not feed
-    # back into upstream selectizes — selecting additional conditions should expand (not
-    # restrict) the available upstream values. Column classification is pre-computed in
-    # app_datasets at startup; we only register the reactive effects here.
+    # One-directional cascade: upstream selections narrow the condition checkboxes.
     for _db_name, _u_cols in app_datasets.upstream_cols.items():
-        _cond_cols = app_datasets.condition_cols[_db_name]
-        _db_meta = all_col_meta.get(_db_name, {})
-        # Pre-compute all (column, input_id) pairs for this dataset so every
-        # per-column cascade can read the combined state of all upstream filters.
-        _all_u_col_id_pairs = [(col, f"filter_{_slugify(col)}") for col in _u_cols]
+        _cond_cols = app_datasets.condition_cols.get(_db_name, [])
+        _db_meta = app_datasets.column_meta.get(_db_name, {})
 
         for _upstream_col in _u_cols:
             _u_id = f"filter_{_slugify(_upstream_col)}"
@@ -302,191 +231,263 @@ def select_datasets_sidebar_server(
                 db_name: str,
                 u_id: str,
                 u_col: str,
+                u_cols: list[str],
                 cond_cols: list[str],
                 db_meta: dict[str, ColumnMeta],
-                all_u_col_id_pairs: list[tuple[str, str]],
             ) -> None:
                 """
                 Register a cascade effect for one upstream column.
 
-                All arguments are captured by value via the function signature so
-                that each closure refers to the correct dataset and column names,
-                not the loop variables at the time the effect fires.
-
-                :param db_name: Dataset identifier — guards the effect so it only
-                    runs when this dataset's modal is open.
+                :param db_name: Dataset identifier.
                 :param u_id: Shiny input ID of the upstream selectize widget.
-                :param u_col: Column name in the metadata DataFrame that the
-                    upstream selectize controls.
-                :param cond_cols: Condition column names to update when the
-                    upstream selection changes.
-                :param db_meta: Per-column metadata for ``db_name``, used by
-                    :func:`_build_experimental_condition_field_choices` to format
-                    level labels.
-                :param all_u_col_id_pairs: All ``(column, input_id)`` pairs for
-                    every upstream column of this dataset. Used to build the
-                    combined filter mask so that changes to one upstream selectize
-                    always intersect with the current selections of the others.
+                :param u_col: Column name the upstream selectize controls.
+                :param u_cols: Every upstream column of the dataset.
+                :param cond_cols: Condition column names to update.
+                :param db_meta: The dataset's column metadata, for level labels.
 
                 """
 
                 @reactive.effect
-                @reactive.event(input[u_id])
+                @reactive.event(input[u_id], ignore_init=True)
                 def _cascade() -> None:
                     """
-                    Narrow condition checkbox choices to levels that co-occur with the
-                    intersection of all current categorical upstream selections. Only
-                    updates ``choices``; the user's checkbox selection is preserved so
-                    that previously checked conditions that are no longer valid are
-                    removed without triggering a further cascade.
+                    Narrow the condition checkboxes to levels that co-occur with every
+                    current upstream selection, keeping checked levels that remain.
 
-                    The mask is built across ALL categorical upstream columns
-                    (not just the one that fired) so that datasets with a uniform
-                    upstream column (e.g. every harbison row has Temperature = 37)
-                    do not reset the narrowing done by a discriminating column
-                    (e.g. Carbon source). Reads of other upstream inputs are safe
-                    because ``@reactive.event`` isolates the entire body.
+                    The mask intersects all upstream columns, not only the one that
+                    fired, so a column with one value in every row cannot undo the
+                    narrowing of a column that discriminates. ``ignore_init=True``
+                    because modal inputs send their initial value as soon as they are
+                    bound, which would otherwise fire this on modal open.
 
-                    :trigger input[u_id]: fires when the upstream selectize changes.
+                    :trigger: ``input[u_id]`` — fires when the upstream selectize
+                        changes.
 
                     """
-                    with perf(session.id, "select_datasets.sidebar", "_cascade"):
-                        if modal_open_for() != db_name:
-                            return
-                        df = modal_df()
-                        if df is None or u_col not in df.columns:
-                            return
-                        # Cascade only applies when the triggering column is
-                        # categorical. Numeric and boolean columns produce
-                        # slider/switch values that cannot be used with isin()
-                        # for range-aware filtering.
-                        type_override = FIELD_TYPE_OVERRIDES.get(
-                            (db_name, u_col)
-                        ) or FIELD_TYPE_OVERRIDES.get(("", u_col))
-                        override_kind = type_override[0] if type_override else None
-                        col_dtype = df[u_col].dtype
-                        is_categorical = (
-                            override_kind == "categorical"
-                            or col_dtype.name
-                            in (
-                                "object",
-                                "category",
-                            )
+                    if modal_open_for() != db_name:
+                        return
+                    df = modal_df()
+                    if (
+                        df is None
+                        or u_col not in df.columns
+                        or not is_categorical(df, db_name, u_col)
+                    ):
+                        return
+                    selections: dict[str, list[str]] = {}
+                    for col in u_cols:
+                        try:
+                            selections[col] = list(input[f"filter_{_slugify(col)}"]())
+                        except SilentException:
+                            selections[col] = []
+                    mask = upstream_mask(df, db_name, selections)
+                    for cond_col, choices in condition_choices(
+                        df, mask, cond_cols, db_meta
+                    ).items():
+                        cond_id = f"filter_{_slugify(cond_col)}"
+                        try:
+                            cur = list(input[cond_id]())
+                        except SilentException:
+                            cur = []
+                        ui.update_checkbox_group(
+                            cond_id,
+                            choices=choices,
+                            selected=[v for v in cur if v in choices],
                         )
-                        if not is_categorical:
-                            return
-                        # Build the combined mask across ALL categorical upstream
-                        # columns. This prevents a race condition where separate
-                        # per-column cascades fire in an unpredictable order and
-                        # a uniform-valued column overwrites the narrowing applied
-                        # by a discriminating one.
-                        mask = pd.Series(True, index=df.index)
-                        for _col, _uid in all_u_col_id_pairs:
-                            if _col not in df.columns:
-                                continue
-                            _col_dtype = df[_col].dtype
-                            _type_override = FIELD_TYPE_OVERRIDES.get(
-                                (db_name, _col)
-                            ) or FIELD_TYPE_OVERRIDES.get(("", _col))
-                            _override_kind = (
-                                _type_override[0] if _type_override else None
-                            )
-                            _is_cat = _override_kind == "categorical" or (
-                                _col_dtype.name in ("object", "category")
-                            )
-                            if not _is_cat:
-                                continue
-                            try:
-                                _sel = list(input[_uid]())
-                            except SilentException:
-                                _sel = []
-                            if _sel:
-                                mask &= df[_col].astype(str).isin(_sel)
-                        for (
-                            cond_col,
-                            choices,
-                        ) in _build_experimental_condition_field_choices(
-                            df, mask, cond_cols, db_meta
-                        ).items():
-                            cond_id = f"filter_{_slugify(cond_col)}"
-                            try:
-                                cur = list(input[cond_id]())
-                            except SilentException:
-                                cur = list(choices)
-                            ui.update_checkbox_group(
-                                cond_id,
-                                choices=choices,
-                                selected=[v for v in cur if v in choices],
-                            )
 
             _register_upstream_cascade(
-                _db_name,
-                _u_id,
-                _upstream_col,
-                _cond_cols,
-                _db_meta,
-                _all_u_col_id_pairs,
+                _db_name, _u_id, _upstream_col, _u_cols, _cond_cols, _db_meta
             )
 
     @reactive.effect
     @reactive.event(input.modal_reset_filters)
     def _reset_filter_modal() -> None:
         """
-        Clear all filters for the open dataset (and common-field filters from every
-        dataset), then close the modal.
+        Stage clearing all filters for the open dataset and close the modal.
 
-        :trigger input.modal_reset_filters: fires when the user clicks the     Reset
-        button inside the filter modal.
+        Only ``_pending_filters`` is touched — the reset is not applied to
+        ``dataset_filters`` until the user clicks Apply Changes.
+
+        :trigger: ``input.modal_reset_filters`` — fires when the user clicks Reset
+            inside the filter modal.
 
         """
-        with perf(session.id, "select_datasets.sidebar", "_reset_filter_modal"):
-            db_name = modal_open_for()
-            if db_name is not None:
-                current = dict(_pending_filters())
-                all_db_names = [
-                    d for d, _, _ in binding_datasets + perturbation_datasets
-                ]
-                # clear common-field filters from every dataset
-                for ds in all_db_names:
-                    if ds in current:
-                        ds_filters = {
-                            f: v
-                            for f, v in current[ds].items()
-                            if f not in common_fields
-                        }
-                        if ds_filters:
-                            current[ds] = ds_filters
-                        else:
-                            current.pop(ds)
-                # clear dataset-specific filters for the open dataset
-                current.pop(db_name, None)
-                _pending_filters.set(current)
-                logger.debug(
-                    "dataset_filters reset for %s: %d datasets with active filters",
-                    db_name,
-                    len(current),
-                )
-            ui.modal_remove()
-            modal_open_for.set(None)
-            modal_df.set(None)
+        db_name = modal_open_for()
+        if db_name is not None:
+            all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
+            current = dict(dataset_filters())
+            current.update(_pending_filters())
+            for ds in all_db_names:
+                if ds in current:
+                    ds_filters = {
+                        f: v for f, v in current[ds].items() if f not in common_fields
+                    }
+                    if ds_filters:
+                        current[ds] = ds_filters
+                    else:
+                        current.pop(ds, None)
+            current.pop(db_name, None)
+            _stage_filters(current, all_db_names)
+            logger.debug(
+                "filters reset (staged) for %s: %d datasets with active filters",
+                db_name,
+                len(current),
+            )
+        ui.modal_remove()
+        modal_open_for.set(None)
+        modal_df.set(None)
 
     @reactive.effect
     @reactive.event(input.modal_clear_regulator_filter)
     def _clear_regulator_filter() -> None:
         """
-        Remove ``regulator_locus_tag`` from all datasets and clear the selectize in the
-        open modal in place via ``ui.update_selectize``.
+        Stage removal of regulator_locus_tag from all datasets and clear the selectize.
 
-        :trigger input.modal_clear_regulator_filter: fires when the user clicks the
-        Clear button inside the Regulator card of a filter modal.
+        Only ``_pending_filters`` is touched — the clear is not applied to
+        ``dataset_filters`` until the user clicks Apply Changes.
+
+        :trigger: ``input.modal_clear_regulator_filter`` — fires when the user
+            clicks Clear inside the Regulator card.
 
         """
-        with perf(session.id, "select_datasets.sidebar", "_clear_regulator_filter"):
-            db_name = modal_open_for()
-            if db_name is None:
-                return
-            all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
-            current = dict(_pending_filters())
+        db_name = modal_open_for()
+        if db_name is None:
+            return
+        all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
+        current = dict(dataset_filters())
+        current.update(_pending_filters())
+        for ds in all_db_names:
+            ds_filters = dict(current.get(ds, {}))
+            ds_filters.pop("regulator_locus_tag", None)
+            if ds_filters:
+                current[ds] = ds_filters
+            else:
+                current.pop(ds, None)
+        _stage_filters(current, all_db_names)
+        ui.update_selectize("filter_regulator_locus_tag", selected=[])
+
+    @reactive.effect
+    @reactive.event(input.modal_apply_filters)
+    def _apply_filter_modal() -> None:
+        """
+        Read filter inputs from the modal and stage them to ``_pending_filters``, mark
+        the dataset pending-active if it was off, then close the modal.
+
+        Only ``_pending_filters`` is touched here — staged edits are not applied to
+        ``dataset_filters`` (and so cannot affect the workspace/analysis modules)
+        until the user clicks Apply Changes.
+
+        :trigger: ``input.modal_apply_filters`` — fires when the user clicks
+            Queue Filters inside the filter modal.
+
+        """
+        db_name = modal_open_for()
+        df = modal_df()
+        if db_name is None or df is None:
+            ui.modal_remove()
+            return
+
+        field_filters: dict[str, Any] = {}
+        for field in df.columns:
+            if field == "sample_id":
+                continue
+
+            col = df[field]
+            try:
+                value = input[f"filter_{_slugify(field)}"]()
+            except SilentException:
+                continue
+
+            type_override = FIELD_TYPE_OVERRIDES.get(
+                (db_name, field)
+            ) or FIELD_TYPE_OVERRIDES.get(("", field))
+            override_kind = type_override[0] if type_override else None
+
+            if override_kind == "categorical" or col.dtype.name in (
+                "object",
+                "category",
+            ):
+                selected = list(value) if value else []
+                if selected:
+                    field_filters[field] = {"type": "categorical", "value": selected}
+
+            elif col.dtype == "bool":
+                if bool(value):
+                    field_filters[field] = {"type": "bool", "value": True}
+
+            elif col.dtype.name in ("float64", "int64", "float32", "int32"):
+                if isinstance(value, (list, tuple)) and len(value) == 2:
+                    non_null = col.dropna()
+                    if non_null.empty:
+                        continue
+                    data_min = float(non_null.min())
+                    data_max = float(non_null.max())
+                    if data_min == data_max:
+                        continue
+                    s_min, s_max = float(value[0]), float(value[1])
+                    if s_min != data_min or s_max != data_max:
+                        field_filters[field] = {
+                            "type": "numeric",
+                            "value": [s_min, s_max],
+                        }
+
+            if field in common_fields and field in field_filters:
+                try:
+                    apply_to_all = bool(input[f"apply_to_all_{_slugify(field)}"]())
+                except SilentException:
+                    apply_to_all = False
+                field_filters[field]["apply_to_all"] = apply_to_all
+
+        # handle regulator_locus_tag explicitly
+        try:
+            reg_selected = list(input["filter_regulator_locus_tag"]())
+        except SilentException:
+            reg_selected = []
+        try:
+            reg_apply_to_all = bool(input["apply_to_all_regulator_locus_tag"]())
+        except SilentException:
+            reg_apply_to_all = True
+        merged = dict(dataset_filters())
+        merged.update(_pending_filters())
+
+        if reg_selected:
+            saved_reg = merged.get(db_name, {}).get("regulator_locus_tag", {})
+            from_pair = saved_reg.get("from_pair") if saved_reg else None
+            reg_spec: dict[str, Any] = {
+                "type": "categorical",
+                "value": reg_selected,
+                "apply_to_all": reg_apply_to_all,
+            }
+            if from_pair:
+                reg_spec["from_pair"] = from_pair
+            field_filters["regulator_locus_tag"] = reg_spec
+
+        reg_filter = field_filters.pop("regulator_locus_tag", None)
+        common_filters = {f: v for f, v in field_filters.items() if f in common_fields}
+        specific_filters = {
+            f: v for f, v in field_filters.items() if f not in common_fields
+        }
+
+        current = dict(merged)
+        all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
+
+        if reg_filter:
+            if reg_filter.get("apply_to_all", True):
+                for ds in all_db_names:
+                    ds_filters = dict(current.get(ds, {}))
+                    ds_filters["regulator_locus_tag"] = reg_filter
+                    current[ds] = ds_filters
+            else:
+                for ds in all_db_names:
+                    ds_filters = dict(current.get(ds, {}))
+                    if ds == db_name:
+                        ds_filters["regulator_locus_tag"] = reg_filter
+                    else:
+                        ds_filters.pop("regulator_locus_tag", None)
+                    if ds_filters:
+                        current[ds] = ds_filters
+                    else:
+                        current.pop(ds, None)
+        else:
             for ds in all_db_names:
                 ds_filters = dict(current.get(ds, {}))
                 ds_filters.pop("regulator_locus_tag", None)
@@ -494,300 +495,189 @@ def select_datasets_sidebar_server(
                     current[ds] = ds_filters
                 else:
                     current.pop(ds, None)
-            _pending_filters.set(current)
-            # clear the selectize in place — no modal teardown/re-show needed
-            ui.update_selectize("filter_regulator_locus_tag", selected=[])
 
-    @reactive.effect
-    @reactive.event(input.modal_apply_filters)
-    def _apply_filter_modal() -> None:
-        """
-        Read filter inputs from the modal, persist them to ``dataset_filters``, activate
-        the dataset if it was off, then close the modal.
-
-        Common-field filters are propagated to all datasets or just this one
-        according to each field's ``apply_to_all`` toggle.
-
-        :trigger input.modal_apply_filters: fires when the user clicks the
-            Apply Filters button inside the filter modal.
-
-        """
-        with perf(session.id, "select_datasets.sidebar", "_apply_filter_modal"):
-            db_name = modal_open_for()
-            df = modal_df()
-            if db_name is None or df is None:
-                ui.modal_remove()
-                return
-
-            field_filters: dict[str, Any] = {}
-            for field in df.columns:
-                if field == "sample_id":
-                    continue
-
-                col = df[field]
-                try:
-                    value = input[f"filter_{_slugify(field)}"]()
-                except SilentException:
-                    continue
-
-                type_override = FIELD_TYPE_OVERRIDES.get(
-                    (db_name, field)
-                ) or FIELD_TYPE_OVERRIDES.get(("", field))
-                override_kind = type_override[0] if type_override else None
-
-                if override_kind == "categorical" or col.dtype.name in (
-                    "object",
-                    "category",
-                ):
-                    raw = list(value) if value else []
-                    if raw:
-                        # Coerce string selectize values back to the column's
-                        # native numeric type so that = ANY(...) binds correctly
-                        # against DOUBLE/INTEGER columns treated as categorical.
-                        if col.dtype.name in ("float64", "float32"):
-                            selected: list = [float(v) for v in raw]
-                        elif col.dtype.name in ("int64", "int32"):
-                            selected = [int(v) for v in raw]
-                        else:
-                            selected = raw
-                        field_filters[field] = {
-                            "type": "categorical",
-                            "value": selected,
-                        }
-
-                elif col.dtype == "bool":
-                    if bool(value):
-                        field_filters[field] = {"type": "bool", "value": True}
-
-                elif col.dtype.name in ("float64", "int64", "float32", "int32"):
-                    if isinstance(value, (list, tuple)) and len(value) == 2:
-                        non_null = col.dropna()
-                        if non_null.empty:
-                            continue
-                        data_min = float(non_null.min())
-                        data_max = float(non_null.max())
-                        # single-value column: slider was artificially bumped in UI,
-                        # user cannot meaningfully filter it — skip
-                        if data_min == data_max:
-                            continue
-                        s_min, s_max = float(value[0]), float(value[1])
-                        if s_min != data_min or s_max != data_max:
-                            field_filters[field] = {
-                                "type": "numeric",
-                                "value": [s_min, s_max],
-                            }
-
-                # read per-field apply_to_all toggle for common fields
-                if field in common_fields and field in field_filters:
-                    try:
-                        apply_to_all = bool(input[f"apply_to_all_{_slugify(field)}"]())
-                    except SilentException:
-                        apply_to_all = False
-                    field_filters[field]["apply_to_all"] = apply_to_all
-
-            # handle regulator_locus_tag explicitly (hidden from generic field loop)
-            try:
-                reg_selected = list(input["filter_regulator_locus_tag"]())
-            except SilentException:
-                reg_selected = []
-            try:
-                reg_apply_to_all = bool(input["apply_to_all_regulator_locus_tag"]())
-            except SilentException:
-                reg_apply_to_all = True
-            if reg_selected:
-                saved_reg = (
-                    _pending_filters().get(db_name, {}).get("regulator_locus_tag", {})
-                )
-                from_pair = saved_reg.get("from_pair") if saved_reg else None
-                reg_spec: dict[str, Any] = {
-                    "type": "categorical",
-                    "value": reg_selected,
-                    "apply_to_all": reg_apply_to_all,
-                }
-                if from_pair:
-                    reg_spec["from_pair"] = from_pair
-                field_filters["regulator_locus_tag"] = reg_spec
-
-            # split into common-field filters and dataset-specific
-            # regulator_locus_tag is treated as a common field for propagation purposes
-            reg_filter = field_filters.pop("regulator_locus_tag", None)
-            common_filters = {
-                f: v for f, v in field_filters.items() if f in common_fields
-            }
-            specific_filters = {
-                f: v for f, v in field_filters.items() if f not in common_fields
-            }
-
-            current = dict(_pending_filters())
-            all_db_names = [d for d, _, _ in binding_datasets + perturbation_datasets]
-
-            # apply regulator filter (or clear it if empty)
-            if reg_filter:
-                if reg_filter.get("apply_to_all", True):
-                    for ds in all_db_names:
-                        ds_filters = dict(current.get(ds, {}))
-                        ds_filters["regulator_locus_tag"] = reg_filter
-                        current[ds] = ds_filters
-                else:
-                    for ds in all_db_names:
-                        ds_filters = dict(current.get(ds, {}))
-                        if ds == db_name:
-                            ds_filters["regulator_locus_tag"] = reg_filter
-                        else:
-                            ds_filters.pop("regulator_locus_tag", None)
-                        if ds_filters:
-                            current[ds] = ds_filters
-                        else:
-                            current.pop(ds, None)
+        for f, spec in common_filters.items():
+            apply_to_all = spec.get("apply_to_all", True)
+            if apply_to_all:
+                for ds in all_db_names:
+                    ds_filters = dict(current.get(ds, {}))
+                    ds_filters[f] = spec
+                    current[ds] = ds_filters
             else:
-                # regulator field was cleared in the modal — remove from all datasets,
-                # but only if the existing filter was set via the modal selectize.
-                # A pairwise filter (from_pair_db) is committed via Apply Changes and
-                # must not be wiped by opening an unrelated dataset's filter modal.
-                existing_reg = current.get(db_name, {}).get("regulator_locus_tag", {})
-                if not (existing_reg and existing_reg.get("from_pair_db")):
-                    for ds in all_db_names:
-                        ds_filters = dict(current.get(ds, {}))
-                        ds_filters.pop("regulator_locus_tag", None)
-                        if ds_filters:
-                            current[ds] = ds_filters
-                        else:
-                            current.pop(ds, None)
-
-            # apply each common filter according to its own apply_to_all flag
-            for f, spec in common_filters.items():
-                apply_to_all = spec.get("apply_to_all", True)
-                if apply_to_all:
-                    for ds in all_db_names:
-                        ds_filters = dict(current.get(ds, {}))
+                for ds in all_db_names:
+                    ds_filters = dict(current.get(ds, {}))
+                    if ds == db_name:
                         ds_filters[f] = spec
-                        current[ds] = ds_filters
-                else:
-                    # apply only to this dataset; clear from others
-                    for ds in all_db_names:
-                        ds_filters = dict(current.get(ds, {}))
-                        if ds == db_name:
-                            ds_filters[f] = spec
-                        else:
-                            ds_filters.pop(f, None)
-                        if ds_filters:
-                            current[ds] = ds_filters
-                        else:
-                            current.pop(ds, None)
-
-            # clear common fields that were removed (not in common_filters)
-            for f in common_fields:
-                if f not in common_filters:
-                    # check how this field was previously stored
-                    # to decide scope of removal
-                    prev_spec = current.get(db_name, {}).get(f)
-                    prev_apply_to_all = (
-                        prev_spec.get("apply_to_all", False) if prev_spec else False
-                    )
-                    targets = all_db_names if prev_apply_to_all else [db_name]
-                    for ds in targets:
-                        ds_filters = dict(current.get(ds, {}))
+                    else:
                         ds_filters.pop(f, None)
-                        if ds_filters:
-                            current[ds] = ds_filters
-                        else:
-                            current.pop(ds, None)
+                    if ds_filters:
+                        current[ds] = ds_filters
+                    else:
+                        current.pop(ds, None)
 
-            # apply dataset-specific filters to just this dataset
-            ds_filters = dict(current.get(db_name, {}))
-            ds_filters.update(specific_filters)
-            # remove any specific fields that are no longer set
-            for f in list(ds_filters):
-                if f not in common_fields and f not in specific_filters:
-                    ds_filters.pop(f)
-            if ds_filters:
-                current[db_name] = ds_filters
-            else:
-                current.pop(db_name, None)
+        for f in common_fields:
+            if f not in common_filters:
+                prev_spec = current.get(db_name, {}).get(f)
+                prev_apply_to_all = (
+                    prev_spec.get("apply_to_all", False) if prev_spec else False
+                )
+                targets = all_db_names if prev_apply_to_all else [db_name]
+                for ds in targets:
+                    ds_filters = dict(current.get(ds, {}))
+                    ds_filters.pop(f, None)
+                    if ds_filters:
+                        current[ds] = ds_filters
+                    else:
+                        current.pop(ds, None)
 
-            _pending_filters.set(current)
-            logger.debug(
-                "dataset_filters (pending) applied for %s: %d fields set",
-                db_name,
-                len(ds_filters),
+        ds_filters = dict(current.get(db_name, {}))
+        ds_filters.update(specific_filters)
+        for f in list(ds_filters):
+            if f not in common_fields and f not in specific_filters:
+                ds_filters.pop(f)
+        if ds_filters:
+            current[db_name] = ds_filters
+        else:
+            current.pop(db_name, None)
+
+        _stage_filters(current, all_db_names)
+        logger.debug(
+            "filters queued for %s: %d fields set",
+            db_name,
+            len(ds_filters),
+        )
+
+        if not _pending_toggle().get(db_name, False):
+            _pending_toggle.set({**_pending_toggle(), db_name: True})
+
+        ui.modal_remove()
+        modal_open_for.set(None)
+        modal_df.set(None)
+
+    # Holds the run name generated by `_export_filename` so the handler below
+    # can reuse it as the in-archive directory prefix. Shiny's download
+    # endpoint calls `filename` immediately before `handler` for the same
+    # request (see shiny.session._session's download GET handling), so this
+    # is safe despite not being a reactive value.
+    _export_run_name: list[str] = []
+
+    def _export_filename() -> str:
+        run_name = new_export_run_name()
+        _export_run_name[:] = [run_name]
+        return f"{run_name}.tar.gz"
+
+    @render.download(
+        filename=_export_filename,
+        media_type="application/gzip",
+    )
+    def export_datasets():
+        """
+        Build and stream a .tar.gz export kit for all active datasets.
+
+        The kit contains the VirtualDB config, a generated fetch_data.py
+        script (embedding each active dataset's SQL + params), requirements.txt,
+        and a top-level README -- no data is queried server-side.
+
+        :trigger: ``input.export_datasets`` — fires when the user clicks the
+            Export Selected Datasets download button.
+
+        """
+        all_active = _active_binding_datasets() + _active_perturbation_datasets()
+        if not all_active:
+            return
+
+        filters = dataset_filters()
+
+        export_list: list[ExportDataset] = []
+        for db_name in all_active:
+            display_name = dataset_dict[db_name].get("display_name", db_name)
+            meta_sql, meta_params = metadata_query(db_name, filters.get(db_name))
+            data_sql, data_params = full_data_query(db_name, filters.get(db_name))
+
+            export_list.append(
+                ExportDataset(
+                    db_name=db_name,
+                    display_name=display_name,
+                    metadata_sql=meta_sql,
+                    metadata_params=meta_params,
+                    data_sql=data_sql,
+                    data_params=data_params,
+                )
             )
 
-            # activate the dataset in pending state if it isn't already on
-            if not _pending_toggle().get(db_name, False):
-                _pending_toggle.set({**_pending_toggle(), db_name: True})
+        run_name = _export_run_name[0] if _export_run_name else new_export_run_name()
+        try:
+            buf = build_export_archive(export_list, run_name=run_name)
+        except Exception:
+            logger.exception("Export archive build failed")
+            return
 
-            ui.modal_remove()
-            modal_open_for.set(None)
-            modal_df.set(None)
+        while chunk := buf.read(65536):
+            yield chunk
 
     @reactive.effect
     @reactive.event(input.apply_pending)
     def _apply_pending() -> None:
         """
-        Commit pending toggle, filter, and regulator-pair state to the live reactive
-        values, triggering the matrix and correlation queries exactly once.
+        Commit pending toggle state and staged filter edits, triggering analysis updates
+        exactly once.
 
-        If a pairwise regulator filter is pending, its pre-computed intersection is
-        merged into the filter state before committing. The pending pair is then
-        cleared.
+        Filters for any dataset newly deactivated by this commit are cleared here
+        rather than immediately on toggle, so that flipping a switch off and back
+        on before clicking Apply Changes leaves its filters untouched.
 
-        :trigger input.apply_pending: fires when the user clicks the Apply button in the
-        sidebar.
+        :trigger: ``input.apply_pending`` — fires when the user clicks Apply Changes.
 
         """
-        new_filters = dict(_pending_filters())
+        pending = _pending_toggle()
+        committed = _committed_toggle()
+        deactivated = [
+            db
+            for db, was_on in committed.items()
+            if was_on and not pending.get(db, False)
+        ]
 
-        if pending_regulator_pair is not None:
-            pending = pending_regulator_pair()
-            if pending is not None:
-                db_a, db_b = pending["pair"]
-                common_tags: list[str] = pending["common_tags"]
-                display_a, display_b = pending["display"]
-                if common_tags:
-                    reg_spec: dict[str, Any] = {
-                        "type": "categorical",
-                        "value": common_tags,
-                        "from_pair": (display_a, display_b),
-                        "from_pair_db": (db_a, db_b),
-                    }
-                    for db_name in vdb.get_datasets():
-                        ds_filters = dict(new_filters.get(db_name, {}))
-                        ds_filters["regulator_locus_tag"] = reg_spec
-                        new_filters[db_name] = ds_filters
-                pending_regulator_pair.set(None)
+        committed_filters = dataset_filters()
+        merged = dict(committed_filters)
+        merged.update(_pending_filters())
+        for db_name in deactivated:
+            merged.pop(db_name, None)
+        if merged != committed_filters:
+            dataset_filters.set(merged)
+        _pending_filters.set({})
 
-        # Keep _pending_filters in sync with what we are about to commit so
-        # that _has_pending_changes() returns False immediately after this call
-        # and the Apply button deactivates.
-        _pending_filters.set(new_filters)
-        _committed_toggle.set(_pending_toggle())
-        dataset_filters.set(new_filters)
+        _committed_toggle.set(pending)
         logger.debug(
-            "_apply_pending committed: %d datasets active, %d datasets with filters",
-            sum(_pending_toggle().values()),
-            len(new_filters),
+            "_apply_pending committed: %d datasets active",
+            sum(pending.values()),
         )
 
     @render.ui
     def sidebar_content() -> ui.Tag:
         """
-        Dataset rows for the selection sidebar.
+        Dataset rows for the selection sidebar with Apply Changes button.
 
-        :trigger input.search: re-renders when the search input changes.
-        :trigger _pending_filters: re-renders when filter state changes.
+        :trigger: ``input.search`` — re-renders when the search input changes.
+        :trigger: ``_pending_toggle`` — re-renders when any toggle changes.
+        :trigger: ``dataset_filters`` — re-renders when filters are committed
+            (Apply Changes).
+        :trigger: ``_pending_filters`` — re-renders when filters are staged
+            (Queue Filters / Reset / Clear in the filter modal).
 
         Toggle state is read with ``reactive.isolate()`` so that toggling a
-        dataset does NOT trigger a full sidebar re-render.  The
-        ``ui.input_switch`` widget manages its own client-side state after
-        initial render; programmatic state changes are synced via
-        ``ui.update_switch`` in a separate effect in ``dataset_row_server``.
+        dataset does NOT trigger a full sidebar re-render.
 
         """
         pending_toggle = _pending_toggle()
+        merged_filters = dict(dataset_filters())
+        merged_filters.update(_pending_filters())
         active_filter_names: set[str] = {
-            db for db in _pending_filters() if pending_toggle.get(db, False)
+            db
+            for db in merged_filters
+            if pending_toggle.get(db, False) and merged_filters.get(db)
         }
         has_pending = _has_pending_changes()
+        has_active = bool(_active_binding_datasets() or _active_perturbation_datasets())
 
         search_term = ""
         try:
@@ -798,6 +688,7 @@ def select_datasets_sidebar_server(
         def _dataset_row(db_name: str, label: str, description: str) -> ui.Tag:
             with reactive.isolate():
                 current_val = _pending_toggle().get(db_name, False)
+                committed_val = _committed_toggle().get(db_name, False)
             return dataset_row_ui(
                 db_name,
                 label=label,
@@ -805,6 +696,7 @@ def select_datasets_sidebar_server(
                 current_val=current_val,
                 is_collapsed=False,
                 has_active_filter=db_name in active_filter_names,
+                is_committed=committed_val,
             )
 
         section_tags: list[ui.Tag] = []
@@ -835,10 +727,7 @@ def select_datasets_sidebar_server(
 
         if not section_tags:
             section_tags.append(
-                ui.div(
-                    {"class": "empty-state compact"},
-                    ui.p("No datasets match your search."),
-                )
+                empty_state(ui.p("No datasets match your search."), compact=True)
             )
 
         banner = (
@@ -849,6 +738,17 @@ def select_datasets_sidebar_server(
             if has_pending
             else ui.span()
         )
+
+        footer_tags: list[ui.Tag] = []
+        if has_active:
+            footer_tags.append(
+                ui.div(
+                    {"class": "sidebar-footer"},
+                    export_instructions(EXPORT_RUN_NAME_PLACEHOLDER),
+                    export_download_button("export_datasets"),
+                )
+            )
+
         return ui.div(
             ui.h2("Select datasets for analysis"),
             banner,
@@ -859,6 +759,7 @@ def select_datasets_sidebar_server(
                 + ("" if has_pending else " btn-apply-pending--idle"),
             ),
             ui.div({"class": "dataset-list"}, *section_tags),
+            *footer_tags,
         )
 
     return _active_binding_datasets, _active_perturbation_datasets, dataset_filters

@@ -3,767 +3,666 @@
 
 from __future__ import annotations
 
-import os
+import json
+import logging
+import time
+from dataclasses import dataclass
 from typing import Any
 
+import duckdb
 import pandas as pd
-from labretriever import VirtualDB
 
-from tfbpshiny.modules.perturbation.queries import DATASET_COLUMNS
+from tfbpshiny.datasets import (
+    DEFAULT_TOP_N,
+    DTO_PVALUE_THRESHOLD,
+    METHOD_LEVELS,
+    PROMOTER_SET_LEVELS,
+    TOP_N_CHOICES,
+)
+from tfbpshiny.utils.corr_query import (
+    get_filtered_sample_ids,
+    sample_filter_clause,
+    sample_in_clause,
+)
+
+logger = logging.getLogger("shiny")
+_perf_logger = logging.getLogger("shiny.perf")
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-#: callingcards target locus tags excluded from the top-N analysis (matching R)
-CC_TARGET_BLACKLIST = ("YOR201C", "YOR202W", "YOR203W", "YCL018W", "YEL021W")
-
-#: Pseudo-value added before -log10 to avoid log(0)
-DTO_LOG_PSEUDO = 1e-3
-
-#: Default top-N cutoff
-DEFAULT_TOP_N = 25
-
-
-#: Default regulators-per-chunk for the comparison top-N executor. Each chunked
-#: query touches only its regulator slice of the multi-million-row views, which
-#: bounds the DuckDB working set (and thus the connection's retained memory
-#: high-water mark) across a session. Overridable via the
-#: ``COMPARISON_REGULATORS_PER_CHUNK`` environment variable; set it to ``0`` to
-#: disable chunking (whole-pair execution).
-_DEFAULT_REGULATORS_PER_CHUNK = 400
-
-
-def _comparison_regulators_per_chunk() -> int | None:
-    """
-    Number of regulators to process per chunk in :func:`topn_all_pairs_sql`.
-
-    Read from the ``COMPARISON_REGULATORS_PER_CHUNK`` environment variable at
-    call time (so it can be set after import); defaults to
-    :data:`_DEFAULT_REGULATORS_PER_CHUNK` when unset or invalid. A positive value
-    subdivides each pair into regulator batches of that size to bound peak (and
-    retained) memory at the cost of more, smaller queries. Set the env var to
-    ``0`` (or a negative value) to disable chunking and run each pair whole.
-
-    :returns: Positive batch size, or ``None`` for whole-pair execution.
-    :rtype: int | None
-
-    """
-    raw = os.environ.get("COMPARISON_REGULATORS_PER_CHUNK")
-    if raw is None or raw == "":
-        return _DEFAULT_REGULATORS_PER_CHUNK
-    try:
-        n = int(raw)
-    except ValueError:
-        return _DEFAULT_REGULATORS_PER_CHUNK
-    return n if n > 0 else None
-
 
 # ---------------------------------------------------------------------------
-# DTO query
+# Binding dataset index (derived from dataset_registry)
 # ---------------------------------------------------------------------------
 
-_DTO_SQL = """
-SELECT
-    d.binding_id_source,
-    d.perturbation_id_source,
-    d.dto_empirical_pvalue,
-    d.dto_fdr,
-    d.binding_set_size,
-    d.perturbation_set_size,
-    CAST(d.binding_id_id   AS VARCHAR)    AS binding_sample_id,
-    CAST(d.perturbation_id_id AS VARCHAR) AS pert_sample_id,
-    COALESCE(CAST(h.time AS VARCHAR), 'standard') AS time
-FROM dto_expanded d
-LEFT JOIN (
-    SELECT DISTINCT sample_id, time FROM hackett_meta WHERE time = 45
-) h
-    ON  d.perturbation_id_source = 'hackett'
-    AND CAST(d.perturbation_id_id AS VARCHAR) = CAST(h.sample_id AS VARCHAR)
-LEFT JOIN (
-    SELECT DISTINCT sample_id FROM callingcards
-) cc
-    ON  d.binding_id_source = 'callingcards'
-    AND CAST(d.binding_id_id AS VARCHAR) = CAST(cc.sample_id AS VARCHAR)
-LEFT JOIN (
-    SELECT DISTINCT sample_id FROM harbison WHERE condition = 'YPD'
-) harb
-    ON  d.binding_id_source = 'harbison'
-    AND CAST(d.binding_id_id AS VARCHAR) = CAST(harb.sample_id AS VARCHAR)
-WHERE
-    d.pr_ranking_column = 'log2fc'
-    AND (d.perturbation_id_source != 'hackett'     OR h.sample_id IS NOT NULL)
-    AND (d.binding_id_source      != 'callingcards' OR cc.sample_id IS NOT NULL)
-    AND (d.binding_id_source      != 'harbison'     OR harb.sample_id IS NOT NULL)
-"""
 
-
-def fetch_dto_data(
-    vdb: VirtualDB, sql_only: bool = False
-) -> pd.DataFrame | tuple[str, dict]:
+@dataclass(frozen=True)
+class BindingIndex:
     """
-    Fetch DTO empirical p-value data from ``dto_expanded``.
+    Lookup tables decomposing every binding dataset into promoter set x method.
 
-    Requires ``hackett_analysis_set`` to be registered first (done by
-    :func:`tfbpshiny.utils.vdb_init.initialize_data`).
-
-    :param vdb: VirtualDB instance.
-    :param sql_only: If ``True`` return ``(sql, {})`` instead of executing.
-    :returns: DataFrame with columns ``binding_id_source``,
-        ``perturbation_id_source``, ``dto_empirical_pvalue``, ``dto_fdr``,
-        ``binding_set_size``, ``perturbation_set_size``, ``binding_sample_id``,
-        ``pert_sample_id``, ``time``.
+    Built from ``dataset_registry`` rather than hand-maintained dicts so the app
+    cannot drift out of sync with the collection YAML. Every field is keyed by
+    ``db_name`` except :attr:`by_cell`, which is the reverse lookup the Method
+    Comparison tab needs.
 
     """
-    if sql_only:
-        return _DTO_SQL, {}
-    return vdb.query(_DTO_SQL)
 
+    #: db_name -> full display name, e.g. "2021 ChIP-exo (Rossi, Mindel)".
+    label: dict[str, str]
+    #: db_name -> base label shared by all variants, e.g. "2021 ChIP-exo".
+    base_label: dict[str, str]
+    #: db_name -> promoter set display label, e.g. "Mindel".
+    promoter_set: dict[str, str]
+    #: db_name -> raw promoter_set_id, e.g. "mindel".
+    promoter_set_id: dict[str, str]
+    #: db_name -> binding method display label, e.g. "Promoter Enrichment".
+    method: dict[str, str]
+    #: db_name -> raw binding_method_id, e.g. "promoter_enrichment".
+    method_id: dict[str, str]
+    #: db_name -> its primary db_name (a primary dataset maps to itself).
+    primary: dict[str, str]
+    #: (primary, promoter_set_id, method_id) -> db_name.
+    by_cell: dict[tuple[str, str, str], str]
 
-# ---------------------------------------------------------------------------
-# Top-N responsive ratio query
-# ---------------------------------------------------------------------------
-
-_HARBISON_DEDUP_CTE = """
-    SELECT
-        CAST(sample_id AS VARCHAR) AS binding_sample_id,
-        regulator_locus_tag,
-        target_locus_tag,
-        MIN(pvalue) AS pvalue
-    FROM harbison
-    WHERE sample_id IN (
-        SELECT sample_id FROM harbison_meta WHERE condition = 'YPD'
-    )
-    GROUP BY sample_id, regulator_locus_tag, target_locus_tag
-"""
-
-
-def _build_where(clauses: list[str]) -> str:
-    return ("WHERE " + " AND ".join(clauses)) if clauses else ""
-
-
-def _build_filter_where(
-    filters: dict[str, Any] | None,
-    params: dict[str, Any],
-    prefix: str,
-) -> str:
-    """Build a WHERE clause from a dataset_filters spec, populating params in-place."""
-    if not filters:
-        return ""
-    clauses: list[str] = []
-    for field, spec in filters.items():
-        kind = spec["type"]
-        val = spec["value"]
-        p = f"{prefix}_{field}".replace(" ", "_")
-        if kind == "categorical":
-            placeholders = ", ".join(f"$cat_{p}_{i}" for i in range(len(val)))
-            clauses.append(f'"{field}" IN ({placeholders})')
-            for i, v in enumerate(val):
-                params[f"cat_{p}_{i}"] = v
-        elif kind == "numeric":
-            clauses.append(f'"{field}" BETWEEN $num_{p}_lo AND $num_{p}_hi')
-            params[f"num_{p}_lo"] = val[0]
-            params[f"num_{p}_hi"] = val[1]
-        elif kind == "bool":
-            clauses.append(f'"{field}" = $bool_{p}')
-            params[f"bool_{p}"] = bool(val)
-    return _build_where(clauses)
-
-
-def _meta_sample_filter(
-    view: str,
-    filters: dict[str, Any] | None,
-    params: dict[str, Any],
-    prefix: str,
-) -> str:
-    """
-    Build a bare ``sample_id IN (meta subquery)`` predicate resolving filters via
-    metadata.
-
-    Dataset filters target metadata columns that need not be carried on the data
-    view. The filter resolves to a ``sample_id`` set against ``{view}_meta`` so the
-    data-view scan only needs its projected columns plus a ``sample_id`` membership
-    test. Returns a bare clause (no leading ``WHERE``) for composition with
-    :func:`_build_where`; empty string when there are no filters.
-
-    :param view: Data view name; its meta view is ``{view}_meta``.
-    :param filters: Filter spec for the dataset, or ``None``.
-    :param params: Dict populated in-place with bound parameter values.
-    :param prefix: Namespace prefix for parameter names.
-    :returns: ``"sample_id IN (...)"`` clause, or ``""``.
-
-    """
-    inner = _build_filter_where(filters, params, prefix)
-    if not inner:
-        return ""
-    return f"sample_id IN (SELECT sample_id FROM {view}_meta {inner})"
-
-
-def _responsive_expr(
-    perturbation_view: str,
-    effect_threshold: float,
-    pvalue_threshold: float,
-    param_prefix: str,
-    params: dict[str, Any],
-) -> str:
-    """
-    Build a SQL expression that evaluates to 1 (responsive) or 0.
-
-    Uses the effect and pvalue columns from ``DATASET_COLUMNS`` for the given
-    perturbation view. If the dataset has no pvalue column only the effect
-    threshold is applied.
-
-    :param perturbation_view: Dataset name (key in ``DATASET_COLUMNS``).
-    :param effect_threshold: Absolute effect magnitude must exceed this.
-    :param pvalue_threshold: P-value must be below this (ignored if no pvalue
-        column exists for the dataset).
-    :param param_prefix: Namespace prefix for SQL parameter names.
-    :param params: Dict populated in-place with threshold parameter values.
-    :returns: SQL CASE expression string evaluating to 1 or 0.
-
-    """
-    cols = DATASET_COLUMNS.get(perturbation_view, ("", ""))
-    effect_col, pvalue_col = cols[0], cols[1]
-
-    eff_key = f"{param_prefix}_eff_thresh"
-    pval_key = f"{param_prefix}_pval_thresh"
-    params[eff_key] = effect_threshold
-
-    if effect_col and pvalue_col:
-        params[pval_key] = pvalue_threshold
-        return (
-            f"CASE WHEN ABS(p.{effect_col}) > ${eff_key} "
-            f"AND p.{pvalue_col} < ${pval_key} THEN 1 ELSE 0 END"
-        )
-    elif effect_col:
-        return f"CASE WHEN ABS(p.{effect_col}) > ${eff_key} THEN 1 ELSE 0 END"
-    else:
-        # Fall back to pre-computed responsive column
-        return "CAST(p.responsive AS INTEGER)"
-
-
-def topn_responsive_ratio(
-    vdb: VirtualDB,
-    binding_view: str,
-    perturbation_view: str,
-    binding_sample_col: str,
-    rank_col: str,
-    top_n: int = DEFAULT_TOP_N,
-    effect_threshold: float = 0.0,
-    pvalue_threshold: float = 0.05,
-    binding_filters: dict[str, Any] | None = None,
-    perturbation_filters: dict[str, Any] | None = None,
-    rank_asc: bool = True,
-    target_blacklist: tuple[str, ...] = (),
-    binding_dedup_cte: str = "",
-    regulator_subset: tuple[str, ...] = (),
-    param_prefix: str = "p",
-    sql_only: bool = False,
-) -> pd.DataFrame | tuple[str, dict]:
-    """
-    Compute the top-N-by-binding responsive ratio for one (binding, perturbation) pair.
-
-    Computes the intersection of targets present in both datasets first, then
-    ranks only the shared targets per binding sample (PARTITION BY
-    binding_sample_id) and keeps the top ``top_n``.  This ensures that the
-    top-N slots are not consumed by binding targets that have no corresponding
-    perturbation measurement.  Responsiveness is evaluated dynamically using
-    the effect/pvalue thresholds from ``_responsive_expr``.
-
-    :param vdb: VirtualDB instance.
-    :param binding_view: View name for binding data.
-    :param perturbation_view: View name for perturbation data.
-    :param binding_sample_col: Column in binding view for the sample identifier.
-    :param rank_col: Column used to rank binding hits.
-    :param top_n: Number of top binding targets to keep per binding sample.
-    :param effect_threshold: Minimum absolute effect size to count as responsive.
-    :param pvalue_threshold: Maximum p-value to count as responsive (ignored if
-        the dataset has no p-value column).
-    :param binding_filters: dataset_filters spec for the binding dataset.
-    :param perturbation_filters: dataset_filters spec for the perturbation dataset.
-    :param rank_asc: If ``True``, lower values of ``rank_col`` rank better.
-    :param target_blacklist: Locus tags to exclude from binding targets.
-    :param binding_dedup_cte: Optional CTE body SQL to replace the default
-        binding SELECT (used for Harbison dedup).
-    :param regulator_subset: If non-empty, restrict both the binding and
-        perturbation CTEs to these ``regulator_locus_tag`` values. Used to
-        compute one regulator batch at a time so peak memory stays bounded; the
-        per-regulator results are independent, so batching is lossless.
-    :param param_prefix: Namespace prefix for SQL parameters to avoid collisions.
-    :param sql_only: If ``True`` return ``(sql, params)`` instead of executing.
-
-    """
-    params: dict[str, Any] = {}
-    rank_dir = "ASC" if rank_asc else "DESC"
-
-    # Optional regulator-batch restriction (applied to both CTEs).
-    reg_in_clause = ""
-    if regulator_subset:
-        reg_ph = ", ".join(
-            f"$reg_{param_prefix}_{i}" for i in range(len(regulator_subset))
-        )
-        for i, reg in enumerate(regulator_subset):
-            params[f"reg_{param_prefix}_{i}"] = reg
-        reg_in_clause = f"regulator_locus_tag IN ({reg_ph})"
-
-    # binding CTE
-    if binding_dedup_cte:
-        binding_cte_body = binding_dedup_cte
-    else:
-        b_sample_filter = _meta_sample_filter(
-            binding_view, binding_filters, params, prefix=f"{param_prefix}_b"
-        )
-        blacklist_clauses = []
-        if b_sample_filter:
-            blacklist_clauses.append(b_sample_filter)
-        if target_blacklist:
-            ph = ", ".join(
-                f"$bl_{param_prefix}_{i}" for i in range(len(target_blacklist))
-            )
-            blacklist_clauses.append(f"target_locus_tag NOT IN ({ph})")
-            for i, tag in enumerate(target_blacklist):
-                params[f"bl_{param_prefix}_{i}"] = tag
-        binding_extra = _build_where(blacklist_clauses)
-        binding_cte_body = f"""
-        SELECT
-            CAST({binding_sample_col} AS VARCHAR) AS binding_sample_id,
-            regulator_locus_tag,
-            target_locus_tag,
-            {rank_col}
-        FROM {binding_view}
-        {binding_extra}
+    def resolve(self, primary: str, promoter_set_id: str, method_id: str) -> str | None:
         """
+        Return the db_name for one promoter-set x method cell, if it exists.
 
-    # Restrict the binding CTE (normal or dedup) to the regulator batch, if any.
-    if reg_in_clause:
-        binding_cte_body = (
-            f"SELECT * FROM ({binding_cte_body}) AS _binding_batch"
-            f" WHERE {reg_in_clause}"
-        )
+        :param primary: Primary binding db_name, e.g. ``"rossi"``.
+        :param promoter_set_id: Raw promoter set id, e.g. ``"mindel"``.
+        :param method_id: Raw binding method id, e.g. ``"peak_calling"``.
+        :returns: The matching db_name, or ``None`` when that combination was
+            not materialized.
 
-    # perturbation responsive expression
-    responsive_expr = _responsive_expr(
-        perturbation_view,
-        effect_threshold,
-        pvalue_threshold,
-        param_prefix,
-        params,
-    )
+        """
+        return self.by_cell.get((primary, promoter_set_id, method_id))
 
-    # perturbation CTE: filter resolves to a sample_id set via the meta view.
-    # The perturbation table is aliased ``p``, so qualify the membership test.
-    pert_sample_filter = _meta_sample_filter(
-        perturbation_view, perturbation_filters, params, prefix=f"{param_prefix}_p"
-    )
-    pert_clauses: list[str] = []
-    if pert_sample_filter:
-        pert_clauses.append(f"p.{pert_sample_filter}")
-    if reg_in_clause:
-        pert_clauses.append(f"p.{reg_in_clause}")
-    pert_filter_where = f"WHERE {' AND '.join(pert_clauses)}" if pert_clauses else ""
+    def has_promoter_variants(self, primary: str) -> bool:
+        """
+        Whether a dataset's regions are a selectable promoter definition.
 
-    top_n_key = f"{param_prefix}_top_n"
-    params[top_n_key] = top_n
+        ``False`` for datasets whose regions are fixed by the assay platform --
+        Harbison's microarray probes, or a publication's own peak regions. Those have
+        no promoter-set variants and cannot acquire any, so the promoter-set selector
+        does not apply to them and must not filter them away.
 
-    sql = f"""
-    WITH binding AS (
-        {binding_cte_body}
-    ),
-    perturbation AS (
-        SELECT
-            CAST(p.sample_id AS VARCHAR) AS perturbation_sample_id,
-            p.regulator_locus_tag,
-            p.target_locus_tag,
-            {responsive_expr} AS is_responsive
-        FROM {perturbation_view} p
-        {pert_filter_where}
-    ),
-    intersecting_targets AS (
-        SELECT DISTINCT b.regulator_locus_tag, b.target_locus_tag
-        FROM binding b
-        INNER JOIN perturbation pert
-            ON  b.regulator_locus_tag = pert.regulator_locus_tag
-            AND b.target_locus_tag    = pert.target_locus_tag
-    ),
-    binding_ranked AS (
-        SELECT
-            b.binding_sample_id,
-            b.regulator_locus_tag,
-            b.target_locus_tag,
-            b.{rank_col},
-            RANK() OVER (
-                PARTITION BY b.binding_sample_id
-                ORDER BY b.{rank_col} {rank_dir}
-            ) AS rnk
-        FROM binding b
-        INNER JOIN intersecting_targets it
-            ON  b.regulator_locus_tag = it.regulator_locus_tag
-            AND b.target_locus_tag    = it.target_locus_tag
-        WHERE b.regulator_locus_tag != b.target_locus_tag
-    ),
-    top_n_binding AS (
-        SELECT binding_sample_id, regulator_locus_tag, target_locus_tag
-        FROM binding_ranked
-        WHERE rnk <= ${top_n_key}
-    )
-    SELECT
-        b.binding_sample_id,
-        b.regulator_locus_tag,
-        pert.perturbation_sample_id,
-        COUNT(*)                                         AS n,
-        SUM(pert.is_responsive)::INTEGER                 AS n_responsive,
-        SUM(pert.is_responsive)::DOUBLE / COUNT(*)       AS responsive_ratio
-    FROM top_n_binding b
-    JOIN perturbation pert
-        ON  b.regulator_locus_tag = pert.regulator_locus_tag
-        AND b.target_locus_tag    = pert.target_locus_tag
-    GROUP BY b.binding_sample_id, b.regulator_locus_tag, pert.perturbation_sample_id
+        :param primary: Primary binding db_name.
+        :returns: ``True`` when the dataset sits on a real promoter definition.
+
+        """
+        return self.promoter_set_id.get(primary, "") in PROMOTER_SET_LEVELS
+
+    def resolve_or_self(
+        self, primary: str, promoter_set_id: str, method_id: str
+    ) -> str | None:
+        """
+        Resolve a cell, falling back to the dataset itself when no promoter applies.
+
+        Used where the promoter-set selector filters a list of datasets. A
+        platform-fixed dataset matches every promoter set, since the choice is not
+        one it can express -- but only for its own method, so asking for peaks still
+        excludes a dataset that has none.
+
+        :param primary: Primary binding db_name.
+        :param promoter_set_id: Raw promoter set id.
+        :param method_id: Raw binding method id.
+        :returns: The matching db_name, or ``None``.
+
+        """
+        db = self.resolve(primary, promoter_set_id, method_id)
+        if db:
+            return db
+        if not self.has_promoter_variants(primary) and (
+            self.method_id.get(primary) == method_id
+        ):
+            return primary
+        return None
+
+    def promoter_sets_with_both_methods(self, primary: str) -> list[str]:
+        """
+        Return promoter set ids having both a promoter-enrichment and a peak dataset.
+
+        :param primary: Primary binding db_name.
+        :returns: Promoter set ids in :data:`PROMOTER_SET_LEVELS` order.
+
+        """
+        return [
+            ps
+            for ps in PROMOTER_SET_LEVELS
+            if all(self.resolve(primary, ps, m) for m in METHOD_LEVELS)
+        ]
+
+    def supports_method_comparison(self, primary: str) -> bool:
+        """
+        Whether a dataset can appear in the Method Comparison tab.
+
+        :param primary: Primary binding db_name.
+        :returns: ``True`` when at least one promoter set has both methods.
+
+        """
+        return bool(self.promoter_sets_with_both_methods(primary))
+
+
+def build_binding_index(
+    registry_df: pd.DataFrame,
+    promoter_set_labels: dict[str, str] | None = None,
+    method_labels: dict[str, str] | None = None,
+) -> BindingIndex:
     """
+    Build a :class:`BindingIndex` from ``dataset_registry`` rows.
 
-    if sql_only:
-        return sql, params
-    return vdb.query(sql, **params)
+    Takes a DataFrame rather than a connection so it can be unit tested without
+    a database. Rows whose ``data_type`` is not ``binding`` are ignored.
 
-
-# ---------------------------------------------------------------------------
-# Source label maps (matching the R code)
-# ---------------------------------------------------------------------------
-
-# Promoter-set-aware constants -----------------------------------------------
-
-#: Maps every binding db_name to its base label (promoter-set suffix stripped).
-#: All promoter variants of the same dataset share the same base label.
-BINDING_BASE_LABEL_MAP: dict[str, str] = {
-    "callingcards": "2026 Calling Cards",
-    "callingcards_mindel": "2026 Calling Cards",
-    "callingcards_500bp": "2026 Calling Cards",
-    "callingcards_intergenic": "2026 Calling Cards",
-    "harbison": "2004 ChIP-chip",
-    "rossi": "2021 ChIP-exo",
-    "rossi_mindel": "2021 ChIP-exo",
-    "rossi_500bp": "2021 ChIP-exo",
-    "rossi_intergenic": "2021 ChIP-exo",
-    "chec_m2025": "2025 ChEC-seq",
-    "chec_m2025_mindel": "2025 ChEC-seq",
-    "chec_m2025_500bp": "2025 ChEC-seq",
-    "chec_m2025_intergenic": "2025 ChEC-seq",
-}
-
-#: Maps every binding db_name to its promoter-set label.
-PROMOTER_SET_MAP: dict[str, str] = {
-    "callingcards": "Kang",
-    "callingcards_mindel": "Mindel",
-    "callingcards_500bp": "500bp",
-    "callingcards_intergenic": "Intergenic",
-    "harbison": "Kang",
-    "rossi": "Kang",
-    "rossi_mindel": "Mindel",
-    "rossi_500bp": "500bp",
-    "rossi_intergenic": "Intergenic",
-    "chec_m2025": "Kang",
-    "chec_m2025_mindel": "Mindel",
-    "chec_m2025_500bp": "500bp",
-    "chec_m2025_intergenic": "Intergenic",
-}
-
-BINDING_LABEL_MAP: dict[str, str] = {
-    "callingcards": "2026 Calling Cards",
-    "harbison": "2004 ChIP-chip",
-    "chec_m2025": "2025 ChEC-seq",
-    "rossi": "2021 ChIP-exo",
-    "chec_m2025_mindel": "2025 ChEC-seq (Mindel)",
-    "rossi_mindel": "2021 ChIP-exo (Mindel)",
-    "callingcards_mindel": "2026 Calling Cards (Mindel)",
-    "rossi_500bp": "2021 ChIP-exo (500bp)",
-    "chec_m2025_500bp": "2025 ChEC-seq (500bp)",
-    "rossi_intergenic": "2021 ChIP-exo (Intergenic)",
-    "chec_m2025_intergenic": "2025 ChEC-seq (Intergenic)",
-    "callingcards_500bp": "2026 Calling Cards (500bp)",
-    "callingcards_intergenic": "2026 Calling Cards (Intergenic)",
-}
-
-#: Maps primary binding db_name to an ordered list of its promoter-set variants,
-#: in the same order as the promoter set selector choices: Kang, Mindel, 500bp, Intergenic.
-#: The primary db_name itself is not included here; it represents the Kang variant.
-PROMOTER_VARIANT_PAIRS: dict[str, list[str]] = {
-    "rossi": ["rossi_mindel", "rossi_500bp", "rossi_intergenic"],
-    "chec_m2025": ["chec_m2025_mindel", "chec_m2025_500bp", "chec_m2025_intergenic"],
-    "callingcards": [
-        "callingcards_mindel",
-        "callingcards_500bp",
-        "callingcards_intergenic",
-    ],
-}
-
-# ---------------------------------------------------------------------------
-# Method Comparison constants
-# ---------------------------------------------------------------------------
-
-#: Maps every binding db_name that appears in the Method Comparison tab to its
-#: base label; all scoring variants of the same dataset share the same label.
-METHOD_BASE_LABEL_MAP: dict[str, str] = {
-    "chec_m2025": "2025 ChEC-seq",
-    "chec_m2025_mindel": "2025 ChEC-seq",
-    "chec_m2025_500bp": "2025 ChEC-seq",
-    "chec_m2025_intergenic": "2025 ChEC-seq",
-    "chec_m2025_peaks": "2025 ChEC-seq",
-    "rossi": "2021 ChIP-exo",
-    "rossi_mindel": "2021 ChIP-exo",
-    "rossi_500bp": "2021 ChIP-exo",
-    "rossi_intergenic": "2021 ChIP-exo",
-    "rossi_peaks": "2021 ChIP-exo",
-}
-
-#: Human-readable label for each scoring variant in the Method Comparison tab.
-SCORING_VARIANT_MAP: dict[str, str] = {
-    "chec_m2025": "Promoter Enrichment (Kang)",
-    "chec_m2025_mindel": "Promoter Enrichment (Mindel)",
-    "chec_m2025_500bp": "Promoter Enrichment (500bp)",
-    "chec_m2025_intergenic": "Promoter Enrichment (Intergenic)",
-    "chec_m2025_peaks": "Original Peaks",
-    "rossi": "Promoter Enrichment (Kang)",
-    "rossi_mindel": "Promoter Enrichment (Mindel)",
-    "rossi_500bp": "Promoter Enrichment (500bp)",
-    "rossi_intergenic": "Promoter Enrichment (Intergenic)",
-    "rossi_peaks": "Original Peaks",
-}
-
-#: Maps each primary binding dataset to the peaks variants produced by the
-#: original authors' peak-calling pipeline.
-PEAKS_VARIANT_MAP: dict[str, list[str]] = {
-    "rossi": ["rossi_peaks"],
-    "chec_m2025": ["chec_m2025_peaks"],
-}
-
-#: Display order for scoring variants within a subplot.
-SCORING_VARIANT_ORDER: list[str] = [
-    "Promoter Enrichment (Kang)",
-    "Promoter Enrichment (Mindel)",
-    "Promoter Enrichment (500bp)",
-    "Promoter Enrichment (Intergenic)",
-    "Original Peaks",
-]
-
-#: Color palette for scoring variants in the Method Comparison tab.
-SCORING_VARIANT_COLORS: dict[str, str] = {
-    "Promoter Enrichment (Kang)": "#4DBBD5",
-    "Promoter Enrichment (Mindel)": "#00A087",
-    "Promoter Enrichment (500bp)": "#7B4F9E",
-    "Promoter Enrichment (Intergenic)": "#F39B7F",
-    "Original Peaks": "#E64B35",
-}
-
-PERTURBATION_LABEL_MAP: dict[str, str] = {
-    "hackett": "2020 Overexpression",
-    "hughes_overexpression": "2006 Overexpression",
-    "hughes_knockout": "2006 TFKO",
-    "hu_reimand": "2007 TFKO",
-    "kemmeren": "2014 TFKO",
-    "degron": "2025 Degron",
-}
-
-# ---------------------------------------------------------------------------
-# Per-source configuration for top-N analysis
-# ---------------------------------------------------------------------------
-
-#: Per-binding-source kwargs passed to topn_responsive_ratio (excluding filters).
-BINDING_CONFIGS: dict[str, dict] = {
-    "callingcards": dict(
-        binding_sample_col="sample_id",
-        rank_col="poisson_pval",
-        rank_asc=True,
-        target_blacklist=CC_TARGET_BLACKLIST,
-    ),
-    "callingcards_mindel": dict(
-        binding_sample_col="sample_id",
-        rank_col="poisson_pval",
-        rank_asc=True,
-        target_blacklist=CC_TARGET_BLACKLIST,
-    ),
-    "callingcards_500bp": dict(
-        binding_sample_col="sample_id",
-        rank_col="poisson_pval",
-        rank_asc=True,
-        target_blacklist=CC_TARGET_BLACKLIST,
-    ),
-    "callingcards_intergenic": dict(
-        binding_sample_col="sample_id",
-        rank_col="poisson_pval",
-        rank_asc=True,
-        target_blacklist=CC_TARGET_BLACKLIST,
-    ),
-    "harbison": dict(
-        binding_sample_col="sample_id",
-        rank_col="pvalue",
-        rank_asc=True,
-        binding_dedup_cte=_HARBISON_DEDUP_CTE,
-    ),
-    "chec_m2025": dict(
-        binding_sample_col="sample_id",
-        rank_col="enrichment",
-        rank_asc=False,
-    ),
-    "rossi": dict(
-        binding_sample_col="sample_id",
-        rank_col="enrichment",
-        rank_asc=False,
-    ),
-    "rossi_mindel": dict(
-        binding_sample_col="sample_id",
-        rank_col="enrichment",
-        rank_asc=False,
-    ),
-    "rossi_500bp": dict(
-        binding_sample_col="sample_id",
-        rank_col="enrichment",
-        rank_asc=False,
-    ),
-    "rossi_intergenic": dict(
-        binding_sample_col="sample_id",
-        rank_col="enrichment",
-        rank_asc=False,
-    ),
-    "chec_m2025_mindel": dict(
-        binding_sample_col="sample_id",
-        rank_col="enrichment",
-        rank_asc=False,
-    ),
-    "chec_m2025_500bp": dict(
-        binding_sample_col="sample_id",
-        rank_col="enrichment",
-        rank_asc=False,
-    ),
-    "chec_m2025_intergenic": dict(
-        binding_sample_col="sample_id",
-        rank_col="enrichment",
-        rank_asc=False,
-    ),
-    "chec_m2025_peaks": dict(
-        binding_sample_col="sample_id",
-        rank_col="peak_score",
-        rank_asc=False,
-    ),
-    "rossi_peaks": dict(
-        binding_sample_col="sample_id",
-        rank_col="peak_score",
-        rank_asc=False,
-    ),
-}
-
-#: Per-perturbation-source kwargs passed to topn_responsive_ratio (excluding filters).
-PERTURBATION_CONFIGS: dict[str, dict] = {
-    "hackett": {},
-    "hughes_overexpression": {},
-    "hughes_knockout": {},
-    "hu_reimand": {},
-    "kemmeren": {},
-    "degron": {},
-}
-
-
-def _binding_regulators(
-    vdb: VirtualDB, binding_view: str, binding_filters: dict[str, Any] | None
-) -> list[str]:
-    """
-    Return the sorted distinct regulator locus tags for a binding dataset.
-
-    Resolved from the small ``{binding_view}_meta`` view (post-filter), so it is
-    cheap. Used to subdivide a pair into regulator batches for chunked execution.
-
-    :param vdb: VirtualDB instance.
-    :param binding_view: Binding dataset name.
-    :param binding_filters: Active filter spec for the binding dataset.
-    :returns: Sorted list of distinct regulator locus tags.
-    :rtype: list[str]
+    :param registry_df: ``dataset_registry`` rows with columns ``db_name``,
+        ``data_type``, ``display_name``, ``base_label``, ``primary_db_name``,
+        ``promoter_set_id`` and ``binding_method_id``.
+    :param promoter_set_labels: ``promoter_set_id -> display_name`` (the
+        ``promoter_sets`` table); an id without a label is shown as itself.
+    :param method_labels: ``binding_method_id -> display_name`` (the
+        ``binding_methods`` table).
+    :returns: Populated index.
 
     """
-    params: dict[str, Any] = {}
-    where = _build_filter_where(binding_filters, params, prefix="rl")
-    sql = f"SELECT DISTINCT regulator_locus_tag FROM {binding_view}_meta {where}"
-    df = vdb.query(sql, **params)
-    return sorted(t for t in df["regulator_locus_tag"].dropna().tolist())
+    label: dict[str, str] = {}
+    base_label: dict[str, str] = {}
+    promoter_set: dict[str, str] = {}
+    promoter_set_id: dict[str, str] = {}
+    method: dict[str, str] = {}
+    method_id: dict[str, str] = {}
+    primary: dict[str, str] = {}
+    by_cell: dict[tuple[str, str, str], str] = {}
+
+    binding = registry_df[registry_df["data_type"] == "binding"]
+    for row in binding.itertuples(index=False):
+        db = str(row.db_name)
+        ps_id = "" if pd.isna(row.promoter_set_id) else str(row.promoter_set_id)
+        m_id = "" if pd.isna(row.binding_method_id) else str(row.binding_method_id)
+        prim = db if pd.isna(row.primary_db_name) else str(row.primary_db_name)
+
+        label[db] = str(row.display_name) if pd.notna(row.display_name) else db
+        base_label[db] = str(row.base_label) if pd.notna(row.base_label) else db
+        promoter_set_id[db] = ps_id
+        promoter_set[db] = (promoter_set_labels or {}).get(ps_id, ps_id)
+        method_id[db] = m_id
+        method[db] = (method_labels or {}).get(m_id, m_id)
+        primary[db] = prim
+
+        if ps_id and m_id:
+            by_cell[(prim, ps_id, m_id)] = db
+
+    return BindingIndex(
+        label=label,
+        base_label=base_label,
+        promoter_set=promoter_set,
+        promoter_set_id=promoter_set_id,
+        method=method,
+        method_id=method_id,
+        primary=primary,
+        by_cell=by_cell,
+    )
 
 
-def topn_all_pairs_sql(
-    vdb: VirtualDB,
+# ---------------------------------------------------------------------------
+# DuckDB-based top-N fetch
+# ---------------------------------------------------------------------------
+
+
+def fetch_topn_results(
+    conn: duckdb.DuckDBPyConnection,
     pairs: list[tuple[str, str]],
     filters: dict[str, Any],
     top_n: int,
     preset: dict[str, tuple[float, float]],
+    require_full_overlap: bool = True,
 ) -> pd.DataFrame:
     """
-    Compute the top-N responsive-ratio summary for all (binding, perturbation) pairs.
+    Fetch pre-computed topn_results for all (binding, perturbation) pairs.
 
-    Executes **one pair at a time** (never a single UNION ALL across pairs) and,
-    when ``COMPARISON_REGULATORS_PER_CHUNK`` is set, subdivides each pair into
-    regulator batches. Each query's intermediates are released before the next
-    runs, so peak memory stays bounded by a single pair/batch rather than the
-    whole grid. The small per-(sample, regulator) summary rows are accumulated in
-    Python; this is the same shape the matrix and box-plot distributions consume.
+    Reads from the pre-materialized ``topn_results`` table, filtering by the
+    materialized top_n, effect_threshold, pvalue_threshold, and sample IDs derived
+    from dataset-level filters via ``{db_name}_meta`` subqueries.
 
-    Responsiveness thresholds are looked up per perturbation dataset from
-    ``preset`` (``"*"`` is the fallback key).
-
-    :param vdb: VirtualDB instance.
-    :param pairs: List of ``(binding_db, perturbation_db)`` tuples.
+    :param conn: Read-only DuckDB connection.
+    :param pairs: List of (binding_db, perturbation_db) tuples.
     :param filters: Active filter dict keyed by dataset name.
-    :param top_n: Number of top binding targets per binding sample.
+    :param top_n: Number of top binding targets per binding sample (must match
+        what was materialized).
     :param preset: Per-dataset responsiveness thresholds; see
         :data:`~tfbpshiny.utils.vdb_init.DEFAULT_RESPONSIVENESS_PRESETS`.
-    :returns: DataFrame with all columns returned by ``topn_responsive_ratio``
-        plus ``pair_key`` (``"{b_db}__{p_db}"``).
+    :param require_full_overlap: When True (default), only include rows whose top-N
+        list is complete, ``n >= top_n``. ``n`` is the number of targets that passed the
+        tie rule (a tie group counts only if its *average* rank is within N), so this
+        removes a regulator whose list is short -- too few scored targets, or a large
+        tie group around rank N that the rule excluded. Turn it off to keep short
+        lists, which are then scored over the ``n`` they have.
+    :returns: DataFrame with columns from topn_results plus ``pair_key``
+        (``"{b_db}__{p_db}"``).
 
     """
     if not pairs:
         return pd.DataFrame()
 
-    chunk = _comparison_regulators_per_chunk()
     frames: list[pd.DataFrame] = []
-
     for b_db, p_db in pairs:
-        b_cfg = BINDING_CONFIGS.get(b_db)
-        p_cfg = PERTURBATION_CONFIGS.get(p_db)
-        if b_cfg is None or p_cfg is None:
-            continue
+        t_pair = time.perf_counter()
         effect_threshold, pvalue_threshold = preset.get(
             p_db, preset.get("*", (0.0, 0.05))
         )
-
-        # Regulator batches for this pair: one empty batch (= whole pair) when
-        # chunking is disabled, otherwise size-``chunk`` slices of the binding
-        # dataset's regulators.
-        if chunk:
-            regulators = _binding_regulators(vdb, b_db, filters.get(b_db))
-            batches: list[tuple[str, ...]] = [
-                tuple(regulators[i : i + chunk])
-                for i in range(0, len(regulators), chunk)
-            ] or [()]
-        else:
-            batches = [()]
-
-        pair_key = f"{b_db}__{p_db}"
-        for batch in batches:
-            pair_sql, pair_params = topn_responsive_ratio(
-                vdb=vdb,
-                binding_view=b_db,
-                perturbation_view=p_db,
-                top_n=top_n,
-                effect_threshold=effect_threshold,
-                pvalue_threshold=pvalue_threshold,
-                binding_filters=filters.get(b_db),
-                perturbation_filters=filters.get(p_db),
-                regulator_subset=batch,
-                param_prefix="bp",
-                sql_only=True,
-                **b_cfg,
-                **p_cfg,
+        b_clause, b_params = sample_filter_clause(
+            conn, b_db, filters.get(b_db), "binding_sample_id"
+        )
+        p_clause, p_params = sample_filter_clause(
+            conn, p_db, filters.get(p_db), "perturbation_sample_id"
+        )
+        floor_clause = "AND n >= ?" if require_full_overlap else ""
+        sql = f"""
+        SELECT
+            regulator_locus_tag,
+            binding_sample_id,
+            perturbation_sample_id,
+            n, n_responsive, responsive_ratio, n_intersecting_targets
+        FROM topn_results
+        WHERE top_n = ?
+          AND effect_threshold = ?
+          AND pvalue_threshold = ?
+          AND binding_db = ?
+          AND perturbation_db = ?
+          {b_clause}
+          {p_clause}
+          {floor_clause}
+        """
+        params: list[Any] = (
+            [top_n, effect_threshold, pvalue_threshold, b_db, p_db]
+            + b_params
+            + p_params
+            + ([top_n] if require_full_overlap else [])
+        )
+        try:
+            df = conn.execute(sql, params).df()
+        except duckdb.Error:
+            logger.exception("fetch_topn_results: %s x %s", b_db, p_db)
+            continue
+        if not df.empty:
+            df["binding_db"] = b_db
+            df["perturbation_db"] = p_db
+            frames.append(df)
+        elapsed = round((time.perf_counter() - t_pair) * 1000, 2)
+        _perf_logger.info(
+            json.dumps(
+                {
+                    "module": "comparison.queries",
+                    "label": "fetch_topn_pair",
+                    "kind": "data",
+                    "b_db": b_db,
+                    "p_db": p_db,
+                    "elapsed_ms": elapsed,
+                }
             )
-            assert isinstance(pair_sql, str) and isinstance(pair_params, dict)
-            df = vdb.query(pair_sql, **pair_params)
-            if not df.empty:
-                df["pair_key"] = pair_key
-                frames.append(df)
+        )
 
-    if not frames:
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+# ---------------------------------------------------------------------------
+# DTO (dual threshold optimization)
+# ---------------------------------------------------------------------------
+
+#: Metric identifiers for the Comparison sidebar selector.
+METRIC_TOPN = "topn"
+METRIC_DTO = "dto"
+
+#: Labels for the metric selector.
+METRIC_LABELS: dict[str, str] = {
+    METRIC_TOPN: "Top-N % responsive",
+    METRIC_DTO: "DTO % significant",
+}
+
+#: Which perturbation ranking the DTO run used. Coverage is uneven: Hackett and both
+#: Hughes sets exist only as `log2fc`, while Kemmeren, Hu and Degron carry both.
+DTO_RANKING_COLUMNS: tuple[str, ...] = ("log2fc", "pvalue")
+DEFAULT_DTO_RANKING_COLUMN = "log2fc"
+
+
+def _allowed_sample_ids(
+    conn: duckdb.DuckDBPyConnection, db_name: str, filters: dict[str, Any]
+) -> list[str] | None:
+    """
+    The sample allow-list for one dataset, or ``None`` when it has no filter.
+
+    Resolved once per dataset so the same list can constrain several tables (see
+    :func:`~tfbpshiny.utils.corr_query.sample_in_clause`).
+
+    """
+    spec = filters.get(db_name)
+    if not spec:
+        return None
+    return get_filtered_sample_ids(conn, db_name, spec)
+
+
+def fetch_dto_results(
+    conn: duckdb.DuckDBPyConnection,
+    pairs: list[tuple[str, str]],
+    filters: dict[str, Any],
+    pr_ranking_column: str = DEFAULT_DTO_RANKING_COLUMN,
+    pvalue_threshold: float = DTO_PVALUE_THRESHOLD,
+) -> pd.DataFrame:
+    """
+    Fetch the DTO significance rate for each (binding, perturbation) pair.
+
+    The metric is::
+
+        100 * (regulators with dto_empirical_pvalue < threshold)
+            / (regulators present in BOTH datasets)
+
+    The denominator is the **full metadata-level intersect**, taken from
+    ``sample_regulator`` and restricted to the samples surviving ``filters`` -- not
+    DTO's own coverage. DTO does not test every regulator in the intersect (e.g.
+    414 of 446 for ``rossi_peaks_kang`` x ``kemmeren``), so untested regulators count
+    as non-significant. ``n_covered`` is returned alongside so that gap stays visible.
+
+    A regulator counts once: significant if **any** of its rows clears the threshold.
+    That matters mostly for Hackett, which contributes several rows per regulator
+    (one per timepoint); under ``log2fc`` most pairs have ~1 row per regulator.
+
+    :param conn: Read-only DuckDB connection.
+    :param pairs: List of (binding_db, perturbation_db) tuples.
+    :param filters: Active filter dict keyed by dataset name.
+    :param pr_ranking_column: Which DTO ranking variant to read.
+    :param pvalue_threshold: Empirical p-value cutoff.
+    :returns: One row per pair with ``binding_db``, ``perturbation_db``,
+        ``n_significant``, ``n_covered``, ``n_intersect`` and ``percent_significant``.
+        Pairs with an empty intersect are omitted.
+
+    """
+    if not pairs:
         return pd.DataFrame()
-    return pd.concat(frames, ignore_index=True)
+
+    frames: list[dict[str, Any]] = []
+    for b_db, p_db in pairs:
+        t_pair = time.perf_counter()
+        b_ids = _allowed_sample_ids(conn, b_db, filters)
+        p_ids = _allowed_sample_ids(conn, p_db, filters)
+        if b_ids == [] or p_ids == []:
+            # A filter that lets no sample through: nothing to count.
+            continue
+
+        # The same allow-list constrains two tables with different column names.
+        b_reg_clause, b_reg_params = sample_in_clause("sample_id", b_ids)
+        p_reg_clause, p_reg_params = sample_in_clause("sample_id", p_ids)
+        b_dto_clause, b_dto_params = sample_in_clause("binding_sample_id", b_ids)
+        p_dto_clause, p_dto_params = sample_in_clause("perturbation_sample_id", p_ids)
+        sql = f"""
+        WITH b_reg AS (
+            SELECT DISTINCT regulator_locus_tag
+            FROM sample_regulator
+            WHERE db_name = ? {b_reg_clause}
+        ),
+        p_reg AS (
+            SELECT DISTINCT regulator_locus_tag
+            FROM sample_regulator
+            WHERE db_name = ? {p_reg_clause}
+        ),
+        shared AS (
+            SELECT regulator_locus_tag FROM b_reg
+            INTERSECT
+            SELECT regulator_locus_tag FROM p_reg
+        ),
+        tested AS (
+            SELECT regulator_locus_tag,
+                   min(dto_empirical_pvalue) AS best_pvalue
+            FROM dto
+            WHERE binding_db = ? AND perturbation_db = ?
+              AND pr_ranking_column = ?
+              {b_dto_clause}
+              {p_dto_clause}
+            GROUP BY regulator_locus_tag
+        )
+        SELECT
+            (SELECT count(*) FROM shared)                                AS n_intersect,
+            (SELECT count(*) FROM tested
+              WHERE regulator_locus_tag IN (SELECT regulator_locus_tag FROM shared))
+                                                                         AS n_covered,
+            (SELECT count(*) FROM tested
+              WHERE best_pvalue < ?
+                AND regulator_locus_tag IN (SELECT regulator_locus_tag FROM shared))
+                                                                         AS n_significant
+        """
+        params: list[Any] = (
+            [b_db]
+            + b_reg_params
+            + [p_db]
+            + p_reg_params
+            + [b_db, p_db, pr_ranking_column]
+            + b_dto_params
+            + p_dto_params
+            + [pvalue_threshold]
+        )
+        try:
+            row = conn.execute(sql, params).df().iloc[0]
+        except duckdb.Error:
+            logger.exception("fetch_dto_results: %s x %s", b_db, p_db)
+            continue
+
+        n_intersect = int(row["n_intersect"])
+        if n_intersect == 0:
+            continue
+        n_significant = int(row["n_significant"])
+        frames.append(
+            {
+                "binding_db": b_db,
+                "perturbation_db": p_db,
+                "n_significant": n_significant,
+                "n_covered": int(row["n_covered"]),
+                "n_intersect": n_intersect,
+                "percent_significant": 100.0 * n_significant / n_intersect,
+            }
+        )
+        _perf_logger.info(
+            json.dumps(
+                {
+                    "module": "comparison.queries",
+                    "label": "fetch_dto_pair",
+                    "binding_db": b_db,
+                    "perturbation_db": p_db,
+                    "elapsed_ms": round((time.perf_counter() - t_pair) * 1000, 2),
+                }
+            )
+        )
+
+    return pd.DataFrame(frames)
+
+
+def fetch_dto_results_method_intersected(
+    conn: duckdb.DuckDBPyConnection,
+    cells: list[tuple[str, str, str]],
+    filters: dict[str, Any],
+    pr_ranking_column: str = DEFAULT_DTO_RANKING_COLUMN,
+    pvalue_threshold: float = DTO_PVALUE_THRESHOLD,
+) -> pd.DataFrame:
+    """
+    Like :func:`fetch_dto_results`, but for the Compare Analysis Methods tab: DTO
+    significance is pre-computed entirely externally, so a regulator peak_calling never
+    called a peak for can never get a real empirical p-value. As in the top-N tables,
+    such a regulator is left out rather than scored as zero: each sibling
+    ``(promoter_enrichment, peak_calling)`` pair at the same promoter set shares one
+    3-way-intersected regulator universe (promoter_enrichment regs x peak_calling regs x
+    perturbation regs) as their common denominator, so the two bars stay directly
+    comparable rather than each drawing its own, unevenly-sized, pairwise intersection
+    with the perturbation dataset.
+
+    :param conn: Read-only DuckDB connection.
+    :param cells: ``(pe_db, pc_db, p_db)`` triples -- both binding variants must be
+        resolved by the caller; there is no fallback to a plain pairwise intersection
+        here (see :func:`fetch_dto_results` for that).
+    :param filters: Active filter dict keyed by dataset name.
+    :param pr_ranking_column: Which DTO ranking variant to read.
+    :param pvalue_threshold: Empirical p-value cutoff.
+    :returns: Two rows per cell (one per method) with ``binding_db``,
+        ``perturbation_db``, ``n_significant``, ``n_covered``, ``n_intersect`` and
+        ``percent_significant``. Cells with an empty 3-way intersect are omitted.
+
+    """
+    if not cells:
+        return pd.DataFrame()
+
+    frames: list[dict[str, Any]] = []
+    for pe_db, pc_db, p_db in cells:
+        pe_ids = _allowed_sample_ids(conn, pe_db, filters)
+        pc_ids = _allowed_sample_ids(conn, pc_db, filters)
+        p_ids = _allowed_sample_ids(conn, p_db, filters)
+        if pe_ids == [] or pc_ids == [] or p_ids == []:
+            continue
+
+        pe_reg_clause, pe_reg_params = sample_in_clause("sample_id", pe_ids)
+        pc_reg_clause, pc_reg_params = sample_in_clause("sample_id", pc_ids)
+        p_reg_clause, p_reg_params = sample_in_clause("sample_id", p_ids)
+        universe_df = conn.execute(
+            f"""
+            WITH pe_reg AS (
+                SELECT DISTINCT regulator_locus_tag FROM sample_regulator
+                WHERE db_name = ? {pe_reg_clause}
+            ),
+            pc_reg AS (
+                SELECT DISTINCT regulator_locus_tag FROM sample_regulator
+                WHERE db_name = ? {pc_reg_clause}
+            ),
+            p_reg AS (
+                SELECT DISTINCT regulator_locus_tag FROM sample_regulator
+                WHERE db_name = ? {p_reg_clause}
+            )
+            SELECT regulator_locus_tag FROM pe_reg
+            INTERSECT SELECT regulator_locus_tag FROM pc_reg
+            INTERSECT SELECT regulator_locus_tag FROM p_reg
+            """,
+            [pe_db, *pe_reg_params, pc_db, *pc_reg_params, p_db, *p_reg_params],
+        ).df()
+        universe = universe_df["regulator_locus_tag"].tolist()
+        n_intersect = len(universe)
+        if n_intersect == 0:
+            continue
+        phs_u = ", ".join(["?"] * n_intersect)
+        p_dto_clause, p_dto_params = sample_in_clause("perturbation_sample_id", p_ids)
+
+        for b_db, b_ids in ((pe_db, pe_ids), (pc_db, pc_ids)):
+            b_dto_clause, b_dto_params = sample_in_clause("binding_sample_id", b_ids)
+            sql = f"""
+            WITH tested AS (
+                SELECT regulator_locus_tag, min(dto_empirical_pvalue) AS best_pvalue
+                FROM dto
+                WHERE binding_db = ? AND perturbation_db = ?
+                  AND pr_ranking_column = ?
+                  {b_dto_clause}
+                  {p_dto_clause}
+                  AND regulator_locus_tag IN ({phs_u})
+                GROUP BY regulator_locus_tag
+            )
+            SELECT
+                count(*) AS n_covered,
+                count(*) FILTER (WHERE best_pvalue < ?) AS n_significant
+            FROM tested
+            """
+            params: list[Any] = (
+                [b_db, p_db, pr_ranking_column]
+                + b_dto_params
+                + p_dto_params
+                + universe
+                + [pvalue_threshold]
+            )
+            try:
+                row = conn.execute(sql, params).df().iloc[0]
+            except duckdb.Error:
+                logger.exception(
+                    "fetch_dto_results_method_intersected: %s x %s", b_db, p_db
+                )
+                continue
+            n_significant = int(row["n_significant"])
+            frames.append(
+                {
+                    "binding_db": b_db,
+                    "perturbation_db": p_db,
+                    "n_significant": n_significant,
+                    "n_covered": int(row["n_covered"]),
+                    "n_intersect": n_intersect,
+                    "percent_significant": 100.0 * n_significant / n_intersect,
+                }
+            )
+    return pd.DataFrame(frames)
+
+
+# ---------------------------------------------------------------------------
+# Method x promoter-set model (materialized by materialize/comparison/
+# method_promoter_model.py -- this module only reads the precomputed tables)
+# ---------------------------------------------------------------------------
+
+
+def fetch_method_promoter_target_universe(
+    conn: duckdb.DuckDBPyConnection,
+) -> pd.DataFrame:
+    """
+    Read the per-assay target-universe sizes the model's panel is restricted to.
+
+    Populated once, offline, by ``tfbpshiny materialize`` (see
+    ``materialize/comparison/method_promoter_model.py::promoter_set_target_universe``)
+    -- the intersection, across all four promoter sets' promoter-enrichment views, of
+    each assay's target list. Every cell of the panel (both methods, all four promoter
+    sets) is ranked over this same restricted pool, so a reader needs to see how large
+    it actually is per assay to judge how much each promoter set's own full target list
+    was cut down.
+
+    :param conn: Read-only DuckDB connection.
+    :returns: Columns ``assay_primary``, ``display_name``, ``n_targets``, one row per
+        assay, ``display_name`` falling back to ``assay_primary`` when the registry
+        has none.
+
+    """
+    return conn.execute(
+        "SELECT u.assay_primary,"
+        " COALESCE(r.display_name, u.assay_primary) AS display_name,"
+        " u.n_targets"
+        " FROM method_promoter_model_target_universe u"
+        " LEFT JOIN dataset_registry r ON r.db_name = u.assay_primary"
+        " ORDER BY u.assay_primary"
+    ).df()
+
+
+def fetch_method_promoter_model(
+    conn: duckdb.DuckDBPyConnection,
+    perturbation_db: str,
+    top_n: int,
+    preset_name: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Read the precomputed method x promoter-set model for one (dataset, N, preset).
+
+    The model itself is fit once, offline, by ``tfbpshiny materialize`` -- see
+    ``materialize/comparison/method_promoter_model.py`` for the design (a pooled OLS
+    with regulator and assay fixed effects, cluster-robust standard errors by
+    regulator). This is a plain filtered read against the two resulting tables; no
+    fitting happens here.
+
+    :param conn: Read-only DuckDB connection.
+    :param perturbation_db: Perturbation dataset db_name.
+    :param top_n: Materialized cutoff.
+    :param preset_name: Responsiveness preset name (``'Relaxed'`` or ``'Stringent'``).
+    :returns: ``(coefs, fit_summary)``, each filtered to this one
+        (perturbation_db, top_n, preset_name).
+
+    """
+    params = [perturbation_db, top_n, preset_name]
+    coefs = conn.execute(
+        "SELECT term, estimate, std_error, t_value, p_value"
+        " FROM method_promoter_model_coefs"
+        " WHERE perturbation_db = ? AND top_n = ? AND criteria = ?",
+        params,
+    ).df()
+    fit_summary = conn.execute(
+        "SELECT n_obs, n_regulators, r_squared, converged, note"
+        " FROM method_promoter_model_fit_summary"
+        " WHERE perturbation_db = ? AND top_n = ? AND criteria = ?",
+        params,
+    ).df()
+    return coefs, fit_summary
