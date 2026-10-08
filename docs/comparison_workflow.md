@@ -1,101 +1,63 @@
-# Comparison
+# Binding/Perturbation Comparisons
 
-This page provides a space to compare the binding and perturbation datasets to each
-other. It also introduces alternate variations of the same binding dataset: alternate
-promoter sets (for callingcards, Mahendrawada 2025 ChEC-seq, and Rossi 2021 ChIP-exo),
-and, for Mahendrawada 2025 and Rossi 2021 ChIP-exo only, the original authors'
-peak-calling scores as an alternative to the promoter-region-summed enrichment score.
+This page asks how well binding predicts response: for each pair of an active binding
+dataset and an active perturbation dataset, how many of a regulator's bound targets
+respond when the regulator is perturbed. It also compares, for the same experiment,
+the four promoter definitions and the two ways of scoring binding (promoter enrichment
+and peak calling).
 
 ## Structure
 
-The sidebar has controls shared across all three workspace tabs, plus a block of
-tab-specific controls that changes depending on which inner tab is active:
+The **sidebar** has:
 
-- **Execute Analysis** button (always shared).
-- **Top N** numeric input (default 25, range 1-500, step 5) -- the number of
-  top-binding-ranked promoters per regulator considered when computing percent
-  responsive.
-- **Responsiveness** radio group: "Relaxed" (default) applies a uniform p-value < 0.05
-  threshold to every dataset; "Stringent" uses each dataset's own
-  effect-size/p-value thresholds (e.g. degron uses |log2FoldChange| > 0.38 and
-  padj < 0.1; kemmeren uses |Madj| > 0.77 and pval < 0.05). Both presets are defined in
-  `DEFAULT_RESPONSIVENESS_PRESETS` in `tfbpshiny/utils/vdb_init.py`.
+- **Metric**:
+  - *Top-N % responsive*: the median, across regulators, of the percent of each
+    regulator's top-N bound targets that are responsive;
+  - *DTO % significant*: the percent of regulators shared by the two datasets whose
+    bound and responsive target sets overlap more than chance (empirical p < 0.01).
+- Controls for the selected metric. For Top-N: **Top N** (10, 25, 50, 75 or 100;
+  default 25), **Require full overlap** (on by default: keep only regulator/sample pairs
+  whose top-N list is complete after ties are resolved) and **Responsiveness** (Relaxed,
+  default: |effect| > 0 and p < 0.05; Stringent: each dataset's published criteria).
+  For DTO: **Perturbation Ranking** (log2fc or pvalue).
+- Controls for the active tab (below).
 
-Tab-specific sidebar controls:
+The workspace has four tabs:
 
-- **Compare Datasets**: "Binding Method" select (Promoter Enrichment / Peaks --
-  "Peaks" only applies to datasets that have a peak-calling variant, currently rossi
-  and chec_m2025) and "Promoter Set" select (Kang / Mindel / 500bp / Intergenic;
-  default Kang).
-- **Compare Promoter Definitions**: "Promoter Sets" checkbox group (all four sets;
-  default all checked).
-- **Compare Analysis Methods**: "Binding Dataset" select, populated only with binding
-  datasets that have a peaks variant (rossi, chec_m2025), and "Promoter Set" checkbox
-  group (default only Kang checked).
+- **Compare Datasets**: a binding-by-perturbation matrix of the metric, on a white
+  (0%) to green (100%) scale. Its controls choose the **Binding Method** (Promoter
+  Enrichment or Peaks) and the **Promoter Set** (default Kang). Clicking a row header
+  shows the distribution across regulators for that binding dataset against every
+  perturbation dataset, and a column header the reverse (Top-N only; DTO gives one value
+  per pair).
+- **Compare Promoter Definitions**: one table per active perturbation dataset, binding
+  datasets as rows and the checked **Promoter Sets** as columns.
+- **Compare Analysis Methods**: for one **Binding Dataset** with a peak-calling arm
+  (Rossi ChIP-exo or Mahendrawada ChEC-seq), one table per perturbation dataset with
+  promoter enrichment and peak calling as rows and the checked promoter sets as columns.
+  The two methods are compared over the same regulators: a regulator missing from either
+  method in a column is left out of both. **Common regulators only** further restricts
+  each table to regulators present in every cell.
+- **Method × Promoter Model**: the pooled OLS of percent responsive on method, promoter
+  set and assay, with regulator fixed effects and regulator-clustered standard errors,
+  fitted when the database is built. One panel per perturbation dataset, for the
+  selected Top N and Responsiveness.
 
-The workspace has three tabs (`comparison_inner_tabs`):
+Collapsible sections above the tabs explain the binding methods and the four promoter
+definitions.
 
-- **Compare Datasets** -- a binding-by-perturbation matrix. Each cell shows the median
-  percent of top-N binding targets (by the selected Binding Method/Promoter Set) that
-  are transcriptionally responsive in that perturbation dataset, colored on a white
-  (0%) to green (100%) scale. Clicking a row header selects that binding dataset;
-  clicking a column header selects that perturbation dataset. Selecting either shows a
-  box plot below the matrix where each point is one
-  (regulator, binding sample, perturbation sample) tuple's percent-responsive value.
-- **Compare Promoter Definitions** -- one card per active perturbation dataset. Each
-  card is a table with binding datasets as rows and the selected promoter sets as
-  columns, cells showing median percent responsive (1 decimal place) on the same
-  green color scale.
-- **Compare Analysis Methods** -- one card per active perturbation dataset, scoped to
-  the single binding dataset chosen in the sidebar. Rows are scoring variants
-  (Promoter Enrichment per selected promoter set, plus Original Peaks when available),
-  columns/cells follow the same layout and color scale as the other tables.
+All values are read from tables computed when the database is built (`topn_results`,
+`dto`, `method_promoter_model_*`).
 
-All three tabs read from a pre-materialized `topn_results` table in DuckDB rather than
-computing percent-responsive live; "Execute Analysis" triggers the (re)fetch.
+## Behaviour
 
-## first load
+Tables update as soon as a control or the dataset selection changes; a busy indicator
+shows while a fetch runs. If no binding or no perturbation dataset is active, the page
+shows "Select at least one binding and one perturbation dataset." A combination with no
+data shows "—" in its cell; a tab with nothing to show says "No data for the selected
+combination." (or "No data for the selected datasets." for the Compare Datasets
+distribution).
 
-Defaults: Top N = 25, Responsiveness = Relaxed, Binding Method = Promoter Enrichment,
-Promoter Set = Kang, all four promoter sets checked on the Promoter Definitions tab,
-only Kang checked on the Analysis Methods tab, and the active binding/perturbation
-datasets from the select datasets page.
+## Effect on other pages
 
-Results start out marked stale, so the Execute Analysis button renders at full
-color/opacity (it is only dimmed once results are current and nothing has changed
-since). Each tab's table/matrix shows "Click Execute Analysis to compute." until the
-button is clicked. If no binding or no perturbation dataset is active, a message above
-the tabs reads "Select at least one binding and one perturbation dataset." There is no
-separate "please wait" status message while data is fetching -- the only feedback is
-that the Execute Analysis button is disabled (`pointer-events: none`, opacity 0.35)
-once results are current, and stays clickable while results are stale.
-
-## usage
-
-Changing Top N, Responsiveness, or any tab-specific control (Binding Method, Promoter
-Set, included Promoter Sets, Binding Dataset) marks results stale and re-enables the
-Execute Analysis button (full color). Changing the active datasets or filters on the
-select datasets page does the same. Clicking "Execute Analysis" fetches fresh data for
-all three tabs, marks results current, and dims the Execute Analysis button again. The
-user can change settings and click Execute Analysis as many times as they like.
-
-On the Compare Datasets tab, clicking a different row or column header swaps which
-dataset's distribution is shown below the matrix without requiring Execute Analysis,
-as long as results are not stale; if results are stale the distribution area also shows
-"Click Execute Analysis to compute." Before any row/column has been selected, the
-distribution area reads "Click a row header to view distributions for a binding
-dataset, or a column header to view distributions for a perturbation dataset."
-
-## edge cases
-
-- No data for a given binding/perturbation/promoter-set combination: the matrix or
-  table cell shows "—" and, on the Compare Datasets tab, the distribution area shows
-  "No data for the selected datasets."; the other two tabs show "No data for the
-  selected combination."
-- No perturbation datasets active: the Compare Promoter Definitions and Compare
-  Analysis Methods tabs show "No perturbation datasets selected." instead of any cards.
-- No datasets at all selected for the matrix: "No datasets selected."
-
-## impact on other pages
-
-None
+None.

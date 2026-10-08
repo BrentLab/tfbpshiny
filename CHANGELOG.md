@@ -45,12 +45,36 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The two Calling Cards / Harbison authors'-threshold generators are one
   `materialize/comparison/authors_bound.py` driven by `AuthorsBoundConfig`; the
   materializer's public names are `exec_static`, `vdb_to_table`, `stage_topn`,
-  `stage_method_promoter_topn` and `HARBISON_DEDUP_CTE` (underscore aliases kept
-  for one release).
+  `stage_method_promoter_topn` and `HARBISON_DEDUP_CTE`. The underscore names
+  (`_exec_static`, `_vdb_to_table`, `_method_promoter_topn_staged`,
+  `_HARBISON_DEDUP_CTE`) are removed; import the public names.
 - The Comparison and Figures workspace servers are split into one file per tab
   or figure under `server/`, wired from a thin `workspace.py`; output ids are
   unchanged and an end-to-end render snapshot (`tests/e2e/test_outputs_render.py`)
   is identical before and after.
+- Materialize internals, with the database unchanged: `build_method_promoter_panel`
+  receives the expanded default filters once per build rather than recomputing
+  them for every cell; `vdb._conn` is touched only by `_stage_table` and
+  `_drop_table`; CLI arguments are read directly; and `target_sets_select_sql`
+  takes `drop_null_scores`, so a dense peak dataset added to figure 10 would not
+  pad its sets with no-peak promoters. `dto_venn_figure` returns
+  `(figure, proportional)` instead of setting an attribute on the figure.
+- Tests: `test_figures.py` is split into `test_figures_plots.py`,
+  `test_figures_queries.py` and `test_figures_fig10.py`. The per-variant top-N
+  query used as the oracle for the staged builder lives in
+  `tests/unit/_topn_oracle.py`. `tests/unit/_collection.py` gives tests a
+  VirtualDB stand-in over the packaged collection config.
+- Documentation describes the app as it is. The four page guides
+  (`docs/*_workflow.md`) are rewritten for the current controls: no Execute
+  buttons, automatic updates, the read-only correlation matrix, the Comparison
+  page's Metric selector and four tabs, and staged Apply Changes on the
+  selection page. `docs/materialized_db_schema.md` is rewritten to the current
+  tables, columns, row counts, CLI options and example queries.
+  `docs/development.md`, `docs/sql_operations.md` and `CLAUDE.md` are corrected
+  against the code. The README gains a table of contents, the pip-install
+  config path and links to the docs.
+- Comments and docstrings describe what the code does, not how it changed;
+  change history is kept here. `CLAUDE.md` states this as a rule.
 
 - **Rebuild required.** Re-run `tfbpshiny materialize` (about 16 minutes against
   HuggingFace, `correlations` included) so the stored tables follow the changes
@@ -222,10 +246,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   before ranking, so "top 25" means "top 25 of the targets measured in both
   datasets" and the rank genuinely differs per perturbation dataset. Only the
   scan feeding the rank is shared.
-- `--legacy-topn` on `tfbpshiny materialize` computes `topn_results` the old
-  way, so a build from this commit can be diffed against a staged build from the
-  same commit. It exists for that proof and should be deleted once the diff is
-  on record.
 - **Figure 6 can compare promoter definitions and calling methods, not just
   assays.** A "Choose datasets to compare" panel below the figure — collapsed by
   default — lists every binding and perturbation dataset; each pair among the

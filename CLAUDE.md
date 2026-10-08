@@ -14,8 +14,8 @@ dashboard interface to visualize and analyze genomics data.
 
 ## Reference Repositories
 
-Two companion repositories are available as workspace folders and online. Use them
-when working with Shiny components or labretriever data access — read their source rather
+These reference repositories are available as workspace folders and online. Use them
+when working with Shiny components, labretriever data access, SQL or plots — read their source rather
 than guessing at APIs.
 
 | Package | Local path | Online source |
@@ -45,10 +45,13 @@ read the source in `@labretriever (reference)` or check https://brentlab.github.
 
 ### Other Key Dependencies
 
-- **Python**: ^3.11
-- **Plotly**: ^6.0.1 (for visualizations)
-- **shinywidgets**: ^0.5.2
+- **Python**: ^3.12
+- **DuckDB**: the app's only data source at runtime
+- **Plotly**: ^6.0.1 (interactive plots, rendered to HTML with `plotly.io.to_html`)
+- **matplotlib**: static figures on the Figures page
 - **faicons**: ^0.2.2 (icons)
+- **shinywidgets** is declared in `pyproject.toml` but not imported; see "Plotly
+  rendering" in `docs/development.md` for why plots do not use it
 
 ## Application Architecture
 
@@ -59,6 +62,9 @@ tfbpshiny/
 ├── app.py              # Main application shell and orchestration
 ├── app.css             # Global styles and CSS custom properties
 ├── components.py       # Reusable styled UI component library (see below)
+├── datasets.py         # Dataset vocabulary and constants shared by build and app
+├── brentlab_yeast_collection.yaml  # labretriever collection config
+├── www/                # Static assets (images; the Plotly JS bundle, gitignored)
 ├── modules/            # Feature modules
 │   ├── home/           # The home page module (splash screen)
 │   ├── binding/        # TF binding data module
@@ -99,9 +105,10 @@ styled Shiny UI elements.  Every function maps to one or more CSS classes define
 `app.css` and documents that mapping in its docstring.
 
 **When to use it:**
-- Any time you build a sidebar shell, workspace shell, nav button, group header, dataset
-  row, filter card, empty state, or matrix cell button — use the corresponding function
-  from `components.py` rather than inlining the class string.
+- Any time you build a tooltip, sidebar label or text, workspace heading, empty state,
+  dataset row, filter card, matrix (table, cell, header, row label), scroll row or
+  export control, use the corresponding function from `components.py` rather than
+  inlining the class string.
 - When adding a new CSS class that will be used in more than one place, add a matching
   factory function to `components.py` at the same time.
 
@@ -180,7 +187,8 @@ VirtualDB's methods.
 # Install dependencies
 poetry install
 
-# Build the database (once, ~15-20 min; pulls data from HuggingFace)
+# Build the database (once, ~20 min; pulls data from HuggingFace). The launch
+# command's default --db-path is tfbpshiny/brentlab_yeast.duckdb
 poetry run python -m tfbpshiny materialize \
     --config tfbpshiny/brentlab_yeast_collection.yaml \
     --output tfbpshiny/brentlab_yeast.duckdb
@@ -219,11 +227,19 @@ official testing guidelines.
 
 ```
 tests/
-├── unit/                       # Pure-function unit tests (no reactive context)
-│   └── test_select_datasets.py # _build_where, query builders, ID generators
-└── e2e/                        # Playwright end-to-end tests
-    └── test_navigation.py      # Navigation smoke tests
+├── unit/                         # Pure-function unit tests (no reactive context)
+│   ├── _collection.py            # VirtualDB stand-in over the real collection config
+│   ├── _topn_oracle.py           # reference top-N SQL the staged builder is checked against
+│   └── test_*.py                 # one file per module or materialize stage
+└── e2e/                          # Playwright end-to-end tests (need brentlab_yeast.duckdb)
+    ├── test_navigation.py        # Navigation smoke tests
+    ├── test_outputs_render.py    # Every output on every page renders; optional text snapshot
+    └── .snapshots/outputs.json   # Rendered text per output, for TFBPSHINY_E2E_SNAPSHOT=compare
 ```
+
+`test_outputs_render.py` renders every page against the real database. Run it with
+`TFBPSHINY_E2E_SNAPSHOT=compare` to check a change leaves every output's text
+unchanged, or `=write` to re-record after an intended change.
 
 ### Unit Testing
 
@@ -247,12 +263,12 @@ interactions, data selection) rather than exhaustive UI states.
 from playwright.sync_api import Page, expect
 from shiny.pytest import create_app_fixture
 
-app = create_app_fixture("path/to/app.py")
+app = create_app_fixture("../../tfbpshiny/app.py")
 
-def test_navigation(page: Page, app):
+def test_navigate_to_selection(page: Page, app):
     page.goto(app.url)
-    page.click("#selection")
-    expect(page.locator(".sidebar")).to_be_visible()
+    page.locator('a.nav-link[data-value="Dataset selection"]').click()
+    expect(page.locator(".selection-sidebar")).to_be_visible()
 ```
 
 ### Testing Best Practices
@@ -268,7 +284,8 @@ def test_navigation(page: Page, app):
 - **Formatter**: Black (line-length: 88)
 - **Import sorting**: isort (black profile)
 - **Type checking**: mypy — use type annotations where possible (Python 3.11+)
-- **Testing**: pytest with `shiny.pytest` (unit) and Playwright (E2E) — see Testing section below
+- **Testing**: plain pytest (unit) and Playwright with `shiny.pytest` (E2E) — see
+  Testing above
 - **Docstrings**: Sphinx style. Document parameters and return values; do not repeat
   types (those go in type hints). Inline comments above the line, not beside it.
   For `@reactive.calc` and `@reactive.event` functions, document what triggers
@@ -289,6 +306,11 @@ def test_navigation(page: Page, app):
   Use `:trigger:` for `@reactive.calc` (what reactive inputs/values it depends on)
   and for `@reactive.effect @reactive.event(...)` (what event fires it).
 - **Pre-commit hooks**: run `pre-commit install` once after cloning
+- **Comments and documentation describe the current state only.** Do not write how
+  a file, function or approach changed, what it replaced, or what an earlier version
+  did ("no longer", "previously", "now uses", "legacy", "kept for backward
+  compatibility"). Say what the code does and why. History belongs in `CHANGELOG.md`,
+  which every change that alters behaviour, the database or the docs should update.
 
 ## Environment Configuration
 

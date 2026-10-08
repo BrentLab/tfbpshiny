@@ -48,6 +48,9 @@ and bound as `$cat_{field}_{i}`, `$num_{field}_lo/_hi`, `$bool_{field}`.
 |---|---|---|
 | `expand_filters_to_variants(conn, filters, registry=None)` | Executes (reads `dataset_registry` and the `_meta` catalog) | Copies each primary dataset's filter onto its promoter-set and peak-calling variants, keeping only the filter fields a variant's metadata actually has. The one place filters are widened; every analysis module receives the result. |
 | `get_filtered_sample_ids(conn, db_name, filters)` | Executes | `CAST(sample_id AS VARCHAR)` of the rows of `{db_name}_meta` that pass `filters`. Every other query restricts to samples via this list. |
+| `sample_filter_clause(conn, db_name, filters, column)` | Builder | `AND <column> IN (...)` for one dataset's filtered samples, or `AND FALSE` when none pass. |
+| `per_dataset_sample_clause(conn, db_names, filters, db_column, sample_column)` | Builder | The same restriction for several datasets at once, each to its own filtered samples. |
+| `sample_in_clause(column, ids)` | Builder | `AND <column> IN (...)` for an already-resolved sample list; no restriction when `ids` is `None`. |
 | `fetch_corr_pairs(conn, pairs, filters, method, score_type, comparison_type)` | Executes | Pre-computed per-regulator correlations from `correlations` for a list of `(db_a, db_b)` pairs, both sides restricted to filtered samples. Returns `{(db_a, db_b): DataFrame}` with `regulator_locus_tag`, `correlation`, `n_shared_targets`. Used by the Binding and Perturbation tabs. |
 
 ---
@@ -55,12 +58,12 @@ and bound as `$cat_{field}_{i}`, `$num_{field}_lo/_hi`, `$bool_{field}`.
 ## `comparison` module
 
 **File:** `tfbpshiny/modules/comparison/queries.py`
-**Called from:** `server/workspace.py`
+**Called from:** the modules in `server/`
 
 | Function | Kind | Purpose | Result |
 |---|---|---|---|
-| `build_binding_index(registry_df)` | pure | Index of `dataset_registry` rows: variant → primary, promoter set, method; `resolve(primary, promoter_set, method)` → `db_name`. | `BindingIndex` |
-| `fetch_topn_results(conn, pairs, filters, top_n, preset, require_full_overlap=True)` | Executes | Rows of `topn_results` for each `(binding_db, perturbation_db)` pair at one cutoff and one `(effect, pvalue)` threshold pair, restricted to filtered samples. With `require_full_overlap` only rows whose top-N list is complete after the tie rule (`n >= top_n`) are kept. | `topn_results` columns + `pair_key`, `binding_db`, `perturbation_db` |
+| `build_binding_index(registry_df, promoter_set_labels=None, method_labels=None)` | pure | Index of `dataset_registry` rows: variant → primary, promoter set, method; `resolve(primary, promoter_set, method)` → `db_name`. | `BindingIndex` |
+| `fetch_topn_results(conn, pairs, filters, top_n, preset, require_full_overlap=True)` | Executes | Rows of `topn_results` for each `(binding_db, perturbation_db)` pair at one cutoff and the `(effect, pvalue)` pair `preset` (a per-dataset threshold table) gives the perturbation dataset, restricted to filtered samples. With `require_full_overlap` only rows whose top-N list is complete after the tie rule (`n >= top_n`) are kept. | `topn_results` columns + `pair_key`, `binding_db`, `perturbation_db` |
 | `fetch_dto_results(conn, pairs, filters, pr_ranking_column, pvalue_threshold)` | Executes | DTO-significant fraction per pair over the regulators shared by the two datasets' filtered samples (`sample_regulator`). | one row per pair: `n_significant`, `n_covered`, `n_intersect`, `percent_significant` |
 | `fetch_dto_results_method_intersected(conn, cells, filters, ...)` | Executes | Same metric for the Compare Analysis Methods tab, where each `(promoter_enrichment_db, peak_calling_db, perturbation_db)` cell shares one 3-way regulator universe so the two methods are compared over the same TFs. | two rows per cell |
 | `fetch_method_promoter_target_universe(conn)` | Executes | Size of the candidate target pool each assay's model panel was restricted to (`method_promoter_model_target_universe`). | `assay_primary`, `display_name`, `n_targets` |
@@ -71,7 +74,7 @@ and bound as `$cat_{field}_{i}`, `$num_{field}_lo/_hi`, `$bool_{field}`.
 ## `figures` module
 
 **File:** `tfbpshiny/modules/figures/queries.py`
-**Called from:** `server/workspace.py`
+**Called from:** the modules in `server/`
 
 Registry and helpers:
 
@@ -83,7 +86,6 @@ Registry and helpers:
 | `sort_regulators_by_symbol(tags, symbols)` | pure | Alphabetical order by gene symbol for the Featured TF selector. |
 | `scoring_clause(pr_db, preset_name, alias)` | Builder | `AND effect_threshold = ? AND pvalue_threshold = ?` pinning one responsiveness definition; every `topn_results` read must include it. |
 | `agreement_dataset_choices(conn, comparison_type)` | Executes | Selectable datasets for figure 6, labelled and ordered. |
-| `table_exists(conn, name)`, `has_top_n(conn, top_n)` | Executes | Startup probes for whether a table / cutoff was materialized. |
 
 Figure data (all **Execute**; `filters` restricts both the binding and the perturbation
 side to filtered samples):
@@ -103,7 +105,7 @@ side to filtered samples):
 
 ---
 
-## Registry readers used at startup
+## Registry readers
 
 **File:** `tfbpshiny/utils/vdb_init.py`
 
@@ -111,6 +113,11 @@ side to filtered samples):
 |---|---|
 | `load_app_datasets(conn)` | Reads `dataset_column_metadata` into the condition / upstream column lists the selection tab builds its filter UI from. |
 | `get_regulator_display_name(conn, locus_tags=None)` | Reads `regulator_display_names` (locus tag, symbol, display name). |
+| `promoter_set_labels(conn)`, `binding_method_labels(conn)` | Display label of each promoter set and binding method. |
+| `promoter_set_info(conn)` | Label, description, colour and reference of each promoter set. |
+| `binding_method_colors(conn)` | Series colour of each binding method. |
+| `dataset_colors(conn, data_type)` | Series colour of each experiment of one data type, keyed by `base_label`. |
+| `peak_calling_notes(conn)` | How each assay's peak calls were made, keyed by its primary `db_name`. |
 | `get_responsiveness_label(preset_name, p_db)` | Pure: human-readable text for a preset's thresholds on one dataset. |
 
 ---

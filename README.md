@@ -3,6 +3,22 @@
 A Shiny web application for exploring transcription factor binding and perturbation
 data from the [Brent Lab yeast collection](https://huggingface.co/collections/BrentLab/yeastresources).
 
+## Table of contents
+
+- [Resource Requirements](#resource-requirements)
+- [Quick start](#quick-start)
+  - [Install](#install)
+  - [Build the database, then run the app](#build-the-database-then-run-the-app)
+- [Contributing](#contributing)
+  - [Setup](#setup)
+  - [Plotly JS bundle](#plotly-js-bundle)
+  - [Environment variables](#environment-variables)
+  - [Running the app](#running-the-app)
+  - [Running tests](#running-tests)
+  - [Code quality](#code-quality)
+  - [Branching](#branching)
+- [Further documentation](#further-documentation)
+
 ---
 
 ## Resource Requirements
@@ -29,16 +45,15 @@ source tfbpshiny_env/bin/activate
 python -m pip install tfbpshiny
 ```
 
-### Build the database, then run the app:
+### Build the database, then run the app
 
 The app reads a single pre-built DuckDB file. Build it once (this pulls every dataset
-from HuggingFace and runs the cross-dataset analyses; about fifteen minutes), then
-launch:
+from HuggingFace and runs the cross-dataset analyses; about twenty minutes), then
+launch. The collection config ships inside the installed package:
 
 ```bash
-python -m tfbpshiny materialize \
-    --config tfbpshiny/brentlab_yeast_collection.yaml \
-    --output brentlab_yeast.duckdb
+CONFIG=$(python -c "import pathlib, tfbpshiny; print(pathlib.Path(tfbpshiny.__file__).parent / 'brentlab_yeast_collection.yaml')")
+python -m tfbpshiny materialize --config "$CONFIG" --output brentlab_yeast.duckdb
 python -m tfbpshiny launch --db-path brentlab_yeast.duckdb
 ```
 
@@ -132,3 +147,16 @@ pre-commit run --all-files
 1. Rebase onto `dev` periodically: `git rebase dev`
 1. When ready, open a pull request targeting the BrentLab `dev`
   branch — **not** `main`
+
+---
+
+## Further documentation
+
+- [docs/development.md](docs/development.md): architecture, the build, and deployment
+- [docs/materialized_db_schema.md](docs/materialized_db_schema.md): every table in the
+  database
+- [docs/sql_operations.md](docs/sql_operations.md): the SQL the app runs
+- Page guides: [Dataset selection](docs/select_datasets_workflow.md),
+  [Binding](docs/binding_workflow.md), [Perturbation](docs/perturbation_workflow.md),
+  [Comparisons](docs/comparison_workflow.md)
+- [CHANGELOG.md](CHANGELOG.md)

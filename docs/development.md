@@ -31,10 +31,11 @@ HuggingFace parquet  --VirtualDB-->  tfbpshiny materialize  -->  brentlab_yeast.
 `coordinator.materialize(output_path, vdb, args)`, which runs five logged phases:
 
 1. **Coordinating layer** — `promoter_sets`, `binding_methods`, `dataset_registry`,
-   `comparative_dataset_registry`, `dataset_column_metadata`. Static registry tables
-   generated from Python constants plus the VirtualDB column metadata. The registry's
-   `is_primary` / `is_active_default` columns say which datasets the selection tab
-   shows and which start switched on.
+   `comparative_dataset_registry`, `dataset_column_metadata`, `schema_version`. The
+   registry tables come from the collection config's tags and `tfbpshiny/datasets.py`
+   (see below), the column metadata from VirtualDB. The registry's `is_primary` /
+   `is_active_default` columns say which datasets the selection tab shows and which
+   start switched on.
 2. **Metadata layer** — one `{db_name}_meta` table per dataset (one row per sample,
    copied verbatim from the VirtualDB `_meta` view), `regulator_display_names`, and
    `sample_regulator` (`(db_name, sample_id) -> regulator_locus_tag`).
@@ -42,7 +43,8 @@ HuggingFace parquet  --VirtualDB-->  tfbpshiny materialize  -->  brentlab_yeast.
    `dto_expanded` view and joined to `sample_regulator` to recover the regulator.
 4. **Computed comparison tables** — `topn_results` (per binding sample × perturbation
    sample × top-N cutoff × responsiveness threshold pair; also the authors'-criteria
-   rows at `top_n = 0` for the peak-calling datasets and Harbison), `topn_agreement`,
+   rows at `top_n = 0` for the authors' peak calls, Harbison and Calling Cards),
+   `topn_agreement`,
    `topn_target_sets`, and `correlations`. Each is filled pair by pair through
    VirtualDB in regulator batches.
 5. **Method × promoter-set model** — `method_promoter_model_topn`,
@@ -64,8 +66,10 @@ poetry run python -m tfbpshiny materialize \
 
 A full build takes roughly fifteen to twenty minutes; `--skip-topn`,
 `--skip-correlations` and `--skip-method-promoter-model` trim it while iterating on a
-single phase. The default output path is the one `tfbpshiny launch` looks for, so a
-rebuild is picked up on the next app start. Computed floats are rounded
+single phase. `materialize` writes to `brentlab_yeast.duckdb` in the current directory,
+which is where `shinyapps_entry.py` looks; `tfbpshiny launch` defaults to
+`tfbpshiny/brentlab_yeast.duckdb`, so pass `--db-path brentlab_yeast.duckdb` when
+running locally. Computed floats are rounded
 (`--float-decimals`, default ~1e-9) so two builds of the same data can be diffed;
 `scripts/snapshot_db.py` / `scripts/diff_snapshots.py` fingerprint every table for
 exactly that purpose.
@@ -144,8 +148,9 @@ assembles `ui.page_navbar`. `app_server` then, per browser session:
 1. opens `duckdb.connect(TFBPSHINY_DB_PATH, read_only=True)` (the path is set by
    `python -m tfbpshiny launch --db-path`, defaulting to
    `tfbpshiny/brentlab_yeast.duckdb`);
-2. runs `utils.schema_check.warn_if_stale_topn_schema`, which logs a warning if the
-   file was built by an older materializer;
+2. runs `utils.schema_check.check_schema_version`, which compares the database's
+   `schema_version` stamp with `tfbpshiny.datasets.SCHEMA_VERSION`; on a mismatch a
+   banner is shown above every page;
 3. calls `load_app_datasets(conn)`;
 4. registers the home-card navigation effects and every module server, directly and
    unconditionally — there is no deferred registration and no loading state, because
@@ -175,9 +180,9 @@ default for hidden outputs, so there is no explicit gating of expensive calcs.
 
 Every analysis the app shows was computed at materialize time; the server code
 restricts rows to the filtered samples, aggregates (medians, fractions, set
-intersections) and draws. The one place a page does non-trivial SQL is
-`figures/queries.py`, where several figures join `topn_results` against the registry
-to resolve dataset variants. Nothing on the read side touches target-level data.
+intersections) and draws. Reads filter the computed tables on their plain `db_name` /
+`sample_id` columns; the registry is read only to resolve a primary's variants and to
+look up labels and colours. Nothing on the read side touches target-level data.
 
 ---
 
