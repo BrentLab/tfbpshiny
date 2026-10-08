@@ -29,7 +29,7 @@ from tfbpshiny.modules.select_datasets.ui import (
     off_diagonal_cell_modal_ui,
     regulator_cell_modal_ui,
 )
-from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS
+from tfbpshiny.utils.vdb_init import hidden_filter_fields
 
 
 def select_datasets_workspace_server(
@@ -102,8 +102,7 @@ def select_datasets_workspace_server(
         remove_cols = (
             {"sample_id"}
             | {c for c in all_cols if c.lower().startswith("regulator")}
-            | HIDDEN_FILTER_FIELDS.get("*", set())
-            | HIDDEN_FILTER_FIELDS.get(db_name, set())
+            | hidden_filter_fields(db_name)
         )
         return [c for c in all_cols if c not in remove_cols]
 

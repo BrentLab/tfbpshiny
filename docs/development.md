@@ -131,7 +131,8 @@ Per-dataset facts the app needs that are not in the database live in
   threshold pairs per perturbation dataset. `materialize` stores a `topn_results`
   row for each pair a preset resolves to, so the app's preset selector is a filter,
   not a recomputation.
-- `HIDDEN_FILTER_FIELDS`, `FIELD_TYPE_OVERRIDES` — which metadata columns the filter
+- `HIDDEN_FILTER_FIELDS` (keyed by primary dataset; variants inherit, see
+  `hidden_filter_fields`), `FIELD_TYPE_OVERRIDES` — which metadata columns the filter
   UI hides, and how it types the ones it shows.
 - `load_app_datasets(conn)` — reads `dataset_column_metadata` into the
   condition/upstream column lists the selection tab builds its filter cards from.

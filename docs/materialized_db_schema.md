@@ -210,7 +210,8 @@ The metadata columns the Dataset selection page offers as filters, one row per
 `(db_name, column_name)`, from labretriever's column metadata (the DataCards).
 `role` is `'condition'` for an experimental-condition column with defined levels
 and `'upstream'` for any other filterable column. Columns in
-`HIDDEN_FILTER_FIELDS` (`utils/vdb_init.py`) are left out.
+`HIDDEN_FILTER_FIELDS` (`utils/vdb_init.py`, keyed by primary dataset and
+inherited by its variants) are left out.
 
 ```sql
 CREATE TABLE dataset_column_metadata (

@@ -21,7 +21,7 @@ from tfbpshiny.modules.select_datasets.queries import (
 from tfbpshiny.modules.select_datasets.ui import (
     dataset_filter_modal_ui,
 )
-from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS, AppDatasets
+from tfbpshiny.utils.vdb_init import AppDatasets, hidden_filter_fields
 
 
 @module.ui
@@ -247,8 +247,7 @@ def dataset_row_server(
                 common_fields,
                 display_name=display_name,
                 common_field_levels=common_field_levels,
-                hidden_fields=HIDDEN_FILTER_FIELDS.get("*", set())
-                | HIDDEN_FILTER_FIELDS.get(db_name, set()),
+                hidden_fields=hidden_filter_fields(db_name),
                 regulator_display_labels=reg_display_labels or None,
                 col_meta=db_meta or None,
                 ns=modal_ns,

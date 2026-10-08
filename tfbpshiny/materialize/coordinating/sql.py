@@ -16,7 +16,7 @@ from typing import Any
 from labretriever import VirtualDB
 
 from tfbpshiny.datasets import BINDING_METHODS, PROMOTER_SETS
-from tfbpshiny.utils.vdb_init import HIDDEN_FILTER_FIELDS
+from tfbpshiny.utils.vdb_init import hidden_filter_fields
 
 
 def schema_version_sql(version: int, git_sha: str | None) -> str:
@@ -359,7 +359,7 @@ def column_metadata_sql(vdb: VirtualDB) -> str:
     Return SQL to create and populate the ``dataset_column_metadata`` table.
 
     One row per filterable metadata column of every dataset, from labretriever's
-    ``get_column_metadata``, with :data:`~tfbpshiny.utils.vdb_init.HIDDEN_FILTER_FIELDS`
+    ``get_column_metadata``, with :func:`~tfbpshiny.utils.vdb_init.hidden_filter_fields`
     left out. ``role`` is ``'condition'`` for an experimental-condition column with
     per-level definitions and ``'upstream'`` for any other filterable column.
     ``description`` and ``level_definitions`` (a JSON object, level value to
@@ -369,12 +369,11 @@ def column_metadata_sql(vdb: VirtualDB) -> str:
     :returns: ``CREATE TABLE`` + ``INSERT`` SQL string.
 
     """
-    hidden_global = HIDDEN_FILTER_FIELDS.get("*", set())
     rows: list[str] = []
 
     for db_name in vdb.get_datasets():
         db_meta = vdb.get_column_metadata(db_name) or {}
-        hidden = hidden_global | HIDDEN_FILTER_FIELDS.get(db_name, set())
+        hidden = hidden_filter_fields(db_name, vdb.get_tags(db_name).get("primary"))
         for col, m in db_meta.items():
             if col in hidden or col == "sample_id":
                 continue

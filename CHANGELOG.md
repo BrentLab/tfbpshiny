@@ -340,6 +340,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- The filter modal for the ChEC-seq primary listed both `condition` and
+  `Experimental condition` (the same values under the raw and the standardised
+  name) and a `mahendrawada_symbol` selectize with 178 regulator symbols; the
+  Rossi modal listed `antibody` and `growth_media`. `HIDDEN_FILTER_FIELDS` was
+  keyed by `chec_m2025` and `rossi`, which are not the datasets the selection
+  page shows, so nothing was hidden for them. It is now keyed by primary dataset
+  and variants inherit it (`hidden_filter_fields`), and a test checks that every
+  key of it and of `DEFAULT_DATASET_FILTERS` names a primary. Regulators are
+  identified by `regulator_symbol` and `regulator_locus_tag` only. The stored
+  `dataset_column_metadata` drops 30 hidden rows; the schema is unchanged.
 - The Compare Analysis Methods tab's peak-caller tooltip (MACS / HOMER) was
   keyed by `rossi` / `chec_m2025` but looked up with the primary
   (`rossi_500bp`), so it always showed the generic fallback after the 500bp

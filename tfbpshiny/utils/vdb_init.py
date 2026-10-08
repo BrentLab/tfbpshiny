@@ -19,9 +19,12 @@ logger = logging.getLogger("shiny")
 #: conditions, so they do not belong in the filter UI.
 _CC_HOP_FIELDS: set[str] = {"total_background_hops", "total_experiment_hops"}
 
-# Use "*" for fields hidden across all datasets; use the db_name key for
-# dataset-specific exclusions. The effective hidden set for a given dataset
-# is the union of "*" and its own entry.
+# Metadata columns kept out of the filter UI: identifiers, library sizes, and the raw
+# source column behind a standardised alias (e.g. ``condition``, which the collection
+# config exposes as ``Experimental condition``). Use "*" for fields hidden across all
+# datasets; use a *primary* db_name for dataset-specific exclusions, which its
+# promoter-set and peak-calling variants inherit. :func:`hidden_filter_fields` resolves
+# the effective set.
 HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
     "*": {
         "regulator_locus_tag",
@@ -29,21 +32,37 @@ HIDDEN_FILTER_FIELDS: dict[str, set[str]] = {
         "Regulator locus tag",
         "Regulator symbol",
     },
-    # All four callingcards configs share a schema, so they share these hidden
-    # fields; each variant needs its own entry, or it exposes them as filter options.
-    "callingcards_kang": _CC_HOP_FIELDS,
-    "callingcards_mindel": _CC_HOP_FIELDS,
     "callingcards_500bp": _CC_HOP_FIELDS,
-    "callingcards_intergenic": _CC_HOP_FIELDS,
     "harbison": {"condition"},
-    "chec_m2025": {"condition", "mahendrawada_symbol"},
+    # ``mahendrawada_symbol`` is the symbol as printed in the paper; regulators are
+    # identified by ``regulator_symbol`` and ``regulator_locus_tag``.
+    "chec_m2025_500bp": {"condition", "mahendrawada_symbol"},
     "degron": {"env_condition", "timepoint"},
-    "rossi": {"antibody", "growth_media"},
+    "rossi_500bp": {"antibody", "growth_media"},
     "hackett": {"date", "mechanism", "restriction", "strain"},
     "hu_reimand": {"average_od_of_replicates", "heat_shock"},
     "hughes_overexpression": {"del_passed_qc", "sgd_description"},
     "hughes_knockout": {"oe_passed_qc", "sgd_description"},
 }
+
+
+def hidden_filter_fields(db_name: str, primary_db_name: str | None = None) -> set[str]:
+    """
+    Metadata columns kept out of a dataset's filter UI.
+
+    :param db_name: Dataset name.
+    :param primary_db_name: The primary ``db_name`` when ``db_name`` is a variant of
+        one; ``None`` or ``db_name`` itself for a primary.
+    :returns: The union of the ``"*"`` entry, the primary's entry and the dataset's
+        own entry of :data:`HIDDEN_FILTER_FIELDS`.
+
+    """
+    return (
+        HIDDEN_FILTER_FIELDS.get("*", set())
+        | HIDDEN_FILTER_FIELDS.get(primary_db_name or db_name, set())
+        | HIDDEN_FILTER_FIELDS.get(db_name, set())
+    )
+
 
 # Which datasets are primary and which are on by default is recorded in the
 # materialized ``dataset_registry`` (``is_primary`` / ``is_active_default``), which the
@@ -350,6 +369,7 @@ def load_app_datasets(conn: duckdb.DuckDBPyConnection) -> AppDatasets:
 
 __all__ = [
     "HIDDEN_FILTER_FIELDS",
+    "hidden_filter_fields",
     "FIELD_TYPE_OVERRIDES",
     "DEFAULT_DATASET_FILTERS",
     "ResponsivenessPreset",

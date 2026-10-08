@@ -31,6 +31,9 @@ class _MetaVDB:
     def get_datasets(self) -> list[str]:
         return ["harbison"]
 
+    def get_tags(self, db_name: str) -> dict[str, str]:
+        return {}
+
     def get_column_metadata(self, db_name: str) -> dict[str, ColumnMeta]:
         return {
             **META,

@@ -130,3 +130,30 @@ def test_dataset_descriptions_reach_the_registry() -> None:
     ).fetchone()[0]
     assert desc == vdb.get_dataset_description("rossi_500bp")
     assert desc.startswith("ChIP-exo")
+
+
+def test_filter_rules_are_keyed_by_primary_datasets(rows: dict) -> None:
+    """A rule keyed by a name that is not a primary applies to nothing."""
+    from tfbpshiny.utils.vdb_init import (
+        DEFAULT_DATASET_FILTERS,
+        HIDDEN_FILTER_FIELDS,
+    )
+
+    primaries = {db for db, r in rows.items() if r.is_primary}
+    assert set(DEFAULT_DATASET_FILTERS) <= primaries
+    assert set(HIDDEN_FILTER_FIELDS) - {"*"} <= primaries
+
+
+def test_hidden_filter_fields_reach_every_variant() -> None:
+    from tfbpshiny.utils.vdb_init import hidden_filter_fields
+
+    for db, primary in (
+        ("chec_m2025_500bp", None),
+        ("chec_m2025_peaks_kang", "chec_m2025_500bp"),
+    ):
+        hidden = hidden_filter_fields(db, primary)
+        assert {"condition", "mahendrawada_symbol", "regulator_symbol"} <= hidden
+    assert "mahendrawada_symbol" not in hidden_filter_fields("rossi_500bp")
+    assert {"antibody", "growth_media"} <= hidden_filter_fields(
+        "rossi_mindel", "rossi_500bp"
+    )
