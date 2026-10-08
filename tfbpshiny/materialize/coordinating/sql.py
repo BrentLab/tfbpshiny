@@ -9,6 +9,7 @@ The coordinator is the only code that calls ``.execute()``.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -357,14 +358,15 @@ def column_metadata_sql(vdb: VirtualDB) -> str:
     """
     Return SQL to create and populate the ``dataset_column_metadata`` table.
 
-    Queries VirtualDB for each dataset's column metadata, applies
-    :data:`~tfbpshiny.utils.vdb_init.HIDDEN_FILTER_FIELDS`, and classifies
-    columns as ``'condition'`` or ``'upstream'``.  The resulting table replaces
-    ``vdb.get_column_metadata()`` at app startup.
+    One row per filterable metadata column of every dataset, from labretriever's
+    ``get_column_metadata``, with :data:`~tfbpshiny.utils.vdb_init.HIDDEN_FILTER_FIELDS`
+    left out. ``role`` is ``'condition'`` for an experimental-condition column with
+    per-level definitions and ``'upstream'`` for any other filterable column.
+    ``description`` and ``level_definitions`` (a JSON object, level value to
+    definition) label the filter modal's controls.
 
     :param vdb: VirtualDB instance with all dataset views registered.
     :returns: ``CREATE TABLE`` + ``INSERT`` SQL string.
-    :rtype: str
 
     """
     hidden_global = HIDDEN_FILTER_FIELDS.get("*", set())
@@ -373,45 +375,47 @@ def column_metadata_sql(vdb: VirtualDB) -> str:
     for db_name in vdb.get_datasets():
         db_meta = vdb.get_column_metadata(db_name) or {}
         hidden = hidden_global | HIDDEN_FILTER_FIELDS.get(db_name, set())
+        for col, m in db_meta.items():
+            if col in hidden or col == "sample_id":
+                continue
+            if m.role == "experimental_condition" and m.level_definitions is not None:
+                role = "condition"
+            elif (
+                m.role not in ("regulator_identifier", "target_identifier")
+                and m.level_definitions is None
+            ):
+                role = "upstream"
+            else:
+                continue
+            levels = (
+                json.dumps(m.level_definitions, sort_keys=True)
+                if m.level_definitions is not None
+                else None
+            )
+            rows.append(
+                "("
+                + ", ".join(
+                    _lit(v) for v in (db_name, col, role, m.description, levels)
+                )
+                + ")"
+            )
 
-        condition_cols = [
-            col
-            for col, m in db_meta.items()
-            if m.role == "experimental_condition"
-            and m.level_definitions is not None
-            and col not in hidden
-        ]
-        upstream_cols = [
-            col
-            for col, m in db_meta.items()
-            if col not in condition_cols
-            and col not in hidden
-            and col != "sample_id"
-            and m.role not in ("regulator_identifier", "target_identifier")
-            and m.level_definitions is None
-        ]
-        for col in condition_cols:
-            safe_col = col.replace("'", "''")
-            safe_db = db_name.replace("'", "''")
-            rows.append(f"('{safe_db}', '{safe_col}', 'condition')")
-        for col in upstream_cols:
-            safe_col = col.replace("'", "''")
-            safe_db = db_name.replace("'", "''")
-            rows.append(f"('{safe_db}', '{safe_col}', 'upstream')")
-
-    values_clause = (
-        ",\n    ".join(rows) if rows else "('__placeholder__', '__none__', 'condition')"
+    insert = (
+        "INSERT INTO dataset_column_metadata VALUES\n    " + ",\n    ".join(rows) + ";"
+        if rows
+        else ""
     )
     return f"""
 CREATE TABLE dataset_column_metadata (
-    db_name     VARCHAR NOT NULL,
-    column_name VARCHAR NOT NULL,
-    role        VARCHAR NOT NULL,
+    db_name           VARCHAR NOT NULL,
+    column_name       VARCHAR NOT NULL,
+    role              VARCHAR NOT NULL,
+    description       VARCHAR,
+    level_definitions VARCHAR,
     PRIMARY KEY (db_name, column_name)
 );
 
-INSERT INTO dataset_column_metadata VALUES
-    {values_clause};
+{insert}
 """
 
 

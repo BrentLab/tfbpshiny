@@ -207,18 +207,25 @@ CREATE TABLE comparative_dataset_registry (
 ### `dataset_column_metadata`
 
 The metadata columns the Dataset selection page offers as filters, one row per
-`(db_name, column_name)`. `role` is `'condition'` for an experimental-condition
-column with defined levels and `'upstream'` for any other filterable column.
-Columns in `HIDDEN_FILTER_FIELDS` (`utils/vdb_init.py`) are left out.
+`(db_name, column_name)`, from labretriever's column metadata (the DataCards).
+`role` is `'condition'` for an experimental-condition column with defined levels
+and `'upstream'` for any other filterable column. Columns in
+`HIDDEN_FILTER_FIELDS` (`utils/vdb_init.py`) are left out.
 
 ```sql
 CREATE TABLE dataset_column_metadata (
-    db_name     VARCHAR NOT NULL,
-    column_name VARCHAR NOT NULL,
-    role        VARCHAR NOT NULL,   -- 'condition' | 'upstream'
+    db_name           VARCHAR NOT NULL,
+    column_name       VARCHAR NOT NULL,
+    role              VARCHAR NOT NULL,   -- 'condition' | 'upstream'
+    description       VARCHAR,            -- the column's DataCard description
+    level_definitions VARCHAR,            -- JSON object, level -> definition
     PRIMARY KEY (db_name, column_name)
 );
 ```
+
+The filter modal shows a condition column as checkboxes labelled
+"definition (level)", and uses a column's description to label a yes/no
+toggle.
 
 ### `schema_version`
 

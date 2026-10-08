@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import duckdb
 import pandas as pd
+from labretriever import ColumnMeta
 
 from tfbpshiny.datasets import DEFAULT_PRESET, PERTURBATION_DATASET_COLUMNS
 
@@ -184,18 +186,22 @@ class AppDatasets:
     """
     App-level dataset metadata derived at startup.
 
-    Holds the column classification derived from the ``dataset_column_metadata``
+    Holds the column classification and labels from the ``dataset_column_metadata``
     table in the materialized DuckDB.
 
     :param condition_cols: Mapping from db_name to list of column names with
         role ``condition``, excluding hidden fields.
     :param upstream_cols: Mapping from db_name to list of column names with
         role ``upstream``, excluding hidden fields.
+    :param column_meta: ``db_name -> column -> ColumnMeta`` for every filterable
+        column: its description, labretriever role and per-level definitions. The
+        filter modal labels its controls from these.
 
     """
 
     condition_cols: dict[str, list[str]]
     upstream_cols: dict[str, list[str]]
+    column_meta: dict[str, dict[str, ColumnMeta]] = field(default_factory=dict)
 
 
 def promoter_set_labels(conn: duckdb.DuckDBPyConnection) -> dict[str, str]:
@@ -306,12 +312,27 @@ def load_app_datasets(conn: duckdb.DuckDBPyConnection) -> AppDatasets:
     Load AppDatasets from dataset_column_metadata table in the materialized DuckDB.
 
     :param conn: Open read-only DuckDB connection.
-    :returns: AppDatasets with condition_cols and upstream_cols populated.
+    :returns: AppDatasets with condition_cols, upstream_cols and column_meta populated.
 
     """
     df = conn.execute(
-        "SELECT db_name, column_name, role FROM dataset_column_metadata"
+        "SELECT db_name, column_name, role, description, level_definitions"
+        " FROM dataset_column_metadata"
     ).df()
+    column_meta: dict[str, dict[str, ColumnMeta]] = {}
+    for row in df.itertuples(index=False):
+        levels = row.level_definitions
+        column_meta.setdefault(str(row.db_name), {})[str(row.column_name)] = ColumnMeta(
+            description=row.description if pd.notna(row.description) else None,
+            # The materializer only marks a column 'condition' when labretriever
+            # gave it the experimental_condition role and level definitions.
+            role="experimental_condition" if row.role == "condition" else None,
+            level_definitions=(
+                {str(k): str(v) for k, v in json.loads(levels).items()}
+                if isinstance(levels, str)
+                else None
+            ),
+        )
     condition_cols: dict[str, list[str]] = {}
     upstream_cols: dict[str, list[str]] = {}
     for db_name, grp in df.groupby("db_name"):
@@ -320,7 +341,11 @@ def load_app_datasets(conn: duckdb.DuckDBPyConnection) -> AppDatasets:
         if cond and up:
             condition_cols[str(db_name)] = cond
             upstream_cols[str(db_name)] = up
-    return AppDatasets(condition_cols=condition_cols, upstream_cols=upstream_cols)
+    return AppDatasets(
+        condition_cols=condition_cols,
+        upstream_cols=upstream_cols,
+        column_meta=column_meta,
+    )
 
 
 __all__ = [

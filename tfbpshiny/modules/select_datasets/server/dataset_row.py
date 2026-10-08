@@ -12,6 +12,7 @@ from shiny import module, reactive, ui
 from shiny.types import SilentException
 
 from tfbpshiny import components
+from tfbpshiny.modules.select_datasets.modal_state import initial_modal_view
 from tfbpshiny.modules.select_datasets.queries import (
     FIELD_TYPE_OVERRIDES,
     metadata_query,
@@ -99,7 +100,7 @@ def dataset_row_server(
     :param db_name: Dataset identifier.
     :param conn: Read-only DuckDB connection.
     :param dataset_dict: Mapping of ``db_name`` to tag dict from the parent.
-    :param app_datasets: Pre-loaded per-dataset column classification.
+    :param app_datasets: Pre-loaded per-dataset column classification and metadata.
     :param common_fields: Field names shared across all datasets.
     :param toggle_state: Shared reactive dict of ``{db_name: bool}``.
     :param dataset_filters: Shared reactive dict of committed (applied) filters.
@@ -227,18 +228,29 @@ def dataset_row_server(
         except Exception:
             logger.exception("Failed to fetch regulator display labels for %s", db_name)
 
+        # The full metadata stays in ``modal_df`` for the upstream cascade; the modal
+        # opens on the rows and upstream selections the current filters imply.
+        db_meta = app_datasets.column_meta.get(db_name, {})
+        modal_filters, modal_rows = initial_modal_view(
+            df,
+            db_name,
+            existing_filters,
+            app_datasets.upstream_cols.get(db_name, []),
+            db_meta,
+        )
+
         ui.modal_show(
             dataset_filter_modal_ui(
                 db_name,
-                df,
-                existing_filters,
+                modal_rows,
+                modal_filters or None,
                 common_fields,
                 display_name=display_name,
                 common_field_levels=common_field_levels,
                 hidden_fields=HIDDEN_FILTER_FIELDS.get("*", set())
                 | HIDDEN_FILTER_FIELDS.get(db_name, set()),
                 regulator_display_labels=reg_display_labels or None,
-                col_meta=None,
+                col_meta=db_meta or None,
                 ns=modal_ns,
             )
         )

@@ -11,6 +11,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Rebuild required (schema version 4).** `dataset_column_metadata` gains
+  `description` and `level_definitions`, labretriever's column metadata. The
+  Dataset selection filter modal uses them again, as it did when it read from
+  VirtualDB: experimental-condition columns are checkboxes labelled
+  "definition (level)", yes/no toggles carry the column description, the modal
+  opens with other characteristics pre-set to the values the current filters
+  imply, and selecting e.g. a carbon source narrows the condition checkboxes,
+  intersecting every characteristic's selection. Since the move to the
+  materialized database the modal had shown bare selectizes with no labels and
+  the cascade had updated controls that were not there.
 - **Rebuild required (schema version 3).** `dataset_registry` gains a
   `description` column, labretriever's dataset description (the collection
   config's, else the DataCard's). The Dataset selection page shows it again as

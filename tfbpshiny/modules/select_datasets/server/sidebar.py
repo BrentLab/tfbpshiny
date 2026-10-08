@@ -8,6 +8,7 @@ from typing import Any
 
 import duckdb
 import pandas as pd
+from labretriever import ColumnMeta
 from shiny import reactive, render, ui
 from shiny.types import SilentException
 
@@ -22,6 +23,11 @@ from tfbpshiny.modules.select_datasets.export import (
     build_export_archive,
     new_export_run_name,
 )
+from tfbpshiny.modules.select_datasets.modal_state import (
+    condition_choices,
+    is_categorical,
+    upstream_mask,
+)
 from tfbpshiny.modules.select_datasets.queries import (
     FIELD_TYPE_OVERRIDES,
     full_data_query,
@@ -33,33 +39,6 @@ from tfbpshiny.modules.select_datasets.server.dataset_row import (
 )
 from tfbpshiny.modules.select_datasets.ui import _slugify
 from tfbpshiny.utils.vdb_init import DEFAULT_DATASET_FILTERS, AppDatasets
-
-
-def _build_experimental_condition_field_choices(
-    df: pd.DataFrame,
-    mask: pd.Series,
-    condition_cols: list[str],
-) -> dict[str, dict[str, str]]:
-    """
-    Return condition column choices filtered by mask, sorted by descending count.
-
-    :param df: Full metadata DataFrame for the dataset.
-    :param mask: Boolean mask to apply before counting levels.
-    :param condition_cols: Column names with role ``condition``.
-    :returns: Dict mapping condition column name to ``{value: label}`` choices.
-
-    """
-    result: dict[str, dict[str, str]] = {}
-    for cond_col in condition_cols:
-        if cond_col not in df.columns:
-            continue
-        valid = (
-            df.loc[mask, cond_col].dropna().astype(str).value_counts().index.tolist()
-        )
-        # No level definitions in the materialized metadata: raw values serve as
-        # both key and label.
-        result[cond_col] = {v: v for v in valid}
-    return result
 
 
 def select_datasets_sidebar_server(
@@ -240,9 +219,10 @@ def select_datasets_sidebar_server(
             logger=logger,
         )
 
-    # One-directional cascade: upstream categoricals narrow condition choices.
+    # One-directional cascade: upstream selections narrow the condition checkboxes.
     for _db_name, _u_cols in app_datasets.upstream_cols.items():
         _cond_cols = app_datasets.condition_cols.get(_db_name, [])
+        _db_meta = app_datasets.column_meta.get(_db_name, {})
 
         for _upstream_col in _u_cols:
             _u_id = f"filter_{_slugify(_upstream_col)}"
@@ -251,7 +231,9 @@ def select_datasets_sidebar_server(
                 db_name: str,
                 u_id: str,
                 u_col: str,
+                u_cols: list[str],
                 cond_cols: list[str],
+                db_meta: dict[str, ColumnMeta],
             ) -> None:
                 """
                 Register a cascade effect for one upstream column.
@@ -259,7 +241,9 @@ def select_datasets_sidebar_server(
                 :param db_name: Dataset identifier.
                 :param u_id: Shiny input ID of the upstream selectize widget.
                 :param u_col: Column name the upstream selectize controls.
+                :param u_cols: Every upstream column of the dataset.
                 :param cond_cols: Condition column names to update.
+                :param db_meta: The dataset's column metadata, for level labels.
 
                 """
 
@@ -267,13 +251,14 @@ def select_datasets_sidebar_server(
                 @reactive.event(input[u_id], ignore_init=True)
                 def _cascade() -> None:
                     """
-                    Narrow condition selectize choices to levels that co-occur with the
-                    current upstream selection.
+                    Narrow the condition checkboxes to levels that co-occur with every
+                    current upstream selection, keeping checked levels that remain.
 
-                    ``ignore_init=True`` because dynamically-inserted modal inputs send
-                    their initial (empty) value to the server as soon as they're bound,
-                    which would otherwise fire this cascade immediately on modal open —
-                    before the user has touched anything.
+                    The mask intersects all upstream columns, not only the one that
+                    fired, so a column with one value in every row cannot undo the
+                    narrowing of a column that discriminates. ``ignore_init=True``
+                    because modal inputs send their initial value as soon as they are
+                    bound, which would otherwise fire this on modal open.
 
                     :trigger: ``input[u_id]`` — fires when the upstream selectize
                         changes.
@@ -282,44 +267,36 @@ def select_datasets_sidebar_server(
                     if modal_open_for() != db_name:
                         return
                     df = modal_df()
-                    if df is None or u_col not in df.columns:
+                    if (
+                        df is None
+                        or u_col not in df.columns
+                        or not is_categorical(df, db_name, u_col)
+                    ):
                         return
-                    type_override = FIELD_TYPE_OVERRIDES.get(
-                        (db_name, u_col)
-                    ) or FIELD_TYPE_OVERRIDES.get(("", u_col))
-                    override_kind = type_override[0] if type_override else None
-                    col_dtype = df[u_col].dtype
-                    is_categorical = (
-                        override_kind == "categorical"
-                        or col_dtype.name in ("object", "category")
-                    )
-                    if not is_categorical:
-                        return
-                    try:
-                        sel = list(input[u_id]())
-                    except SilentException:
-                        sel = []
-                    mask = (
-                        df[u_col].isin(sel) if sel else pd.Series(True, index=df.index)
-                    )
-                    for (
-                        cond_col,
-                        choices,
-                    ) in _build_experimental_condition_field_choices(
-                        df, mask, cond_cols
+                    selections: dict[str, list[str]] = {}
+                    for col in u_cols:
+                        try:
+                            selections[col] = list(input[f"filter_{_slugify(col)}"]())
+                        except SilentException:
+                            selections[col] = []
+                    mask = upstream_mask(df, db_name, selections)
+                    for cond_col, choices in condition_choices(
+                        df, mask, cond_cols, db_meta
                     ).items():
                         cond_id = f"filter_{_slugify(cond_col)}"
                         try:
                             cur = list(input[cond_id]())
                         except SilentException:
-                            cur = list(choices)
-                        ui.update_selectize(
+                            cur = []
+                        ui.update_checkbox_group(
                             cond_id,
                             choices=choices,
                             selected=[v for v in cur if v in choices],
                         )
 
-            _register_upstream_cascade(_db_name, _u_id, _upstream_col, _cond_cols)
+            _register_upstream_cascade(
+                _db_name, _u_id, _upstream_col, _u_cols, _cond_cols, _db_meta
+            )
 
     @reactive.effect
     @reactive.event(input.modal_reset_filters)

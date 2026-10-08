@@ -13,6 +13,13 @@ copies the setting to every dataset with that characteristic, and dataset-specif
 characteristics on the right. "Queue Filters" stages the modal's settings; "Reset"
 clears them.
 
+Experimental-condition columns with defined levels appear as checkboxes, each
+labelled with the level's definition. Selecting values of another characteristic,
+such as carbon source, narrows the condition checkboxes to the conditions that occur
+with it. When the dataset already has filters, the modal opens with those other
+characteristics set to the values that occur with the filters, and offers only the
+conditions that match.
+
 Edits are staged, not applied. While any switch or filter differs from what is applied,
 the sidebar shows "Dataset selection has changed. Click Apply Changes to update." and
 the **Apply Changes** button is highlighted; clicking it commits every staged change at
