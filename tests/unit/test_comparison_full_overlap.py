@@ -31,7 +31,9 @@ def _conn() -> duckdb.DuckDBPyConnection:
         " perturbation_source_sample VARCHAR, regulator_locus_tag VARCHAR,"
         " top_n INTEGER, effect_threshold DOUBLE, pvalue_threshold DOUBLE,"
         " n INTEGER, n_responsive INTEGER, responsive_ratio DOUBLE,"
-        " n_intersecting_targets INTEGER)"
+        " n_intersecting_targets INTEGER, binding_db VARCHAR,"
+        " binding_sample_id VARCHAR, perturbation_db VARCHAR,"
+        " perturbation_sample_id VARCHAR)"
     )
     # Every pool is huge (dense peak data), so the pool-size test would keep them all.
     rows = [
@@ -42,7 +44,7 @@ def _conn() -> duckdb.DuckDBPyConnection:
     ]
     conn.executemany(
         "INSERT INTO topn_results VALUES ('R;cb;s', 'R;cp;s', ?, 25, 0.0, 0.05, ?, 1,"
-        " 0.5, 4971)",
+        " 0.5, 4971, 'b', 's', 'p', 's')",
         rows,
     )
     return conn

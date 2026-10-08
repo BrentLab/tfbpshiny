@@ -125,6 +125,8 @@ def _staged(
     conn.execute(f"CREATE OR REPLACE TABLE _mat_pert AS {p_sql}", p_params)
 
     sql, params = topn_pair_select_sql_v2(
+        binding_db="fake_binding",
+        perturbation_db="kemmeren",
         binding_table="_mat_binding",
         binding_hf_repo=B_REPO,
         binding_hf_config=B_CFG,
@@ -325,6 +327,8 @@ def test_no_pvalue_column_thresholds_on_effect_only() -> None:
     p_sql, _ = perturbation_stage_sql("hackett")
     conn.execute(f"CREATE OR REPLACE TABLE _mat_pert AS {p_sql}")
     sql2, params2 = topn_pair_select_sql_v2(
+        binding_db="fake_binding",
+        perturbation_db="hackett",
         binding_table="_mat_binding",
         binding_hf_repo=B_REPO,
         binding_hf_config=B_CFG,
@@ -377,6 +381,8 @@ def test_ascending_rank_column_matches() -> None:
     p_sql, _ = perturbation_stage_sql("kemmeren")
     conn.execute(f"CREATE OR REPLACE TABLE _mat_pert AS {p_sql}")
     sql2, params2 = topn_pair_select_sql_v2(
+        binding_db="fake_binding",
+        perturbation_db="kemmeren",
         binding_table="_mat_binding",
         binding_hf_repo=B_REPO,
         binding_hf_config=B_CFG,
@@ -397,6 +403,8 @@ def test_empty_variant_lists_are_rejected() -> None:
     for cutoffs, pairs in (((), ((0.0, 0.05),)), ((25,), ())):
         with pytest.raises(ValueError):
             topn_pair_select_sql_v2(
+                binding_db="fake_binding",
+                perturbation_db="kemmeren",
                 binding_table="b",
                 binding_hf_repo=B_REPO,
                 binding_hf_config=B_CFG,

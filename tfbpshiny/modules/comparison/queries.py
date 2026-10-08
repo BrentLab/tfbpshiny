@@ -292,59 +292,31 @@ def fetch_topn_results(
         effect_threshold, pvalue_threshold = preset.get(
             p_db, preset.get("*", (0.0, 0.05))
         )
-        try:
-            row_b = (
-                conn.execute(
-                    "SELECT hf_repo, hf_config FROM dataset_registry WHERE db_name = ?",
-                    [b_db],
-                )
-                .df()
-                .iloc[0]
-            )
-            row_p = (
-                conn.execute(
-                    "SELECT hf_repo, hf_config FROM dataset_registry WHERE db_name = ?",
-                    [p_db],
-                )
-                .df()
-                .iloc[0]
-            )
-        except (IndexError, duckdb.Error):
-            logger.warning(
-                "fetch_topn_results: %s or %s is not in dataset_registry", b_db, p_db
-            )
-            continue
-        b_prefix = f"{row_b['hf_repo']};{row_b['hf_config']};"
-        p_prefix = f"{row_p['hf_repo']};{row_p['hf_config']};"
-
         b_clause, b_params = sample_filter_clause(
-            conn, b_db, filters.get(b_db), "split_part(binding_source_sample, ';', 3)"
+            conn, b_db, filters.get(b_db), "binding_sample_id"
         )
         p_clause, p_params = sample_filter_clause(
-            conn,
-            p_db,
-            filters.get(p_db),
-            "split_part(perturbation_source_sample, ';', 3)",
+            conn, p_db, filters.get(p_db), "perturbation_sample_id"
         )
         floor_clause = "AND n >= ?" if require_full_overlap else ""
         sql = f"""
         SELECT
             regulator_locus_tag,
-            split_part(binding_source_sample, ';', 3) AS binding_sample_id,
-            split_part(perturbation_source_sample, ';', 3) AS perturbation_sample_id,
+            binding_sample_id,
+            perturbation_sample_id,
             n, n_responsive, responsive_ratio, n_intersecting_targets
         FROM topn_results
         WHERE top_n = ?
           AND effect_threshold = ?
           AND pvalue_threshold = ?
-          AND binding_source_sample LIKE ?
-          AND perturbation_source_sample LIKE ?
+          AND binding_db = ?
+          AND perturbation_db = ?
           {b_clause}
           {p_clause}
           {floor_clause}
         """
         params: list[Any] = (
-            [top_n, effect_threshold, pvalue_threshold, b_prefix + "%", p_prefix + "%"]
+            [top_n, effect_threshold, pvalue_threshold, b_db, p_db]
             + b_params
             + p_params
             + ([top_n] if require_full_overlap else [])

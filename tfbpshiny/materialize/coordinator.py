@@ -13,7 +13,9 @@ from __future__ import annotations
 import argparse
 import itertools
 import logging
+import subprocess
 import time
+from pathlib import Path
 from typing import Any
 
 import duckdb
@@ -24,6 +26,7 @@ from tfbpshiny.datasets import (
     BINDING_DATASET_COLUMNS,
     PERTURBATION_CORRELATION_COLUMNS,
     PERTURBATION_DATASET_COLUMNS,
+    SCHEMA_VERSION,
 )
 from tfbpshiny.materialize.comparison.agreement import (
     AGREEMENT_EXCLUDED,
@@ -82,6 +85,7 @@ from tfbpshiny.materialize.coordinating.sql import (
     dataset_registry_sql,
     promoter_sets_sql,
     sample_regulator_sql,
+    schema_version_sql,
 )
 from tfbpshiny.materialize.metadata.sql import (
     meta_select_sql,
@@ -172,6 +176,22 @@ def vdb_to_table(
         time.monotonic() - t0,
     )
     return row_count
+
+
+def _git_sha() -> str | None:
+    """The commit the materializer ran from, or ``None`` outside a git checkout."""
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).resolve().parent,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() or None
 
 
 def _stage_table(
@@ -347,6 +367,8 @@ def stage_topn(
                             threshold_pairs=pairs,
                             has_pvalue=bool(PERTURBATION_DATASET_COLUMNS[p_db][1]),
                             regulator_subset=batch,
+                            binding_db=b_db,
+                            perturbation_db=p_db,
                             param_prefix=f"bp{batch_idx}",
                             round_decimals=round_decimals,
                         )
@@ -495,6 +517,8 @@ def stage_method_promoter_topn(
                             threshold_pairs=pairs,
                             has_pvalue=bool(PERTURBATION_DATASET_COLUMNS[p_db][1]),
                             regulator_subset=batch,
+                            binding_db=b_db,
+                            perturbation_db=p_db,
                             param_prefix=f"mpm{batch_idx}",
                             round_decimals=round_decimals,
                         )
@@ -569,6 +593,9 @@ def materialize(
 
         col_meta_sql = column_metadata_sql(vdb)
         exec_static(conn, col_meta_sql, "dataset_column_metadata")
+        exec_static(
+            conn, schema_version_sql(SCHEMA_VERSION, _git_sha()), "schema_version"
+        )
 
         # ------------------------------------------------------------------
         # 2. Metadata layer

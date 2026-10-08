@@ -108,6 +108,8 @@ def test_correlation_sql_can_store_raw_values() -> None:
 def test_responsive_ratio_is_rounded() -> None:
     """The other computed float in the database."""
     sql, _ = topn_pair_select_sql_v2(
+        binding_db="b",
+        perturbation_db="p",
         binding_table="b",
         binding_hf_repo="R",
         binding_hf_config="c",

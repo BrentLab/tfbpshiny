@@ -122,7 +122,22 @@ GENE_UNIVERSE = 6000
 #: Empirical DTO p-value below which a regulator counts as DTO-significant.
 DTO_PVALUE_THRESHOLD = 0.01
 
+# ---------------------------------------------------------------------------
+# Database schema
+# ---------------------------------------------------------------------------
+
+#: Version of the materialized database's table layout. ``tfbpshiny materialize``
+#: stamps it into the ``schema_version`` table and the app compares the stamp with this
+#: constant at startup (``utils.schema_check``); a database built at a different version
+#: is reported on every page and the figures refuse to draw from it. Bump it whenever a
+#: table the app reads changes shape.
+#:
+#: 1 -- first stamped layout: plain ``*_db`` / ``*_sample_id`` identity columns beside
+#:      the composite ``source_sample`` keys on every computed table.
+SCHEMA_VERSION = 1
+
 __all__ = [
+    "SCHEMA_VERSION",
     "BINDING_DATASET_COLUMNS",
     "PERTURBATION_DATASET_COLUMNS",
     "PERTURBATION_CORRELATION_COLUMNS",

@@ -154,6 +154,8 @@ def authors_bound_select_sql(
         "SUM(pert.is_responsive)::DOUBLE / COUNT(*)", round_decimals
     )
     rank_col_label = config.rank_col_label.replace("'", "''")
+    b_db_safe = config.binding_view.replace("'", "''")
+    p_db_safe = perturbation_view.replace("'", "''")
 
     sql = f"""
     WITH binding_all AS (
@@ -222,7 +224,11 @@ def authors_bound_select_sql(
         s.n,
         s.n_responsive,
         s.responsive_ratio,
-        COALESCE(ic.n_intersecting_targets, 0)::INTEGER AS n_intersecting_targets
+        COALESCE(ic.n_intersecting_targets, 0)::INTEGER AS n_intersecting_targets,
+        '{b_db_safe}'                               AS binding_db,
+        s.binding_sample_id,
+        '{p_db_safe}'                               AS perturbation_db,
+        s.perturbation_sample_id
     FROM summary s
     LEFT JOIN intersecting_counts ic
         ON  s.binding_sample_id      = ic.binding_sample_id

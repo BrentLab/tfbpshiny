@@ -769,57 +769,6 @@ def test_venn_without_filename_has_no_download_link() -> None:
     assert "<img" in html
 
 
-# --- stale-schema guard ----------------------------------------------------------
-
-
-def _fake_topn_db(with_criteria: bool):
-    """Build an in-memory `topn_results` with or without the retired column."""
-    import duckdb
-
-    conn = duckdb.connect()
-    extra = ", criteria VARCHAR" if with_criteria else ""
-    conn.execute(f"CREATE TABLE topn_results (top_n INTEGER{extra})")
-    return conn
-
-
-def test_stale_schema_is_reported() -> None:
-    """
-    A database predating the criteria removal must announce itself.
-
-    Nothing filters `criteria` any more, so its rows are silently averaged in. There
-    is no traceback and no empty table -- only a number that reads low.
-
-    """
-    import logging
-
-    from tfbpshiny.utils.schema_check import warn_if_stale_topn_schema
-
-    logger = logging.getLogger("test_stale_schema")
-    records: list[str] = []
-    handler = logging.Handler()
-    handler.emit = lambda r: records.append(r.getMessage())  # type: ignore
-    logger.addHandler(handler)
-    try:
-        assert warn_if_stale_topn_schema(_fake_topn_db(True), logger) is True
-        assert any("criteria" in m for m in records)
-        records.clear()
-        assert warn_if_stale_topn_schema(_fake_topn_db(False), logger) is False
-        assert records == []
-    finally:
-        logger.removeHandler(handler)
-
-
-def test_stale_check_survives_a_missing_table() -> None:
-    """A database with no `topn_results` is a different failure, reported elsewhere."""
-    import logging
-
-    import duckdb
-
-    from tfbpshiny.utils.schema_check import warn_if_stale_topn_schema
-
-    assert warn_if_stale_topn_schema(duckdb.connect(), logging.getLogger("t")) is False
-
-
 # --- figure 6 dataset selection --------------------------------------------------
 
 
@@ -855,7 +804,8 @@ def _agreement_db():
         "CREATE TABLE topn_agreement (source_sample_a VARCHAR,"
         " source_sample_b VARCHAR, comparison_type VARCHAR,"
         " regulator_locus_tag VARCHAR, top_n INTEGER, n_a INTEGER, n_b INTEGER,"
-        " n_intersect INTEGER)"
+        " n_intersect INTEGER, db_a VARCHAR, sample_a VARCHAR, db_b VARCHAR,"
+        " sample_b VARCHAR)"
     )
     return conn
 
@@ -912,7 +862,8 @@ def test_expectation_uses_observed_set_sizes() -> None:
     # 30 peak targets vs 500 enrichment targets, overlapping in 20.
     conn.execute(
         "INSERT INTO topn_agreement VALUES"
-        " ('R;b5;1','R;p5;1','binding','REG1',500,500,30,20)"
+        " ('R;b5;1','R;p5;1','binding','REG1',500,500,30,20,"
+        " 'rossi_500bp','1','rossi_peaks_500bp','1')"
     )
     df = fetch_agreement(conn, "binding", ["rossi_500bp", "rossi_peaks_500bp"])
     assert len(df) == 1
@@ -1600,14 +1551,15 @@ def _target_sets_conn() -> duckdb.DuckDBPyConnection:
     )
     conn.execute(
         "CREATE TABLE topn_target_sets (source_sample VARCHAR, comparison_type"
-        " VARCHAR, regulator_locus_tag VARCHAR, target_locus_tag VARCHAR, rnk INTEGER)"
+        " VARCHAR, regulator_locus_tag VARCHAR, target_locus_tag VARCHAR, rnk INTEGER,"
+        " db_name VARCHAR, sample_id VARCHAR)"
     )
 
     def put(db: str, cfg: str, reg: str, targets: list[str]) -> None:
         for i, t in enumerate(targets, start=1):
             conn.execute(
-                "INSERT INTO topn_target_sets VALUES (?, 'binding', ?, ?, ?)",
-                [f"R;{cfg};s1", reg, t, i],
+                "INSERT INTO topn_target_sets VALUES (?, 'binding', ?, ?, ?, ?, 's1')",
+                [f"R;{cfg};s1", reg, t, i, db],
             )
 
     put("a", "ca", "R1", ["T1", "T2", "T3", "T4"])
@@ -1643,11 +1595,12 @@ def test_fetch_shared_targets_pair_labels_match_figure_6() -> None:
     conn.execute(
         "CREATE TABLE topn_agreement (source_sample_a VARCHAR, source_sample_b"
         " VARCHAR, comparison_type VARCHAR, regulator_locus_tag VARCHAR, top_n"
-        " INTEGER, n_a INTEGER, n_b INTEGER, n_intersect INTEGER)"
+        " INTEGER, n_a INTEGER, n_b INTEGER, n_intersect INTEGER, db_a VARCHAR,"
+        " sample_a VARCHAR, db_b VARCHAR, sample_b VARCHAR)"
     )
     conn.execute(
         "INSERT INTO topn_agreement VALUES ('R;ca;s1', 'R;cb;s1', 'binding', 'R1',"
-        " 10, 10, 10, 2)"
+        " 10, 10, 10, 2, 'a', 's1', 'b', 's1')"
     )
     shared = fetch_shared_targets(conn, "binding", ["a", "b"], 4)
     assert set(shared["pair"]) == set(

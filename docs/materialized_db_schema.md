@@ -208,6 +208,20 @@ CREATE TABLE comparative_dataset_registry (
 
 ---
 
+### `schema_version`
+
+One row stamped by every build. The app compares `version` with
+`tfbpshiny.datasets.SCHEMA_VERSION` at startup; a database built at another version is
+reported on every page and the figures refuse to draw from it.
+
+```sql
+CREATE TABLE schema_version (
+    version   INTEGER   NOT NULL,   -- tfbpshiny.datasets.SCHEMA_VERSION at build time
+    built_at  TIMESTAMP NOT NULL,
+    git_sha   VARCHAR               -- commit the materializer ran from; NULL outside git
+);
+```
+
 ## Metadata Layer
 
 Each registered dataset's VirtualDB `{db_name}_meta` view is materialized
@@ -390,6 +404,9 @@ CREATE TABLE topn_target_sets (
     regulator_locus_tag VARCHAR  NOT NULL,
     target_locus_tag    VARCHAR  NOT NULL,
     rnk                 INTEGER  NOT NULL,   -- 1 = best; kept to 100
+    -- plain identity columns beside the composite key, for readers
+    db_name             VARCHAR  NOT NULL,   -- dataset db_name
+    sample_id           VARCHAR  NOT NULL,
     PRIMARY KEY (source_sample, regulator_locus_tag, target_locus_tag)
 );
 ```
@@ -415,6 +432,11 @@ CREATE TABLE topn_agreement (
     n_a                 INTEGER  NOT NULL,
     n_b                 INTEGER  NOT NULL,
     n_intersect         INTEGER  NOT NULL,
+    -- plain identity columns beside the composite key, for readers
+    db_a                VARCHAR  NOT NULL,
+    sample_a            VARCHAR  NOT NULL,
+    db_b                VARCHAR  NOT NULL,
+    sample_b            VARCHAR  NOT NULL,
     PRIMARY KEY (source_sample_a, source_sample_b, regulator_locus_tag, top_n)
 );
 ```
@@ -515,6 +537,11 @@ CREATE TABLE topn_results (
     n_intersecting_targets      INTEGER  NOT NULL,   -- distinct targets shared by this
                                                       -- sample pair for this regulator,
                                                       -- uncapped by top_n
+    -- plain identity columns beside the composite key, for readers
+    binding_db                  VARCHAR  NOT NULL,
+    binding_sample_id           VARCHAR  NOT NULL,
+    perturbation_db             VARCHAR  NOT NULL,
+    perturbation_sample_id      VARCHAR  NOT NULL,
     PRIMARY KEY (
         binding_source_sample,
         perturbation_source_sample,
@@ -604,6 +631,11 @@ CREATE TABLE correlations (
     score_col_b          VARCHAR  NOT NULL,  -- raw column used from sample_b's dataset
     correlation          DOUBLE   NOT NULL,   -- rounded, see --float-decimals
     n_shared_targets     INTEGER  NOT NULL,  -- targets used; always >= 3
+    -- plain identity columns beside the composite key, for readers
+    db_a                 VARCHAR  NOT NULL,
+    sample_a             VARCHAR  NOT NULL,
+    db_b                 VARCHAR  NOT NULL,
+    sample_b             VARCHAR  NOT NULL,
     PRIMARY KEY (
         source_sample_a, source_sample_b,
         regulator_locus_tag,

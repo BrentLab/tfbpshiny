@@ -11,7 +11,7 @@ import pandas as pd
 from shiny import module, reactive, render, ui
 
 from tfbpshiny.components import empty_state, scroll_row, sidebar_label, sidebar_text
-from tfbpshiny.datasets import DEFAULT_PRESET, DEFAULT_TOP_N
+from tfbpshiny.datasets import DEFAULT_PRESET, DEFAULT_TOP_N, SCHEMA_VERSION
 from tfbpshiny.materialize.comparison.method_promoter_model import (
     pair_methods_on_regulators,
 )
@@ -42,7 +42,6 @@ from tfbpshiny.modules.figures.queries import (
     METHOD_LEVELS,
     PR_ORDER,
     PROMOTER_SET_LEVELS,
-    TOP_N_ALL,
     agreement_dataset_choices,
     dataset_labels,
     fetch_agreement,
@@ -54,11 +53,9 @@ from tfbpshiny.modules.figures.queries import (
     fetch_shared_targets,
     fetch_target_sets,
     fetch_topn_percent_responsive,
-    has_top_n,
     regulator_intersection,
     resolve_promoter_variant,
     sort_regulators_by_symbol,
-    table_exists,
     weighted_agreement,
 )
 from tfbpshiny.utils.figure import (
@@ -71,6 +68,7 @@ from tfbpshiny.utils.figure import (
 )
 from tfbpshiny.utils.inputs import read_input
 from tfbpshiny.utils.perf import perf, reset_render_counts
+from tfbpshiny.utils.schema_check import schema_mismatch_message
 from tfbpshiny.utils.vdb_init import (
     binding_method_labels,
     get_regulator_display_name,
@@ -89,6 +87,7 @@ def figures_workspace_server(
     dataset_filters: reactive.Value[dict[str, Any]],
     conn: duckdb.DuckDBPyConnection,
     logger: Logger,
+    db_schema_version: int | None = SCHEMA_VERSION,
 ) -> None:
     """
     Render the publication figures.
@@ -102,6 +101,9 @@ def figures_workspace_server(
     :param dataset_filters: Reactive per-dataset sample filter specs.
     :param conn: Read-only DuckDB connection to the materialized database.
     :param logger: Application logger.
+    :param db_schema_version: The database's stamped schema version (see
+        ``utils.schema_check``); every figure shows a rebuild notice unless it equals
+        :data:`tfbpshiny.datasets.SCHEMA_VERSION`.
 
     """
     session.on_flush(lambda: reset_render_counts(session.id))
@@ -125,39 +127,22 @@ def figures_workspace_server(
             _reg_labels[tag] = tag
 
     # Availability of the DTO tables decides whether figures 4 and 5 can render.
-    _dto_available = (
-        conn.execute(
-            "SELECT count(*) FROM information_schema.tables"
-            " WHERE table_name IN ('dto', 'sample_regulator')"
-        ).fetchone()[0]
-        == 2
-    )
-
-    # The whole-bound-set rows, the agreement table and the target-set table only
-    # exist in databases built by a materializer that knew about them.
-    _authors_bound_available = has_top_n(conn, TOP_N_ALL)
-    _agreement_available = table_exists(conn, "topn_agreement")
-    _target_sets_available = table_exists(conn, "topn_target_sets")
-    for name, ok in (
-        ("authors'-binding-threshold rows", _authors_bound_available),
-        ("topn_agreement", _agreement_available),
-        ("topn_target_sets", _target_sets_available),
-    ):
-        if not ok:
-            logger.warning(
-                "figures: %s missing from the database; the figures that need it"
-                " will explain themselves rather than render",
-                name,
-            )
+    # One stamp decides every figure. A database built by another materializer may
+    # lack whole tables or columns the read-side SQL names, so nothing is drawn from
+    # it; app.py shows the banner and has logged the mismatch once.
+    _schema_current = db_schema_version == SCHEMA_VERSION
+    _dto_available = _schema_current
+    _authors_bound_available = _schema_current
+    _agreement_available = _schema_current
+    _target_sets_available = _schema_current
 
     def _needs_rebuild(what: str) -> ui.Tag:
-        """Empty state for a figure whose data predates the current materializer."""
+        """Empty state for a figure the database's schema version cannot support."""
         return empty_state(
             ui.p(
-                ui.strong(f"{what} is not in this database."),
-                " Rebuild with ",
-                ui.tags.code("tfbpshiny materialize --preset Stringent"),
-                " to enable this figure.",
+                ui.strong(f"{what} cannot be read from this database."),
+                " ",
+                schema_mismatch_message(db_schema_version) or "",
             ),
         )
 
@@ -442,14 +427,7 @@ def figures_workspace_server(
     # ------------------------------------------------------------------
 
     def _dto_missing() -> ui.Tag:
-        return empty_state(
-            ui.p(
-                ui.strong("DTO results are not in this database."),
-                " Rebuild with ",
-                ui.tags.code("tfbpshiny materialize"),
-                " to draw this figure.",
-            ),
-        )
+        return _needs_rebuild("DTO results")
 
     @render.ui
     def fig_dto_bars() -> ui.Tag:

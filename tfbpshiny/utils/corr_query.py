@@ -160,58 +160,29 @@ def fetch_corr_pairs(
     result: dict[tuple[str, str], pd.DataFrame] = {}
     empty = pd.DataFrame(columns=["regulator_locus_tag", "correlation"])
     for db_a, db_b in pairs:
-        try:
-            row_a = (
-                conn.execute(
-                    "SELECT hf_repo, hf_config FROM dataset_registry WHERE db_name = ?",
-                    [db_a],
-                )
-                .df()
-                .iloc[0]
-            )
-            row_b = (
-                conn.execute(
-                    "SELECT hf_repo, hf_config FROM dataset_registry WHERE db_name = ?",
-                    [db_b],
-                )
-                .df()
-                .iloc[0]
-            )
-        except (IndexError, Exception):
-            result[(db_a, db_b)] = empty.copy()
-            continue
-        prefix_a = f"{row_a['hf_repo']};{row_a['hf_config']};"
-        prefix_b = f"{row_b['hf_repo']};{row_b['hf_config']};"
-
-        ids_a = get_filtered_sample_ids(conn, db_a, filters.get(db_a))
-        ids_b = get_filtered_sample_ids(conn, db_b, filters.get(db_b))
-
-        if not ids_a or not ids_b:
-            result[(db_a, db_b)] = empty.copy()
-            continue
-
-        phs_a = ", ".join(["?"] * len(ids_a))
-        phs_b = ", ".join(["?"] * len(ids_b))
+        a_clause, a_params = sample_filter_clause(
+            conn, db_a, filters.get(db_a), "sample_a"
+        )
+        b_clause, b_params = sample_filter_clause(
+            conn, db_b, filters.get(db_b), "sample_b"
+        )
         sql = f"""
         SELECT regulator_locus_tag, AVG(correlation) AS correlation
         FROM correlations
         WHERE comparison_type = ?
           AND method = ?
           AND score_type = ?
-          AND source_sample_a LIKE ?
-          AND source_sample_b LIKE ?
-          AND split_part(source_sample_a, ';', 3) IN ({phs_a})
-          AND split_part(source_sample_b, ';', 3) IN ({phs_b})
+          AND db_a = ?
+          AND db_b = ?{a_clause}{b_clause}
         GROUP BY regulator_locus_tag
         """
         params: list[Any] = (
-            [comparison_type, method, score_type, prefix_a + "%", prefix_b + "%"]
-            + ids_a
-            + ids_b
+            [comparison_type, method, score_type, db_a, db_b] + a_params + b_params
         )
         try:
             df = conn.execute(sql, params).df()
-        except Exception:
+        except duckdb.Error:
+            logger.exception("fetch_corr_pairs: %s x %s", db_a, db_b)
             df = empty.copy()
         result[(db_a, db_b)] = df
     return result

@@ -75,6 +75,8 @@ def _staged(
     p_sql, p_params = perturbation_stage_sql("kemmeren")
     conn.execute(f"CREATE OR REPLACE TABLE _p AS {p_sql}", p_params)
     sql, params = topn_pair_select_sql_v2(
+        binding_db="fake_binding",
+        perturbation_db="kemmeren",
         binding_table="_b",
         binding_hf_repo=B[0],
         binding_hf_config=B[1],

@@ -47,6 +47,10 @@ CREATE TABLE correlations (
     score_col_b          VARCHAR  NOT NULL,
     correlation          DOUBLE   NOT NULL,
     n_shared_targets     INTEGER  NOT NULL,
+    db_a                 VARCHAR  NOT NULL,
+    sample_a             VARCHAR  NOT NULL,
+    db_b                 VARCHAR  NOT NULL,
+    sample_b             VARCHAR  NOT NULL,
     PRIMARY KEY (
         source_sample_a, source_sample_b,
         regulator_locus_tag,
@@ -96,6 +100,13 @@ def _score_type_block(
     """
     score_col_a_safe = score_col_a_label.replace("'", "''")
     score_col_b_safe = score_col_b_label.replace("'", "''")
+    db_a_safe = view_a.replace("'", "''")
+    db_b_safe = view_b.replace("'", "''")
+    identity_cols = f"""
+    '{db_a_safe}'              AS db_a,
+    id_a                       AS sample_a,
+    '{db_b_safe}'              AS db_b,
+    id_b                       AS sample_b"""
 
     def _order(expr: str) -> str:
         return f"{expr} ASC" if order_dir == "ASC" else f"ABS({expr}) DESC"
@@ -168,7 +179,7 @@ def _score_type_block(
     '{score_col_a_safe}'       AS score_col_a,
     '{score_col_b_safe}'       AS score_col_b,
     correlation,
-    n_shared_targets::INTEGER
+    n_shared_targets::INTEGER,{identity_cols}
   FROM agg
   WHERE correlation IS NOT NULL AND NOT isnan(correlation)
 )
@@ -219,7 +230,7 @@ def _score_type_block(
     '{score_col_a_safe}'       AS score_col_a,
     '{score_col_b_safe}'       AS score_col_b,
     correlation,
-    n_shared_targets::INTEGER
+    n_shared_targets::INTEGER,{identity_cols}
   FROM agg
   WHERE correlation IS NOT NULL
 )

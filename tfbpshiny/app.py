@@ -64,9 +64,12 @@ app_ui = ui.page_navbar(
         "Figures",
     ],
     navbar_options=ui.navbar_options(bg="#722F37", theme="dark"),
-    header=ui.tags.head(
-        ui.tags.script(src="plotly-3.5.0.min.js"),
-        ui.include_css((Path(__file__).parent / "app.css").resolve()),
+    header=ui.TagList(
+        ui.tags.head(
+            ui.tags.script(src="plotly-3.5.0.min.js"),
+            ui.include_css((Path(__file__).parent / "app.css").resolve()),
+        ),
+        ui.output_ui("schema_banner"),
     ),
 )
 
@@ -74,13 +77,30 @@ app_ui = ui.page_navbar(
 def app_server(input: Any, output: Any, session: Any) -> None:
     """Create shared reactive state and call all module servers."""
     import duckdb
+    from shiny import render
 
-    from tfbpshiny.utils.schema_check import warn_if_stale_topn_schema
+    from tfbpshiny.utils.schema_check import (
+        check_schema_version,
+        schema_mismatch_message,
+    )
     from tfbpshiny.utils.vdb_init import load_app_datasets
 
     conn: duckdb.DuckDBPyConnection = duckdb.connect(_db_path, read_only=True)
-    warn_if_stale_topn_schema(conn, logger)
+    db_schema_version = check_schema_version(conn, logger)
     app_datasets = load_app_datasets(conn)
+
+    @render.ui
+    def schema_banner() -> ui.Tag | None:
+        """One banner above every page when the database predates (or postdates) the
+        app's schema version; nothing otherwise."""
+        message = schema_mismatch_message(db_schema_version)
+        if message is None:
+            return None
+        return ui.div(
+            {"class": "alert alert-warning mb-0 rounded-0", "role": "alert"},
+            ui.strong("Database schema mismatch. "),
+            message,
+        )
 
     # Navigate to the target tab when a home-page card title link is clicked.
     for _link_id, _target in HOME_CARD_NAV_TARGETS.items():
@@ -146,6 +166,7 @@ def app_server(input: Any, output: Any, session: Any) -> None:
         dataset_filters=analysis_filters,
         conn=conn,
         logger=logger,
+        db_schema_version=db_schema_version,
     )
 
 

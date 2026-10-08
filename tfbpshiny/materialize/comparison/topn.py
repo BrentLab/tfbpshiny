@@ -308,6 +308,10 @@ CREATE TABLE topn_results (
     n_responsive                INTEGER  NOT NULL,
     responsive_ratio            DOUBLE   NOT NULL,
     n_intersecting_targets      INTEGER  NOT NULL,
+    binding_db                  VARCHAR  NOT NULL,
+    binding_sample_id           VARCHAR  NOT NULL,
+    perturbation_db             VARCHAR  NOT NULL,
+    perturbation_sample_id      VARCHAR  NOT NULL,
     PRIMARY KEY (
         binding_source_sample,
         perturbation_source_sample,
@@ -526,6 +530,8 @@ def topn_pair_select_sql_v2(
     top_n_values: tuple[int, ...],
     threshold_pairs: tuple[tuple[float, float], ...],
     has_pvalue: bool,
+    binding_db: str,
+    perturbation_db: str,
     regulator_subset: tuple[str, ...] = (),
     param_prefix: str = "p",
     round_decimals: int = DEFAULT_FLOAT_DECIMALS,
@@ -554,6 +560,9 @@ def topn_pair_select_sql_v2(
     :param top_n_values: Cutoffs to emit; ``TOP_N_ALL`` means "no cutoff".
     :param threshold_pairs: ``(effect, pvalue)`` pairs to emit.
     :param has_pvalue: Whether the perturbation dataset has a usable p-value column.
+    :param binding_db: The binding dataset's ``db_name``, written to every row so
+        readers can select by name instead of by ``source_sample`` prefix.
+    :param perturbation_db: The perturbation dataset's ``db_name``, likewise.
     :param regulator_subset: If non-empty, restrict to these regulators (for batching).
     :param param_prefix: Namespace prefix for SQL parameters.
     :param round_decimals: Decimal places kept for ``responsive_ratio``.
@@ -594,6 +603,8 @@ def topn_pair_select_sql_v2(
 
     b_prefix = f"{binding_hf_repo};{binding_hf_config};".replace("'", "''")
     p_prefix = f"{pert_hf_repo};{pert_hf_config};".replace("'", "''")
+    b_db_safe = binding_db.replace("'", "''")
+    p_db_safe = perturbation_db.replace("'", "''")
     rank_col_safe = rank_col.replace("'", "''")
     rank_asc_sql = "TRUE" if rank_asc else "FALSE"
     ratio_expr = round_expr(
@@ -693,7 +704,11 @@ def topn_pair_select_sql_v2(
         s.n,
         s.n_responsive,
         s.responsive_ratio,
-        COALESCE(ic.n_intersecting_targets, 0)::INTEGER AS n_intersecting_targets
+        COALESCE(ic.n_intersecting_targets, 0)::INTEGER AS n_intersecting_targets,
+        '{b_db_safe}'                               AS binding_db,
+        s.binding_sample_id,
+        '{p_db_safe}'                               AS perturbation_db,
+        s.perturbation_sample_id
     FROM summary s
     LEFT JOIN intersecting_counts ic
         ON  s.binding_sample_id      = ic.binding_sample_id

@@ -280,40 +280,25 @@ def fetch_rank_response(
         return pd.DataFrame()
     filters = filters or {}
     p_clause, p_params = sample_filter_clause(
-        conn,
-        pr_db,
-        filters.get(pr_db),
-        "split_part(t.perturbation_source_sample, ';', 3)",
+        conn, pr_db, filters.get(pr_db), "t.perturbation_sample_id"
     )
     s_clause, s_params = scoring_clause(pr_db, preset_name)
     b_clause, b_params = per_dataset_sample_clause(
-        conn,
-        binding_dbs,
-        filters,
-        "b.db_name",
-        "split_part(t.binding_source_sample, ';', 3)",
+        conn, binding_dbs, filters, "t.binding_db", "t.binding_sample_id"
     )
     b_ph = ", ".join(["?"] * len(binding_dbs))
     r_ph = ", ".join(["?"] * len(regulators))
     sql = f"""
-    WITH b AS (
-        SELECT db_name, hf_repo || ';' || hf_config || ';' AS prefix
-        FROM dataset_registry WHERE db_name IN ({b_ph})
-    ),
-    p AS (
-        SELECT hf_repo || ';' || hf_config || ';' AS prefix
-        FROM dataset_registry WHERE db_name = ?
-    )
-    SELECT b.db_name                            AS binding_db,
+    SELECT t.binding_db,
            t.regulator_locus_tag,
            t.n,
            median(t.responsive_ratio) * 100     AS percent_responsive
     FROM topn_results t
-    JOIN b ON t.binding_source_sample LIKE b.prefix || '%'
-    JOIN p ON t.perturbation_source_sample LIKE p.prefix || '%'
-    WHERE t.regulator_locus_tag IN ({r_ph}){s_clause}{p_clause}{b_clause}
-    GROUP BY b.db_name, t.regulator_locus_tag, t.n
-    ORDER BY b.db_name, t.regulator_locus_tag, t.n
+    WHERE t.binding_db IN ({b_ph})
+      AND t.perturbation_db = ?
+      AND t.regulator_locus_tag IN ({r_ph}){s_clause}{p_clause}{b_clause}
+    GROUP BY t.binding_db, t.regulator_locus_tag, t.n
+    ORDER BY t.binding_db, t.regulator_locus_tag, t.n
     """
     return conn.execute(
         sql, binding_dbs + [pr_db] + regulators + s_params + p_params + b_params
@@ -346,38 +331,24 @@ def fetch_topn_percent_responsive(
         return pd.DataFrame()
     filters = filters or {}
     p_clause, p_params = sample_filter_clause(
-        conn,
-        pr_db,
-        filters.get(pr_db),
-        "split_part(t.perturbation_source_sample, ';', 3)",
+        conn, pr_db, filters.get(pr_db), "t.perturbation_sample_id"
     )
     s_clause, s_params = scoring_clause(pr_db, preset_name)
     b_clause, b_params = per_dataset_sample_clause(
-        conn,
-        binding_dbs,
-        filters,
-        "b.db_name",
-        "split_part(t.binding_source_sample, ';', 3)",
+        conn, binding_dbs, filters, "t.binding_db", "t.binding_sample_id"
     )
     b_ph = ", ".join(["?"] * len(binding_dbs))
     r_ph = ", ".join(["?"] * len(regulators))
     sql = f"""
-    WITH b AS (
-        SELECT db_name, hf_repo || ';' || hf_config || ';' AS prefix
-        FROM dataset_registry WHERE db_name IN ({b_ph})
-    ),
-    p AS (
-        SELECT hf_repo || ';' || hf_config || ';' AS prefix
-        FROM dataset_registry WHERE db_name = ?
-    )
-    SELECT b.db_name                        AS binding_db,
+    SELECT t.binding_db,
            t.regulator_locus_tag,
            median(t.responsive_ratio) * 100 AS percent_responsive
     FROM topn_results t
-    JOIN b ON t.binding_source_sample LIKE b.prefix || '%'
-    JOIN p ON t.perturbation_source_sample LIKE p.prefix || '%'
-    WHERE t.top_n = ? AND t.regulator_locus_tag IN ({r_ph}){s_clause}{p_clause}{b_clause}
-    GROUP BY b.db_name, t.regulator_locus_tag
+    WHERE t.binding_db IN ({b_ph})
+      AND t.perturbation_db = ?
+      AND t.top_n = ?
+      AND t.regulator_locus_tag IN ({r_ph}){s_clause}{p_clause}{b_clause}
+    GROUP BY t.binding_db, t.regulator_locus_tag
     """
     return conn.execute(
         sql,
@@ -565,9 +536,7 @@ __all__ = [
     "fetch_authors_bound",
     "fetch_shared_targets",
     "fetch_target_sets",
-    "has_top_n",
     "sort_regulators_by_symbol",
-    "table_exists",
     "weighted_agreement",
     "DTO_BINDING_ORDER",
     "DTO_PVALUE_THRESHOLD",
@@ -586,48 +555,6 @@ __all__ = [
     "resolve_promoter_variant",
     "scoring_clause",
 ]
-
-
-# ---------------------------------------------------------------------------
-# Startup probes: is the table / cutoff a figure needs present in this database?
-# ---------------------------------------------------------------------------
-
-
-def table_exists(conn: duckdb.DuckDBPyConnection, name: str) -> bool:
-    """
-    Whether a table is present in the database.
-
-    :param conn: Read-only DuckDB connection.
-    :param name: Table name.
-    :returns: ``True`` when present.
-
-    """
-    return bool(
-        conn.execute(
-            "SELECT count(*) FROM information_schema.tables WHERE table_name = ?",
-            [name],
-        ).fetchone()[0]
-    )
-
-
-def has_top_n(conn: duckdb.DuckDBPyConnection, top_n: int) -> bool:
-    """
-    Whether ``topn_results`` carries rows at a given cutoff.
-
-    Guards figure 3, whose ``TOP_N_ALL`` rows only exist in databases built since that
-    cutoff was added.
-
-    :param conn: Read-only DuckDB connection.
-    :param top_n: Cutoff to look for.
-    :returns: ``True`` when such rows exist.
-
-    """
-    return bool(
-        conn.execute(
-            "SELECT count(*) FROM (SELECT 1 FROM topn_results WHERE top_n = ? LIMIT 1)",
-            [top_n],
-        ).fetchone()[0]
-    )
 
 
 def fetch_authors_bound(
@@ -658,38 +585,23 @@ def fetch_authors_bound(
         return pd.DataFrame()
     filters = filters or {}
     p_clause, p_params = sample_filter_clause(
-        conn,
-        pr_db,
-        filters.get(pr_db),
-        "split_part(t.perturbation_source_sample, ';', 3)",
+        conn, pr_db, filters.get(pr_db), "t.perturbation_sample_id"
     )
     s_clause, s_params = scoring_clause(pr_db, preset_name)
     b_clause, b_params = per_dataset_sample_clause(
-        conn,
-        binding_dbs,
-        filters,
-        "b.db_name",
-        "split_part(t.binding_source_sample, ';', 3)",
+        conn, binding_dbs, filters, "t.binding_db", "t.binding_sample_id"
     )
     b_ph = ", ".join(["?"] * len(binding_dbs))
     sql = f"""
-    WITH b AS (
-        SELECT db_name, hf_repo || ';' || hf_config || ';' AS prefix
-        FROM dataset_registry WHERE db_name IN ({b_ph})
-    ),
-    p AS (
-        SELECT hf_repo || ';' || hf_config || ';' AS prefix
-        FROM dataset_registry WHERE db_name = ?
-    )
-    SELECT b.db_name                        AS binding_db,
+    SELECT t.binding_db,
            t.regulator_locus_tag,
            median(t.responsive_ratio) * 100 AS percent_responsive,
            median(t.n)                      AS n_bound
     FROM topn_results t
-    JOIN b ON t.binding_source_sample LIKE b.prefix || '%'
-    JOIN p ON t.perturbation_source_sample LIKE p.prefix || '%'
-    WHERE t.top_n = ?{s_clause}{p_clause}{b_clause}
-    GROUP BY b.db_name, t.regulator_locus_tag
+    WHERE t.binding_db IN ({b_ph})
+      AND t.perturbation_db = ?
+      AND t.top_n = ?{s_clause}{p_clause}{b_clause}
+    GROUP BY t.binding_db, t.regulator_locus_tag
     """
     return conn.execute(
         sql, binding_dbs + [pr_db, TOP_N_ALL] + s_params + p_params + b_params
@@ -770,17 +682,16 @@ def fetch_agreement(
         return pd.DataFrame()
     filters = filters or {}
     a_clause, a_params = per_dataset_sample_clause(
-        conn, db_names, filters, "da.db_name", "split_part(g.source_sample_a, ';', 3)"
+        conn, db_names, filters, "g.db_a", "g.sample_a"
     )
     b_clause, b_params = per_dataset_sample_clause(
-        conn, db_names, filters, "db.db_name", "split_part(g.source_sample_b, ';', 3)"
+        conn, db_names, filters, "g.db_b", "g.sample_b"
     )
     ph = ", ".join(["?"] * len(db_names))
     sql = f"""
     WITH d AS (
         SELECT r.db_name,
-               {_AGREEMENT_LABEL_SQL} AS agreement_label,
-               r.hf_repo || ';' || r.hf_config || ';' AS prefix
+               {_AGREEMENT_LABEL_SQL} AS agreement_label
         FROM dataset_registry r
         LEFT JOIN promoter_sets ps ON r.promoter_set_id = ps.promoter_set_id
         WHERE r.db_name IN ({ph})
@@ -797,31 +708,14 @@ def fetch_agreement(
                )
            ) AS log2_enrichment
     FROM topn_agreement g
-    JOIN d da ON g.source_sample_a LIKE da.prefix || '%'
-    JOIN d db ON g.source_sample_b LIKE db.prefix || '%'
+    JOIN d da ON g.db_a = da.db_name
+    JOIN d db ON g.db_b = db.db_name
     WHERE g.comparison_type = ?{a_clause}{b_clause}
     GROUP BY da.db_name, db.db_name, da.agreement_label, db.agreement_label,
              g.regulator_locus_tag, g.top_n
     ORDER BY pair, g.regulator_locus_tag, g.top_n
     """
     return conn.execute(sql, db_names + [comparison_type] + a_params + b_params).df()
-
-
-def _target_set_prefix(conn: duckdb.DuckDBPyConnection, db_name: str) -> str:
-    """
-    The ``source_sample`` prefix (``repo;config;``) identifying one dataset.
-
-    :param conn: Read-only DuckDB connection.
-    :param db_name: Dataset db_name.
-    :returns: The prefix, or ``""`` when the dataset is not in the registry.
-
-    """
-    row = conn.execute(
-        "SELECT hf_repo || ';' || hf_config || ';' FROM dataset_registry"
-        " WHERE db_name = ?",
-        [db_name],
-    ).fetchone()
-    return str(row[0]) if row else ""
 
 
 def fetch_shared_targets(
@@ -860,51 +754,41 @@ def fetch_shared_targets(
     for db_a, db_b in itertools.combinations(sorted(db_names), 2):
         if db_a not in labels or db_b not in labels:
             continue
-        fa, pa = sample_filter_clause(
-            conn, db_a, filters.get(db_a), "split_part(source_sample, ';', 3)"
-        )
-        fb, pb = sample_filter_clause(
-            conn, db_b, filters.get(db_b), "split_part(source_sample, ';', 3)"
-        )
+        fa, pa = sample_filter_clause(conn, db_a, filters.get(db_a), "sample_id")
+        fb, pb = sample_filter_clause(conn, db_b, filters.get(db_b), "sample_id")
         sql = f"""
         WITH a AS (
-            SELECT source_sample, regulator_locus_tag, target_locus_tag
+            SELECT sample_id, regulator_locus_tag, target_locus_tag
             FROM topn_target_sets
-            WHERE source_sample LIKE ? || '%' AND rnk <= ?{fa}
+            WHERE db_name = ? AND rnk <= ?{fa}
         ),
         b AS (
-            SELECT source_sample, regulator_locus_tag, target_locus_tag
+            SELECT sample_id, regulator_locus_tag, target_locus_tag
             FROM topn_target_sets
-            WHERE source_sample LIKE ? || '%' AND rnk <= ?{fb}
+            WHERE db_name = ? AND rnk <= ?{fb}
         ),
-        sa AS (SELECT DISTINCT source_sample, regulator_locus_tag FROM a),
-        sb AS (SELECT DISTINCT source_sample, regulator_locus_tag FROM b),
+        sa AS (SELECT DISTINCT sample_id, regulator_locus_tag FROM a),
+        sb AS (SELECT DISTINCT sample_id, regulator_locus_tag FROM b),
         inter AS (
-            SELECT a.source_sample AS sample_a, b.source_sample AS sample_b,
+            SELECT a.sample_id AS sample_a, b.sample_id AS sample_b,
                    a.regulator_locus_tag, count(*) AS n
             FROM a JOIN b
               ON  b.regulator_locus_tag = a.regulator_locus_tag
               AND b.target_locus_tag    = a.target_locus_tag
-            GROUP BY a.source_sample, b.source_sample, a.regulator_locus_tag
+            GROUP BY a.sample_id, b.sample_id, a.regulator_locus_tag
         )
         SELECT sa.regulator_locus_tag,
                median(COALESCE(i.n, 0)) AS n_shared
         FROM sa
         JOIN sb ON sb.regulator_locus_tag = sa.regulator_locus_tag
         LEFT JOIN inter i
-          ON  i.sample_a = sa.source_sample
-          AND i.sample_b = sb.source_sample
+          ON  i.sample_a = sa.sample_id
+          AND i.sample_b = sb.sample_id
           AND i.regulator_locus_tag = sa.regulator_locus_tag
         GROUP BY sa.regulator_locus_tag
         ORDER BY sa.regulator_locus_tag
         """
-        df = conn.execute(
-            sql,
-            [_target_set_prefix(conn, db_a), top_n]
-            + pa
-            + [_target_set_prefix(conn, db_b), top_n]
-            + pb,
-        ).df()
+        df = conn.execute(sql, [db_a, top_n] + pa + [db_b, top_n] + pb).df()
         df.insert(0, "pair", f"{labels[db_a]} vs {labels[db_b]}")
         frames.append(df)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
@@ -921,8 +805,8 @@ def fetch_target_sets(
     One regulator's top-N target set in each dataset, for figure 10's Venn.
 
     Under the default filters each dataset has exactly one sample per regulator. If the
-    filters leave several, the lowest ``source_sample`` is used, so the circle is still
-    a single real top-N list of ``top_n`` targets rather than a union that overshoots.
+    filters leave several, the lowest ``sample_id`` is used, so the circle is still a
+    single real top-N list of ``top_n`` targets rather than a union that overshoots.
 
     :param conn: Read-only DuckDB connection.
     :param db_names: Datasets to read.
@@ -935,21 +819,18 @@ def fetch_target_sets(
     filters = filters or {}
     out: dict[str, set[str]] = {}
     for db in db_names:
-        clause, params = sample_filter_clause(
-            conn, db, filters.get(db), "split_part(source_sample, ';', 3)"
-        )
-        prefix = _target_set_prefix(conn, db)
+        clause, params = sample_filter_clause(conn, db, filters.get(db), "sample_id")
         rows = conn.execute(
             f"""
             WITH s AS (
-                SELECT source_sample, target_locus_tag, rnk
+                SELECT sample_id, target_locus_tag, rnk
                 FROM topn_target_sets
-                WHERE source_sample LIKE ? || '%' AND regulator_locus_tag = ?{clause}
+                WHERE db_name = ? AND regulator_locus_tag = ?{clause}
             )
             SELECT target_locus_tag FROM s
-            WHERE source_sample = (SELECT min(source_sample) FROM s) AND rnk <= ?
+            WHERE sample_id = (SELECT min(sample_id) FROM s) AND rnk <= ?
             """,
-            [prefix, regulator] + params + [top_n],
+            [db, regulator] + params + [top_n],
         ).fetchall()
         out[db] = {r[0] for r in rows}
     return out

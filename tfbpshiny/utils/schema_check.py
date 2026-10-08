@@ -1,10 +1,11 @@
 """
-Startup checks that a materialized database matches what the app expects to read.
+Is this database one the app knows how to read?
 
-The app pins analysis parameters by value when it reads ``topn_results``. A database
-built by an older materializer can therefore hold *extra* rows the app has no filter
-for, which silently change every median it computes -- an error with no traceback and
-no empty table to notice.
+``tfbpshiny materialize`` stamps the layout it wrote into a one-row ``schema_version``
+table. The app compares that stamp with :data:`tfbpshiny.datasets.SCHEMA_VERSION` once
+at startup. A database built at another version may lack whole tables or columns the
+read-side SQL names, so the mismatch is reported on every page and the figures refuse
+to draw, instead of each query failing in its own way.
 
 """
 
@@ -14,37 +15,65 @@ import logging
 
 import duckdb
 
+from tfbpshiny.datasets import SCHEMA_VERSION
 
-def warn_if_stale_topn_schema(
-    conn: duckdb.DuckDBPyConnection, logger: logging.Logger
-) -> bool:
+
+def read_schema_version(conn: duckdb.DuckDBPyConnection) -> int | None:
     """
-    Warn when ``topn_results`` still carries the retired ``criteria`` column.
-
-    Databases built before responsiveness became threshold-only hold two rows per key:
-    one scored by thresholds and one scored by each perturbation dataset's deprecated
-    ``responsive`` column. The app no longer filters on ``criteria``, so both rows now
-    match every query and the median falls between two incompatible definitions of
-    responsive. For ``rossi`` x ``kemmeren`` at top 25 that reads 0.0% rather than
-    Relaxed's 20.0%.
+    The schema version stamped into the database.
 
     :param conn: Read-only DuckDB connection.
-    :param logger: Logger to warn on.
-    :returns: ``True`` when the schema is stale.
+    :returns: The stamped version, or ``None`` for a database built before the stamp
+        existed (no ``schema_version`` table).
 
     """
     try:
-        cols = conn.execute("DESCRIBE topn_results").df()["column_name"].tolist()
+        row = conn.execute("SELECT max(version) FROM schema_version").fetchone()
     except duckdb.Error:
-        # No topn_results at all is a different problem, reported where it is read.
-        return False
-    if "criteria" not in cols:
-        return False
-    logger.warning(
-        "topn_results still has the retired 'criteria' column, so it holds rows "
-        "scored by the deprecated per-row 'responsive' flag alongside the "
-        "threshold-scored rows. Nothing filters those out any more, so every "
-        "percent-responsive number on the Comparison and Figures pages is a median "
-        "across both and will read low. Rebuild with 'tfbpshiny materialize'."
+        return None
+    if row is None or row[0] is None:
+        return None
+    return int(row[0])
+
+
+def schema_mismatch_message(db_version: int | None) -> str | None:
+    """
+    The sentence shown when the database's version is not the app's.
+
+    :param db_version: From :func:`read_schema_version`.
+    :returns: The message, or ``None`` when the versions agree.
+
+    """
+    if db_version == SCHEMA_VERSION:
+        return None
+    built = (
+        "before schema versions were stamped"
+        if db_version is None
+        else f"at schema version {db_version}"
     )
-    return True
+    return (
+        f"This database was built {built}; this version of the app reads schema "
+        f"version {SCHEMA_VERSION}. Rebuild it with 'tfbpshiny materialize' before "
+        "trusting any number on these pages."
+    )
+
+
+def check_schema_version(
+    conn: duckdb.DuckDBPyConnection, logger: logging.Logger
+) -> int | None:
+    """
+    Read the stamp and log one warning if it is not the app's version.
+
+    :param conn: Read-only DuckDB connection.
+    :param logger: Logger to warn on.
+    :returns: The stamped version (``None`` when absent), for the caller to pass on.
+
+    """
+    db_version = read_schema_version(conn)
+    message = schema_mismatch_message(db_version)
+    if message is not None:
+        logger.warning(message)
+    return db_version
+
+
+__all__ = ["check_schema_version", "read_schema_version", "schema_mismatch_message"]

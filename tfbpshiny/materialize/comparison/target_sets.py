@@ -52,6 +52,8 @@ CREATE TABLE topn_target_sets (
     regulator_locus_tag VARCHAR  NOT NULL,
     target_locus_tag    VARCHAR  NOT NULL,
     rnk                 INTEGER  NOT NULL,
+    db_name             VARCHAR  NOT NULL,
+    sample_id           VARCHAR  NOT NULL,
     PRIMARY KEY (source_sample, regulator_locus_tag, target_locus_tag)
 );
 """
@@ -96,6 +98,7 @@ def target_sets_select_sql(
     expr = f"ABS({rank_col})" if comparison_type == "perturbation" else rank_col
     prefix = f"{hf_repo};{hf_config};".replace("'", "''")
     ctype = comparison_type.replace("'", "''")
+    db_safe = view.replace("'", "''")
     where = f"WHERE {rank_col} IS NOT NULL" if drop_null_scores else ""
     return f"""
     WITH dedup AS (
@@ -124,7 +127,9 @@ def target_sets_select_sql(
            '{ctype}'              AS comparison_type,
            regulator_locus_tag,
            target_locus_tag,
-           rnk::INTEGER           AS rnk
+           rnk::INTEGER           AS rnk,
+           '{db_safe}'            AS db_name,
+           sample_id
     FROM ranked
     WHERE rnk <= {int(max_n)}
     """

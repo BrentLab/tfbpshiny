@@ -59,15 +59,17 @@ def _conn() -> duckdb.DuckDBPyConnection:
         "CREATE TABLE topn_results (binding_source_sample VARCHAR,"
         " perturbation_source_sample VARCHAR, regulator_locus_tag VARCHAR,"
         " top_n INTEGER, effect_threshold DOUBLE, pvalue_threshold DOUBLE,"
-        " n INTEGER, responsive_ratio DOUBLE)"
+        " n INTEGER, responsive_ratio DOUBLE, binding_db VARCHAR,"
+        " binding_sample_id VARCHAR, perturbation_db VARCHAR,"
+        " perturbation_sample_id VARCHAR)"
     )
-    for cfg in ("c1", "c2"):
+    for db, cfg in (("b1", "c1"), ("b2", "c2")):
         for sample, ratio in (("s_ok", 0.2), ("s_hs", 0.8)):
             for top_n in (0, 25):
                 conn.execute(
                     "INSERT INTO topn_results VALUES (?, 'R;cp;ps', 'R1', ?, 0.0, 0.05,"
-                    " 25, ?)",
-                    [f"R;{cfg};{sample}", top_n, ratio],
+                    " 25, ?, ?, ?, 'p1', 'ps')",
+                    [f"R;{cfg};{sample}", top_n, ratio, db, sample],
                 )
     return conn
 
@@ -117,7 +119,8 @@ def test_agreement_filters_both_sides_of_a_pair() -> None:
     conn.execute(
         "CREATE TABLE topn_agreement (source_sample_a VARCHAR, source_sample_b"
         " VARCHAR, comparison_type VARCHAR, regulator_locus_tag VARCHAR, top_n"
-        " INTEGER, n_a INTEGER, n_b INTEGER, n_intersect INTEGER)"
+        " INTEGER, n_a INTEGER, n_b INTEGER, n_intersect INTEGER, db_a VARCHAR,"
+        " sample_a VARCHAR, db_b VARCHAR, sample_b VARCHAR)"
     )
     # b1 x b2 for R1 at N=10: every pairing of the Normal / Heat Shock samples.
     for a, b, overlap in (
@@ -127,8 +130,9 @@ def test_agreement_filters_both_sides_of_a_pair() -> None:
         ("s_hs", "s_hs", 2),
     ):
         conn.execute(
-            "INSERT INTO topn_agreement VALUES (?, ?, 'binding', 'R1', 10, 10, 10, ?)",
-            [f"R;c1;{a}", f"R;c2;{b}", overlap],
+            "INSERT INTO topn_agreement VALUES (?, ?, 'binding', 'R1', 10, 10, 10, ?,"
+            " 'b1', ?, 'b2', ?)",
+            [f"R;c1;{a}", f"R;c2;{b}", overlap, a, b],
         )
     both = {"b1": NORMAL, "b2": NORMAL}
     unfiltered = fetch_agreement(conn, "binding", ["b1", "b2"], {})

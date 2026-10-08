@@ -317,7 +317,9 @@ def _populate_method_promoter_topn(
         "CREATE TABLE method_promoter_model_topn (binding_source_sample VARCHAR,"
         " perturbation_source_sample VARCHAR, regulator_locus_tag VARCHAR,"
         " top_n INTEGER, effect_threshold DOUBLE, pvalue_threshold DOUBLE,"
-        " n INTEGER, n_responsive INTEGER, n_intersecting_targets INTEGER)"
+        " n INTEGER, n_responsive INTEGER, n_intersecting_targets INTEGER,"
+        " binding_db VARCHAR, binding_sample_id VARCHAR, perturbation_db VARCHAR,"
+        " perturbation_sample_id VARCHAR)"
     )
     rows = []
     for _, r in registry.iterrows():
@@ -328,10 +330,25 @@ def _populate_method_promoter_topn(
         prefix = f"{r['hf_repo']};{r['hf_config']};"
         for reg in regulators:
             rows.append(
-                (f"{prefix}s1", "R;kemmeren_2014;s1", reg, 25, 0.0, 0.05, 20, 10, 20)
+                (
+                    f"{prefix}s1",
+                    "R;kemmeren_2014;s1",
+                    reg,
+                    25,
+                    0.0,
+                    0.05,
+                    20,
+                    10,
+                    20,
+                    r["db_name"],
+                    "s1",
+                    "kemmeren",
+                    "s1",
+                )
             )
     conn.executemany(
-        "INSERT INTO method_promoter_model_topn VALUES (?,?,?,?,?,?,?,?,?)", rows
+        "INSERT INTO method_promoter_model_topn VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        rows,
     )
 
 
@@ -490,28 +507,86 @@ def test_panel_respects_default_sample_filter(monkeypatch) -> None:
         "CREATE TABLE method_promoter_model_topn (binding_source_sample VARCHAR,"
         " perturbation_source_sample VARCHAR, regulator_locus_tag VARCHAR,"
         " top_n INTEGER, effect_threshold DOUBLE, pvalue_threshold DOUBLE,"
-        " n INTEGER, n_responsive INTEGER, n_intersecting_targets INTEGER)"
+        " n INTEGER, n_responsive INTEGER, n_intersecting_targets INTEGER,"
+        " binding_db VARCHAR, binding_sample_id VARCHAR, perturbation_db VARCHAR,"
+        " perturbation_sample_id VARCHAR)"
     )
     b_row = registry[registry["db_name"] == "rossi_500bp"].iloc[0]
     b_prefix = f"{b_row['hf_repo']};{b_row['hf_config']};"
     conn.execute(
-        "INSERT INTO method_promoter_model_topn VALUES (?,?,?,?,?,?,?,?,?)",
-        [f"{b_prefix}b1", "R;kemmeren_2014;keep_s", "REG0", 25, 0.0, 0.05, 20, 10, 20],
+        "INSERT INTO method_promoter_model_topn VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            f"{b_prefix}b1",
+            "R;kemmeren_2014;keep_s",
+            "REG0",
+            25,
+            0.0,
+            0.05,
+            20,
+            10,
+            20,
+            "rossi_500bp",
+            "b1",
+            "kemmeren",
+            "keep_s",
+        ],
     )
     conn.execute(
-        "INSERT INTO method_promoter_model_topn VALUES (?,?,?,?,?,?,?,?,?)",
-        [f"{b_prefix}b1", "R;kemmeren_2014;drop_s", "REG0", 25, 0.0, 0.05, 20, 10, 20],
+        "INSERT INTO method_promoter_model_topn VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            f"{b_prefix}b1",
+            "R;kemmeren_2014;drop_s",
+            "REG0",
+            25,
+            0.0,
+            0.05,
+            20,
+            10,
+            20,
+            "rossi_500bp",
+            "b1",
+            "kemmeren",
+            "drop_s",
+        ],
     )
     # A peak-calling partner for the same cell, so REG0 is paired across methods.
     pc_row = registry[registry["db_name"] == "rossi_500bp_peaks_500bp"].iloc[0]
     pc_prefix = f"{pc_row['hf_repo']};{pc_row['hf_config']};"
     conn.execute(
-        "INSERT INTO method_promoter_model_topn VALUES (?,?,?,?,?,?,?,?,?)",
-        [f"{pc_prefix}b1", "R;kemmeren_2014;keep_s", "REG0", 25, 0.0, 0.05, 20, 4, 20],
+        "INSERT INTO method_promoter_model_topn VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            f"{pc_prefix}b1",
+            "R;kemmeren_2014;keep_s",
+            "REG0",
+            25,
+            0.0,
+            0.05,
+            20,
+            4,
+            20,
+            "rossi_500bp_peaks_500bp",
+            "b1",
+            "kemmeren",
+            "keep_s",
+        ],
     )
     conn.execute(
-        "INSERT INTO method_promoter_model_topn VALUES (?,?,?,?,?,?,?,?,?)",
-        [f"{pc_prefix}b1", "R;kemmeren_2014;drop_s", "REG0", 25, 0.0, 0.05, 20, 4, 20],
+        "INSERT INTO method_promoter_model_topn VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            f"{pc_prefix}b1",
+            "R;kemmeren_2014;drop_s",
+            "REG0",
+            25,
+            0.0,
+            0.05,
+            20,
+            4,
+            20,
+            "rossi_500bp_peaks_500bp",
+            "b1",
+            "kemmeren",
+            "drop_s",
+        ],
     )
     conn.execute(
         "CREATE TABLE kemmeren_meta (sample_id VARCHAR, batch VARCHAR,"
@@ -546,11 +621,13 @@ def test_a_regulator_with_no_peak_calling_row_is_dropped_not_zero_filled() -> No
         "CREATE TABLE method_promoter_model_topn (binding_source_sample VARCHAR,"
         " perturbation_source_sample VARCHAR, regulator_locus_tag VARCHAR,"
         " top_n INTEGER, effect_threshold DOUBLE, pvalue_threshold DOUBLE,"
-        " n INTEGER, n_responsive INTEGER, n_intersecting_targets INTEGER)"
+        " n INTEGER, n_responsive INTEGER, n_intersecting_targets INTEGER,"
+        " binding_db VARCHAR, binding_sample_id VARCHAR, perturbation_db VARCHAR,"
+        " perturbation_sample_id VARCHAR)"
     )
     b_row = registry[registry["db_name"] == "rossi_500bp"].iloc[0]
     conn.execute(
-        "INSERT INTO method_promoter_model_topn VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO method_promoter_model_topn VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
             f"R;{b_row['hf_config']};b1",
             "R;kemmeren_2014;s",
@@ -561,6 +638,10 @@ def test_a_regulator_with_no_peak_calling_row_is_dropped_not_zero_filled() -> No
             20,
             10,
             20,
+            "rossi_500bp",
+            "b1",
+            "kemmeren",
+            "s",
         ],
     )
     conn.execute(

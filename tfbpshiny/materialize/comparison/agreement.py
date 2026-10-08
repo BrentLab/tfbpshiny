@@ -96,6 +96,10 @@ CREATE TABLE topn_agreement (
     n_a                 INTEGER  NOT NULL,
     n_b                 INTEGER  NOT NULL,
     n_intersect         INTEGER  NOT NULL,
+    db_a                VARCHAR  NOT NULL,
+    sample_a            VARCHAR  NOT NULL,
+    db_b                VARCHAR  NOT NULL,
+    sample_b            VARCHAR  NOT NULL,
     PRIMARY KEY (
         source_sample_a, source_sample_b, regulator_locus_tag, top_n
     )
@@ -199,6 +203,8 @@ def agreement_pair_select_sql(
     n_list = ", ".join(f"({n})" for n in top_n_values)
     a_prefix = f"{hf_repo_a};{hf_config_a};".replace("'", "''")
     b_prefix = f"{hf_repo_b};{hf_config_b};".replace("'", "''")
+    db_a_safe = view_a.replace("'", "''")
+    db_b_safe = view_b.replace("'", "''")
     ctype = comparison_type.replace("'", "''")
 
     # Set sizes are computed independently of the intersection: measuring them inside
@@ -261,7 +267,11 @@ def agreement_pair_select_sql(
         sa.top_n::INTEGER                   AS top_n,
         sa.n_a::INTEGER                     AS n_a,
         sb.n_b::INTEGER                     AS n_b,
-        COALESCE(i.n_intersect, 0)::INTEGER AS n_intersect
+        COALESCE(i.n_intersect, 0)::INTEGER AS n_intersect,
+        '{db_a_safe}'                       AS db_a,
+        sa.sample_id                        AS sample_a,
+        '{db_b_safe}'                       AS db_b,
+        sb.sample_id                        AS sample_b
     FROM sizes_a sa
     JOIN sizes_b sb
       ON  sb.regulator_locus_tag = sa.regulator_locus_tag

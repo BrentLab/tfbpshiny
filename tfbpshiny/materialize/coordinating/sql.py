@@ -78,6 +78,30 @@ DATASET_HF_COORDS: dict[str, tuple[str, str]] = {
 }
 
 
+def schema_version_sql(version: int, git_sha: str | None) -> str:
+    """
+    Return SQL creating the one-row ``schema_version`` table.
+
+    The app reads ``version`` at startup and compares it with
+    :data:`tfbpshiny.datasets.SCHEMA_VERSION`; ``built_at`` and ``git_sha`` say which
+    build produced the file.
+
+    :param version: The schema version this build writes.
+    :param git_sha: Commit the materializer ran from, or ``None`` outside a checkout.
+    :returns: ``CREATE TABLE`` + ``INSERT`` SQL string.
+
+    """
+    sha = "NULL" if git_sha is None else "'" + git_sha.replace("'", "''") + "'"
+    return f"""
+CREATE TABLE schema_version (
+    version   INTEGER   NOT NULL,
+    built_at  TIMESTAMP NOT NULL,
+    git_sha   VARCHAR
+);
+INSERT INTO schema_version VALUES ({int(version)}, now()::TIMESTAMP, {sha});
+"""
+
+
 def promoter_sets_sql() -> str:
     """
     Return SQL to create and populate the ``promoter_sets`` table.

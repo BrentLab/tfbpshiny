@@ -178,6 +178,10 @@ CREATE TABLE method_promoter_model_topn (
     n_responsive                INTEGER  NOT NULL,
     responsive_ratio            DOUBLE   NOT NULL,
     n_intersecting_targets      INTEGER  NOT NULL,
+    binding_db                  VARCHAR  NOT NULL,
+    binding_sample_id           VARCHAR  NOT NULL,
+    perturbation_db             VARCHAR  NOT NULL,
+    perturbation_sample_id      VARCHAR  NOT NULL,
     PRIMARY KEY (
         binding_source_sample,
         perturbation_source_sample,
@@ -422,19 +426,15 @@ def build_method_promoter_panel(
     effect_threshold, pvalue_threshold = preset.get(
         perturbation_db, preset.get("*", (0.0, 0.05))
     )
-    p_row = registry_df[registry_df["db_name"] == perturbation_db]
-    if p_row.empty:
+    if registry_df[registry_df["db_name"] == perturbation_db].empty:
         return pd.DataFrame()
-    p_prefix = f"{p_row.iloc[0]['hf_repo']};{p_row.iloc[0]['hf_config']};"
 
     if filters is None:
         filters = default_filters(conn, registry_df)
     p_ids = _allowed_sample_ids(conn, filters, perturbation_db)
     if p_ids is not None and not p_ids:
         return pd.DataFrame()
-    p_clause, p_params = sample_in_clause(
-        "split_part(perturbation_source_sample, ';', 3)", p_ids
-    )
+    p_clause, p_params = sample_in_clause("perturbation_sample_id", p_ids)
 
     allowed_regulators = _regulator_intersection(conn, perturbation_db)
     if not allowed_regulators:
@@ -450,11 +450,7 @@ def build_method_promoter_panel(
                 b_ids = _allowed_sample_ids(conn, filters, b_db)
                 if b_ids is not None and not b_ids:
                     continue
-                b_clause, b_params = sample_in_clause(
-                    "split_part(binding_source_sample, ';', 3)", b_ids
-                )
-                b_row = registry_df[registry_df["db_name"] == b_db].iloc[0]
-                b_prefix = f"{b_row['hf_repo']};{b_row['hf_config']};"
+                b_clause, b_params = sample_in_clause("binding_sample_id", b_ids)
                 sql = f"""
                 SELECT
                     regulator_locus_tag, n, n_responsive, n_intersecting_targets
@@ -462,8 +458,8 @@ def build_method_promoter_panel(
                 WHERE top_n = ?
                   AND effect_threshold = ?
                   AND pvalue_threshold = ?
-                  AND binding_source_sample LIKE ?
-                  AND perturbation_source_sample LIKE ?
+                  AND binding_db = ?
+                  AND perturbation_db = ?
                   {b_clause}
                   {p_clause}
                 """
@@ -471,8 +467,8 @@ def build_method_promoter_panel(
                     top_n,
                     effect_threshold,
                     pvalue_threshold,
-                    b_prefix + "%",
-                    p_prefix + "%",
+                    b_db,
+                    perturbation_db,
                     *b_params,
                     *p_params,
                 ]
