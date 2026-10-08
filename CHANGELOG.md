@@ -519,11 +519,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `build_binding_index` in `modules/comparison/queries.py`: derives every
   binding dataset's label, promoter set and method from `dataset_registry`, plus
   a `(primary, promoter_set_id, binding_method_id) → db_name` lookup.
-- DTO (direct target overlap) restored as a second Comparison metric, selectable
-  in the sidebar alongside Top-N. Reports the percentage of regulators whose
-  bound and responsive target sets overlap more than chance (empirical p <
-  0.01), out of every regulator shared by the two datasets. Reuses the existing
-  promoter-definition and binding-method tables, so no new tabs.
+- DTO (dual threshold optimization) restored as a second Comparison metric,
+  selectable in the sidebar alongside Top-N. Reports the percentage of
+  regulators whose bound and responsive target sets overlap more than chance
+  (empirical p < 0.01), out of every regulator shared by the two datasets.
+  Reuses the existing promoter-definition and binding-method tables, so no new
+  tabs.
 - `sample_regulator` table in the materialized database: `(db_name, sample_id)
   -> regulator_locus_tag` over every `*_meta` table carrying a regulator column.
   Resolves DTO's regulator (its source ships only composite identifiers) and
