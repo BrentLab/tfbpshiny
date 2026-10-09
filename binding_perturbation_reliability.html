@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>binding_perturbation_reliability – TFBPShiny</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-55617497126496852ff9f5a59253c640.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "sidebar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "start",
+  "type": "textbox",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-chtml.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+</head>
+
+<body class="nav-sidebar floating quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./binding_perturbation_reliability.html">Reference</a></li><li class="breadcrumb-item"><a href="./binding_perturbation_reliability.html">Reliability and Spearman’s Correction: Binding vs.&nbsp;Perturbation</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header">
+    <div class="sidebar-title mb-0 py-0">
+      <a href="./">TFBPShiny</a> 
+    </div>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TFBPShiny</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Page guides</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./select_datasets_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Dataset selection</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./binding_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Binding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./perturbation_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Perturbation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./comparison_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Binding/Perturbation Comparisons</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./binding_perturbation_reliability.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Reliability and Spearman’s Correction: Binding vs.&nbsp;Perturbation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./materialized_db_schema.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Database Schema</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./sql_operations.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SQL Operations Reference</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./development.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Developer Notes</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#reliability-and-spearmans-correction-binding-vs.-perturbation" id="toc-reliability-and-spearmans-correction-binding-vs.-perturbation" class="nav-link active" data-scroll-target="#reliability-and-spearmans-correction-binding-vs.-perturbation">Reliability and Spearman’s Correction: Binding vs.&nbsp;Perturbation</a>
+  <ul class="collapse">
+  <li><a href="#binding-and-perturbation-datasets-have-low-observed-correlation" id="toc-binding-and-perturbation-datasets-have-low-observed-correlation" class="nav-link" data-scroll-target="#binding-and-perturbation-datasets-have-low-observed-correlation">1. Binding and perturbation datasets have low observed correlation</a></li>
+  <li><a href="#original-framework-mrna-vs.-protein" id="toc-original-framework-mrna-vs.-protein" class="nav-link" data-scroll-target="#original-framework-mrna-vs.-protein">2. Original Framework (mRNA vs.&nbsp;Protein)</a>
+  <ul class="collapse">
+  <li><a href="#measurement-model" id="toc-measurement-model" class="nav-link" data-scroll-target="#measurement-model">2.1 Measurement Model</a></li>
+  <li><a href="#reliability" id="toc-reliability" class="nav-link" data-scroll-target="#reliability">2.2 Reliability</a></li>
+  <li><a href="#attenuation-of-the-cross-modal-correlation" id="toc-attenuation-of-the-cross-modal-correlation" class="nav-link" data-scroll-target="#attenuation-of-the-cross-modal-correlation">2.3 Attenuation of the Cross-Modal Correlation</a></li>
+  <li><a href="#spearmans-correction-two-replicates-each" id="toc-spearmans-correction-two-replicates-each" class="nav-link" data-scroll-target="#spearmans-correction-two-replicates-each">2.4 Spearman’s Correction (two replicates each)</a></li>
+  <li><a href="#extension-to-n-binding-and-m-perturbation-datasets" id="toc-extension-to-n-binding-and-m-perturbation-datasets" class="nav-link" data-scroll-target="#extension-to-n-binding-and-m-perturbation-datasets">2.5 Extension to <span class="math inline">\(N\)</span> Binding and <span class="math inline">\(M\)</span> Perturbation Datasets</a></li>
+  </ul></li>
+  <li><a href="#adaptation-to-binding-vs.-perturbation" id="toc-adaptation-to-binding-vs.-perturbation" class="nav-link" data-scroll-target="#adaptation-to-binding-vs.-perturbation">3. Adaptation to Binding vs.&nbsp;Perturbation</a>
+  <ul class="collapse">
+  <li><a href="#re-mapping-the-variables" id="toc-re-mapping-the-variables" class="nav-link" data-scroll-target="#re-mapping-the-variables">3.1 Re-mapping the Variables</a></li>
+  <li><a href="#unit-of-analysis-and-the-correlation-vector" id="toc-unit-of-analysis-and-the-correlation-vector" class="nav-link" data-scroll-target="#unit-of-analysis-and-the-correlation-vector">3.2 Unit of Analysis and the Correlation Vector</a></li>
+  <li><a href="#available-datasets" id="toc-available-datasets" class="nav-link" data-scroll-target="#available-datasets">3.3 Available Datasets</a></li>
+  </ul></li>
+  <li><a href="#reliability-estimation-for-each-modality" id="toc-reliability-estimation-for-each-modality" class="nav-link" data-scroll-target="#reliability-estimation-for-each-modality">4. Reliability Estimation for Each Modality</a>
+  <ul class="collapse">
+  <li><a href="#binding-reliability" id="toc-binding-reliability" class="nav-link" data-scroll-target="#binding-reliability">4.1 Binding Reliability</a></li>
+  <li><a href="#perturbation-reliability" id="toc-perturbation-reliability" class="nav-link" data-scroll-target="#perturbation-reliability">4.2 Perturbation Reliability</a></li>
+  </ul></li>
+  <li><a href="#corrected-binding-perturbation-correlation" id="toc-corrected-binding-perturbation-correlation" class="nav-link" data-scroll-target="#corrected-binding-perturbation-correlation">5. Corrected Binding-Perturbation Correlation</a>
+  <ul class="collapse">
+  <li><a href="#two-dataset-version-one-binding-one-perturbation" id="toc-two-dataset-version-one-binding-one-perturbation" class="nav-link" data-scroll-target="#two-dataset-version-one-binding-one-perturbation">5.1 Two-Dataset Version (one binding, one perturbation)</a></li>
+  <li><a href="#two-binding-two-perturbation-datasets" id="toc-two-binding-two-perturbation-datasets" class="nav-link" data-scroll-target="#two-binding-two-perturbation-datasets">5.2 Two Binding, Two Perturbation Datasets</a></li>
+  <li><a href="#full-multi-dataset-version" id="toc-full-multi-dataset-version" class="nav-link" data-scroll-target="#full-multi-dataset-version">5.3 Full Multi-Dataset Version</a></li>
+  </ul></li>
+  <li><a href="#population-level-pooled-reliability" id="toc-population-level-pooled-reliability" class="nav-link" data-scroll-target="#population-level-pooled-reliability">6. Population-Level (Pooled) Reliability</a></li>
+  <li><a href="#score-alignment-and-comparability" id="toc-score-alignment-and-comparability" class="nav-link" data-scroll-target="#score-alignment-and-comparability">7. Score Alignment and Comparability</a></li>
+  <li><a href="#asymmetry-note" id="toc-asymmetry-note" class="nav-link" data-scroll-target="#asymmetry-note">8. Asymmetry Note</a></li>
+  <li><a href="#summary-of-equations" id="toc-summary-of-equations" class="nav-link" data-scroll-target="#summary-of-equations">9. Summary of Equations</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/BrentLab/tfbpshiny/edit/main/docs/binding_perturbation_reliability.md" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./binding_perturbation_reliability.html">Reference</a></li><li class="breadcrumb-item"><a href="./binding_perturbation_reliability.html">Reliability and Spearman’s Correction: Binding vs.&nbsp;Perturbation</a></li></ol></nav></header>
+
+
+
+
+<section id="reliability-and-spearmans-correction-binding-vs.-perturbation" class="level1">
+<h1>Reliability and Spearman’s Correction: Binding vs.&nbsp;Perturbation</h1>
+<p>Adapted from: Csardi et al (2015), <em>PLOS Genetics</em>. DOI: <a href="https://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.1005206">10.1371/journal.pgen.1005206</a></p>
+<p><strong>NOTE</strong>: this is produced with the help of Claude, and was provided the above paper as input along with the prompt: focusing specifically on the reliability and spearman correlation equations presented in the methods section, adapt the authors’ framework for estimating the reliability of mRNA and protein measurements and correcting the observed correlation between them to the case of TF binding and TF perturbation datasets. The AI output was revised/edited by a human.</p>
+<hr>
+<section id="binding-and-perturbation-datasets-have-low-observed-correlation" class="level2">
+<h2 class="anchored" data-anchor-id="binding-and-perturbation-datasets-have-low-observed-correlation">1. Binding and perturbation datasets have low observed correlation</h2>
+<p>When we compare a transcription factor’s binding profile to its perturbation profile, we are implicitly asking: how well does physical occupancy at a promoter predict the transcriptional effect of removing or depleting the factor? Any observed correlation <span class="math inline">\(r_{XY}\)</span> between binding scores and perturbation effect sizes is <em>attenuated</em> relative to the true underlying relationship, because both measurements carry independent noise.</p>
+<p>The Csardi et al.&nbsp;framework formalizes this attenuation and provides a correction. The original paper applied it to mRNA abundance vs.&nbsp;protein abundance. The adaptation here maps the same equations onto TF binding data and TF perturbation data.</p>
+<p>We use their framework to ask, “How much do the low observed correlations between binding and perturbation reflect noise in the measurements, and how much reflects genuine biological complexity (e.g.&nbsp;condition-specific regulation, indirect effects)?”</p>
+<p>The original authors made use of “Model II regression” with the package <a href="https://cran.r-project.org/web/packages/lmodel2/index.html">lmod2</a> in R.</p>
+<hr>
+</section>
+<section id="original-framework-mrna-vs.-protein" class="level2">
+<h2 class="anchored" data-anchor-id="original-framework-mrna-vs.-protein">2. Original Framework (mRNA vs.&nbsp;Protein)</h2>
+<section id="measurement-model" class="level3">
+<h3 class="anchored" data-anchor-id="measurement-model">2.1 Measurement Model</h3>
+<p>For a gene <span class="math inline">\(g\)</span>, let <span class="math inline">\(\phi_g\)</span> be its true mRNA level and <span class="math inline">\(\psi_g\)</span> its true protein level. We observe noisy surrogates:</p>
+<p><span class="math display">\[X_g = \phi_g + \varepsilon_X, \qquad Y_g = \psi_g + \varepsilon_Y \tag{1}\]</span></p>
+<p>where <span class="math inline">\(\varepsilon_X\)</span> and <span class="math inline">\(\varepsilon_Y\)</span> are zero-mean noise terms, uncorrelated with the signal and with each other.</p>
+</section>
+<section id="reliability" class="level3">
+<h3 class="anchored" data-anchor-id="reliability">2.2 Reliability</h3>
+<p>The <em>reliability</em> of measurement <span class="math inline">\(X\)</span> is the fraction of observed variance that is signal:</p>
+<p><span class="math display">\[\alpha_X = \frac{\mathrm{Var}(\phi)}{\mathrm{Var}(X)} = \frac{\mathrm{Var}(\phi)}{\mathrm{Var}(\phi) + \mathrm{Var}(\varepsilon_X)} \tag{2}\]</span></p>
+<p>Given two replicate measurements <span class="math inline">\(X_1, X_2\)</span> of the same latent variable <span class="math inline">\(\phi\)</span> (both with independent noise), the Pearson correlation between them is the <em>geometric mean</em> of their reliabilities:</p>
+<p><span class="math display">\[\rho_{X_1 X_2} = \sqrt{\alpha_{X_1}\,\alpha_{X_2}} \tag{3}\]</span></p>
+<p>This holds because noise terms cancel in the covariance but inflate the individual variances. When the two replicates are drawn from the same measurement process, <span class="math inline">\(\alpha_{X_1} = \alpha_{X_2} = \alpha_X\)</span>, so <span class="math inline">\(\rho_{X_1 X_2} = \alpha_X\)</span>.</p>
+</section>
+<section id="attenuation-of-the-cross-modal-correlation" class="level3">
+<h3 class="anchored" data-anchor-id="attenuation-of-the-cross-modal-correlation">2.3 Attenuation of the Cross-Modal Correlation</h3>
+<p>The observed Pearson correlation between the noisy measurements <span class="math inline">\(X\)</span> and <span class="math inline">\(Y\)</span> is related to the true latent correlation <span class="math inline">\(\rho_{\phi\psi}\)</span> by:</p>
+<p><span class="math display">\[\rho_{XY} = \rho_{\phi\psi} \cdot \sqrt{\alpha_X \cdot \alpha_Y} \tag{4}\]</span></p>
+<p>Because <span class="math inline">\(\alpha_X, \alpha_Y \in (0, 1]\)</span>, the observed correlation is always pulled toward zero. The true correlation is recovered by dividing out the attenuation factor.</p>
+</section>
+<section id="spearmans-correction-two-replicates-each" class="level3">
+<h3 class="anchored" data-anchor-id="spearmans-correction-two-replicates-each">2.4 Spearman’s Correction (two replicates each)</h3>
+<p>With one replicate of each type (<span class="math inline">\(X_1, X_2\)</span> for the first modality and <span class="math inline">\(Y_1, Y_2\)</span> for the second), the corrected estimate is:</p>
+<p><span class="math display">\[\hat{\rho}_{\phi\psi} = \frac{\rho_{X_1 Y_1}}{\sqrt{\rho_{X_1 X_2} \cdot \rho_{Y_1 Y_2}}} \tag{5}\]</span></p>
+<p>or, using all four cross-modal pairings to reduce variance:</p>
+<p><span class="math display">\[\hat{\rho}_{\phi\psi} = \frac{\left(\rho_{X_1 Y_1}\,\rho_{X_1 Y_2}\,\rho_{X_2 Y_1}\,\rho_{X_2 Y_2}\right)^{1/4}}{\sqrt{\rho_{X_1 X_2} \cdot \rho_{Y_1 Y_2}}} \tag{6}\]</span></p>
+</section>
+<section id="extension-to-n-binding-and-m-perturbation-datasets" class="level3">
+<h3 class="anchored" data-anchor-id="extension-to-n-binding-and-m-perturbation-datasets">2.5 Extension to <span class="math inline">\(N\)</span> Binding and <span class="math inline">\(M\)</span> Perturbation Datasets</h3>
+<p>With <span class="math inline">\(N\)</span> independent binding datasets and <span class="math inline">\(M\)</span> independent perturbation datasets, the general estimator uses the geometric means of all within-modality and cross-modality pairwise correlations:</p>
+<p><span class="math display">\[\hat{\rho}_{\phi\psi} =
+\frac{\displaystyle\left(\prod_{i=1}^{N}\prod_{j=1}^{M} r_{X_i Y_j}\right)^{\!\!\frac{1}{NM}}}
+{\sqrt{\displaystyle\left(\prod_{i &lt; i'} r_{X_i X_{i'}}\right)^{\!\!\frac{2}{N(N-1)}} \cdot \left(\prod_{j &lt; j'} r_{Y_j Y_{j'}}\right)^{\!\!\frac{2}{M(M-1)}}}}
+\tag{7}\]</span></p>
+<p>The denominator is the geometric mean of the within-binding pairwise correlations times the geometric mean of the within-perturbation pairwise correlations, i.e.&nbsp;the square root of the product of the two reliability estimates.</p>
+<hr>
+</section>
+</section>
+<section id="adaptation-to-binding-vs.-perturbation" class="level2">
+<h2 class="anchored" data-anchor-id="adaptation-to-binding-vs.-perturbation">3. Adaptation to Binding vs.&nbsp;Perturbation</h2>
+<section id="re-mapping-the-variables" class="level3">
+<h3 class="anchored" data-anchor-id="re-mapping-the-variables">3.1 Re-mapping the Variables</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Original</th>
+<th>Binding-Perturbation</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(\phi_g\)</span></td>
+<td><span class="math inline">\(\phi_{kg}\)</span></td>
+<td>True binding affinity of TF <span class="math inline">\(k\)</span> at promoter of gene <span class="math inline">\(g\)</span></td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(\psi_g\)</span></td>
+<td><span class="math inline">\(\psi_{kg}\)</span></td>
+<td>True regulatory effect of TF <span class="math inline">\(k\)</span> on expression of gene <span class="math inline">\(g\)</span></td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(X_g\)</span></td>
+<td><span class="math inline">\(X_{kg}\)</span></td>
+<td>Observed binding score (enrichment, ChIP ratio, etc.)</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(Y_g\)</span></td>
+<td><span class="math inline">\(Y_{kg}\)</span></td>
+<td>Observed perturbation effect size (log<span class="math inline">\(_2\)</span>FC, etc.)</td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(\rho_{\phi\psi}\)</span></td>
+<td><span class="math inline">\(\rho_{\phi\psi}^{(k)}\)</span></td>
+<td>True binding-to-perturbation coupling for TF <span class="math inline">\(k\)</span></td>
+</tr>
+</tbody>
+</table>
+<p>The measurement model is identical. Binding scores carry assay-specific noise (PCR amplification biases, transposon insertion preferences, antibody cross-reactivity), and perturbation effect sizes carry independent noise (batch effects, incomplete depletion, indirect effects).</p>
+</section>
+<section id="unit-of-analysis-and-the-correlation-vector" class="level3">
+<h3 class="anchored" data-anchor-id="unit-of-analysis-and-the-correlation-vector">3.2 Unit of Analysis and the Correlation Vector</h3>
+<p>For a fixed TF <span class="math inline">\(k\)</span>, the binding score vector over all <span class="math inline">\(G\)</span> target genes is:</p>
+<p><span class="math display">\[\mathbf{X}^{(k)} = \bigl(X_{k,1},\, X_{k,2},\, \ldots,\, X_{k,G}\bigr)\]</span></p>
+<p>and the perturbation effect vector is:</p>
+<p><span class="math display">\[\mathbf{Y}^{(k)} = \bigl(Y_{k,1},\, Y_{k,2},\, \ldots,\, Y_{k,G}\bigr)\]</span></p>
+<p>All pairwise correlations below (e.g.&nbsp;<span class="math inline">\(r_{X_i X_{i'}}\)</span> for TF <span class="math inline">\(k\)</span>) are Pearson or Spearman correlations computed over genes <span class="math inline">\(g = 1, \ldots, G\)</span>, restricted to genes with non-missing values in both datasets.</p>
+<p>The observed binding-perturbation correlation for TF <span class="math inline">\(k\)</span> is</p>
+<p><span class="math display">\[r_{XY}^{(k)} = \mathrm{corr}\!\left(\mathbf{X}^{(k)},\, \mathbf{Y}^{(k)}\right)\]</span></p>
+<p>and the corrected estimate <span class="math inline">\(\hat{\rho}^{(k)}_{\phi\psi}\)</span> answers: “What would this correlation be if both measurements were perfectly reliable?”</p>
+</section>
+<section id="available-datasets" class="level3">
+<h3 class="anchored" data-anchor-id="available-datasets">3.3 Available Datasets</h3>
+<p><strong>Binding datasets (<span class="math inline">\(X_i\)</span>):</strong></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Symbol</th>
+<th>Dataset</th>
+<th>Score column</th>
+<th>Technology</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(X_1\)</span></td>
+<td><code>callingcards</code></td>
+<td><code>callingcards_enrichment</code></td>
+<td>Transposon calling cards</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(X_2\)</span></td>
+<td><code>harbison</code></td>
+<td><code>effect</code> (YPD condition)</td>
+<td>ChIP-chip</td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(X_3\)</span></td>
+<td><code>rossi</code></td>
+<td><code>enrichment</code></td>
+<td>ChIP-exo</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(X_4\)</span></td>
+<td><code>chec_m2025</code></td>
+<td><code>enrichment</code></td>
+<td>ChEC-seq</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Perturbation datasets (<span class="math inline">\(Y_j\)</span>):</strong></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Symbol</th>
+<th>Dataset</th>
+<th>Score column</th>
+<th>Technology</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(Y_1\)</span></td>
+<td><code>kemmeren</code></td>
+<td><code>M</code></td>
+<td>Microarray, gene deletion</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(Y_2\)</span></td>
+<td><code>hughes_knockout</code></td>
+<td><code>mean_norm_log2fc</code></td>
+<td>Two-colour array, deletion</td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(Y_3\)</span></td>
+<td><code>degron</code></td>
+<td><code>log2FoldChange</code></td>
+<td>RNA-seq, auxin degron</td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+</section>
+<section id="reliability-estimation-for-each-modality" class="level2">
+<h2 class="anchored" data-anchor-id="reliability-estimation-for-each-modality">4. Reliability Estimation for Each Modality</h2>
+<section id="binding-reliability" class="level3">
+<h3 class="anchored" data-anchor-id="binding-reliability">4.1 Binding Reliability</h3>
+<p>For TF <span class="math inline">\(k\)</span> that is measured in both dataset <span class="math inline">\(X_i\)</span> and dataset <span class="math inline">\(X_{i'}\)</span>, the pairwise reliability estimate is:</p>
+<p><span class="math display">\[\hat{\alpha}_{X}^{(k)}\bigl(i, i'\bigr) = r_{X_i^{(k)},\, X_{i'}^{(k)}} \tag{8}\]</span></p>
+<p>When more than two binding datasets cover TF <span class="math inline">\(k\)</span>, take the geometric mean over all <span class="math inline">\(\binom{N}{2}\)</span> pairs:</p>
+<p><span class="math display">\[\hat{\alpha}_{X}^{(k)} = \left(\prod_{i &lt; i'} r_{X_i^{(k)},\, X_{i'}^{(k)}}\right)^{\!\!\frac{2}{N(N-1)}} \tag{9}\]</span></p>
+<p>In practice, with the datasets listed above, the usable pairings for a given TF depend on coverage (102 TFs shared between <code>callingcards</code> and <code>harbison</code>; 777 in <code>rossi</code> but fewer in older datasets). If only one pair is available, Eq. 8 is used directly.</p>
+<p><strong>Important caveat:</strong> Unlike the original paper, where replicates represent the same protocol applied twice, here <span class="math inline">\(X_i\)</span> and <span class="math inline">\(X_{i'}\)</span> represent <em>different assay technologies</em> (calling cards, ChIP-chip, ChIP-exo, ChEC-seq). The cross-technology correlation is therefore a <em>lower bound</em> on true reliability: it conflates measurement noise with systematic between-technology biases. The corrected <span class="math inline">\(\hat{\rho}_{\phi\psi}\)</span> will accordingly be a <em>conservative</em> upper bound on the true binding-perturbation coupling.</p>
+</section>
+<section id="perturbation-reliability" class="level3">
+<h3 class="anchored" data-anchor-id="perturbation-reliability">4.2 Perturbation Reliability</h3>
+<p>Analogously, for TF <span class="math inline">\(k\)</span> measured in perturbation datasets <span class="math inline">\(Y_j\)</span> and <span class="math inline">\(Y_{j'}\)</span>:</p>
+<p><span class="math display">\[\hat{\alpha}_{Y}^{(k)}\bigl(j, j'\bigr) = r_{Y_j^{(k)},\, Y_{j'}^{(k)}} \tag{10}\]</span></p>
+<p>With all three perturbation datasets:</p>
+<p><span class="math display">\[\hat{\alpha}_{Y}^{(k)} = \left(\prod_{j &lt; j'} r_{Y_j^{(k)},\, Y_{j'}^{(k)}}\right)^{\!\!\frac{1}{3}} \tag{11}\]</span></p>
+<p>The 51 TFs shared between <code>kemmeren</code> and <code>hughes_knockout</code> can supply <span class="math inline">\(\hat{\alpha}_Y\)</span> estimates; <code>degron</code> uses a different depletion mechanism (auxin-inducible degron, RNA-seq) which may introduce additional between-technology variance relative to within-deletion-study variance.</p>
+<hr>
+</section>
+</section>
+<section id="corrected-binding-perturbation-correlation" class="level2">
+<h2 class="anchored" data-anchor-id="corrected-binding-perturbation-correlation">5. Corrected Binding-Perturbation Correlation</h2>
+<section id="two-dataset-version-one-binding-one-perturbation" class="level3">
+<h3 class="anchored" data-anchor-id="two-dataset-version-one-binding-one-perturbation">5.1 Two-Dataset Version (one binding, one perturbation)</h3>
+<p>With a single binding dataset <span class="math inline">\(X\)</span> and a single perturbation dataset <span class="math inline">\(Y\)</span> for TF <span class="math inline">\(k\)</span>, no within-modality reliability estimate is possible from the data alone. The correction requires an externally estimated reliability or a pooled estimate computed across all TFs:</p>
+<p><span class="math display">\[\hat{\rho}_{\phi\psi}^{(k)} = \frac{r_{XY}^{(k)}}{\sqrt{\bar{\alpha}_X \cdot \bar{\alpha}_Y}} \tag{12}\]</span></p>
+<p>where <span class="math inline">\(\bar{\alpha}_X\)</span> is the population-level binding reliability (estimated from TFs present in multiple binding datasets) and <span class="math inline">\(\bar{\alpha}_Y\)</span> is the population-level perturbation reliability.</p>
+</section>
+<section id="two-binding-two-perturbation-datasets" class="level3">
+<h3 class="anchored" data-anchor-id="two-binding-two-perturbation-datasets">5.2 Two Binding, Two Perturbation Datasets</h3>
+<p>Using <span class="math inline">\(X_1 =\)</span> <code>callingcards</code>, <span class="math inline">\(X_2 =\)</span> <code>harbison</code> (YPD), <span class="math inline">\(Y_1 =\)</span> <code>kemmeren</code>, <span class="math inline">\(Y_2 =\)</span> <code>hughes_knockout</code>:</p>
+<p><span class="math display">\[\hat{\rho}_{\phi\psi}^{(k)} =
+\frac{\left(r_{X_1 Y_1}^{(k)}\,r_{X_1 Y_2}^{(k)}\,r_{X_2 Y_1}^{(k)}\,r_{X_2 Y_2}^{(k)}\right)^{1/4}}{\sqrt{r_{X_1 X_2}^{(k)} \cdot r_{Y_1 Y_2}^{(k)}}}
+\tag{13}\]</span></p>
+<p>All four correlations are computed over the set of genes covered by both datasets for TF <span class="math inline">\(k\)</span>.</p>
+</section>
+<section id="full-multi-dataset-version" class="level3">
+<h3 class="anchored" data-anchor-id="full-multi-dataset-version">5.3 Full Multi-Dataset Version</h3>
+<p>With <span class="math inline">\(N = 4\)</span> binding datasets and <span class="math inline">\(M = 3\)</span> perturbation datasets, applying Eq. 7 per TF:</p>
+<p><span class="math display">\[\hat{\rho}_{\phi\psi}^{(k)} =
+\frac{\displaystyle\left(\prod_{i=1}^{4}\prod_{j=1}^{3} r_{X_i^{(k)} Y_j^{(k)}}\right)^{1/12}}
+{\sqrt{\displaystyle\hat{\alpha}_X^{(k)} \cdot \hat{\alpha}_Y^{(k)}}}
+\tag{14}\]</span></p>
+<p>where <span class="math inline">\(\hat{\alpha}_X^{(k)}\)</span> and <span class="math inline">\(\hat{\alpha}_Y^{(k)}\)</span> are from Eqs. 9 and 11.</p>
+<hr>
+</section>
+</section>
+<section id="population-level-pooled-reliability" class="level2">
+<h2 class="anchored" data-anchor-id="population-level-pooled-reliability">6. Population-Level (Pooled) Reliability</h2>
+<p>Per-TF reliability estimates are noisy when <span class="math inline">\(G\)</span> (gene coverage) is small or when the TF has few measured targets above noise. The paper recommends pooling across all TFs to obtain a global modality reliability that can then be used in Eq. 12 for TFs lacking multi-dataset coverage.</p>
+<p><span class="math display">\[\bar{\alpha}_X =
+\left(\prod_{k \in \mathcal{K}_{XX}} r_{X_1^{(k)},\, X_2^{(k)}}\right)^{1/|\mathcal{K}_{XX}|}
+\tag{15}\]</span></p>
+<p>where <span class="math inline">\(\mathcal{K}_{XX}\)</span> is the set of TFs with data in both binding datasets. <span class="math inline">\(\bar{\alpha}_Y\)</span> is defined analogously over <span class="math inline">\(\mathcal{K}_{YY}\)</span>.</p>
+<p>Concretely, this means computing the binding-binding pairwise correlation for each of the 102 TFs shared between <code>callingcards</code> and <code>harbison</code> (or whichever pair has the most coverage), then taking the geometric mean across those 102 values.</p>
+<hr>
+</section>
+<section id="score-alignment-and-comparability" class="level2">
+<h2 class="anchored" data-anchor-id="score-alignment-and-comparability">7. Score Alignment and Comparability</h2>
+<p>Before computing any pairwise correlation, scores from different datasets must be reduced to a common (target gene) basis for the same TF.</p>
+<p><strong>Recommended score transformations:</strong></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Dataset</th>
+<th>Raw column</th>
+<th>Suggested transform</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>callingcards</code></td>
+<td><code>callingcards_enrichment</code></td>
+<td><span class="math inline">\(\log_2(\text{enrichment} + 1)\)</span> or <span class="math inline">\(-\log_{10}(\text{poisson\_pval})\)</span></td>
+</tr>
+<tr class="even">
+<td><code>harbison</code></td>
+<td><code>effect</code></td>
+<td>already log<span class="math inline">\(_2\)</span> ratio; restrict to YPD for cross-study coherence</td>
+</tr>
+<tr class="odd">
+<td><code>rossi</code></td>
+<td><code>enrichment</code></td>
+<td><span class="math inline">\(\log_2(\text{enrichment} + 1)\)</span> or <span class="math inline">\(-\log_{10}(\text{poisson\_pval})\)</span></td>
+</tr>
+<tr class="even">
+<td><code>chec_m2025</code></td>
+<td><code>enrichment</code></td>
+<td>same as rossi</td>
+</tr>
+<tr class="odd">
+<td><code>kemmeren</code></td>
+<td><code>M</code></td>
+<td>already log<span class="math inline">\(_2\)</span> FC</td>
+</tr>
+<tr class="even">
+<td><code>hughes_knockout</code></td>
+<td><code>mean_norm_log2fc</code></td>
+<td>already log<span class="math inline">\(_2\)</span> FC</td>
+</tr>
+<tr class="odd">
+<td><code>degron</code></td>
+<td><code>log2FoldChange</code></td>
+<td>already log<span class="math inline">\(_2\)</span> FC; choose an appropriate timepoint</td>
+</tr>
+</tbody>
+</table>
+<p>A single row per (TF, gene) per dataset is required. For datasets that contain multiple rows per pair (e.g.&nbsp;<code>rossi</code>, which has genomic-window resolution), aggregate to gene-level by taking the maximum enrichment or minimum p-value per target gene.</p>
+<hr>
+</section>
+<section id="asymmetry-note" class="level2">
+<h2 class="anchored" data-anchor-id="asymmetry-note">8. Asymmetry Note</h2>
+<p>Unlike mRNA vs.&nbsp;protein, binding and perturbation are not symmetric modalities. A TF can have high binding enrichment at a target but produce no detectable perturbation effect (buffered regulation, redundancy, condition-specificity), and a target gene can show a strong perturbation response through indirect effects not captured by the binding assay. This means a low observed <span class="math inline">\(r_{XY}\)</span> does not necessarily imply low true <span class="math inline">\(\rho_{\phi\psi}\)</span> – it may instead reflect genuine biological complexity. The Spearman correction addresses only the noise-induced component of attenuation; condition-mismatch and indirect-effect biases remain.</p>
+<p>In particular, <code>harbison</code> and <code>callingcards</code> are largely YPD experiments, while <code>kemmeren</code>, <code>hughes_knockout</code>, and <code>degron</code> also use YPD or near-YPD conditions, so condition alignment is reasonable. If future analyses extend to stress conditions in <code>harbison</code> or condition-specific <code>degron</code> timepoints, reliability estimates should be computed within matched conditions.</p>
+<hr>
+</section>
+<section id="summary-of-equations" class="level2">
+<h2 class="anchored" data-anchor-id="summary-of-equations">9. Summary of Equations</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Equation</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Eq. 2</td>
+<td>Reliability: fraction of variance that is signal</td>
+</tr>
+<tr class="even">
+<td>Eq. 3</td>
+<td>Replicate correlation = geometric mean of reliabilities</td>
+</tr>
+<tr class="odd">
+<td>Eq. 4</td>
+<td>Observed cross-modal correlation is attenuated by <span class="math inline">\(\sqrt{\alpha_X \alpha_Y}\)</span></td>
+</tr>
+<tr class="even">
+<td>Eq. 6</td>
+<td>Spearman correction with 2 binding + 2 perturbation datasets</td>
+</tr>
+<tr class="odd">
+<td>Eq. 7</td>
+<td>General correction with <span class="math inline">\(N\)</span> binding + <span class="math inline">\(M\)</span> perturbation datasets</td>
+</tr>
+<tr class="even">
+<td>Eq. 9</td>
+<td>Per-TF binding reliability (geometric mean of pairwise cross-dataset <span class="math inline">\(r\)</span>)</td>
+</tr>
+<tr class="odd">
+<td>Eq. 11</td>
+<td>Per-TF perturbation reliability (same, for perturbation datasets)</td>
+</tr>
+<tr class="even">
+<td>Eq. 13</td>
+<td>Per-TF corrected correlation (2+2 dataset case, concrete dataset names)</td>
+</tr>
+<tr class="odd">
+<td>Eq. 14</td>
+<td>Per-TF corrected correlation (full 4+3 dataset case)</td>
+</tr>
+<tr class="even">
+<td>Eq. 15</td>
+<td>Population-level pooled reliability for imputation</td>
+</tr>
+</tbody>
+</table>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/BrentLab\.github\.io\/tfbpshiny\/");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/BrentLab/tfbpshiny/edit/main/docs/binding_perturbation_reliability.md" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li></ul></div></div></div></footer></body></html>

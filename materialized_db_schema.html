@@ -1,0 +1,1807 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>materialized_db_schema – TFBPShiny</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-55617497126496852ff9f5a59253c640.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "sidebar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "start",
+  "type": "textbox",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+</head>
+
+<body class="nav-sidebar floating quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./binding_perturbation_reliability.html">Reference</a></li><li class="breadcrumb-item"><a href="./materialized_db_schema.html">Database Schema</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header">
+    <div class="sidebar-title mb-0 py-0">
+      <a href="./">TFBPShiny</a> 
+    </div>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TFBPShiny</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Page guides</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./select_datasets_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Dataset selection</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./binding_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Binding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./perturbation_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Perturbation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./comparison_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Binding/Perturbation Comparisons</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./binding_perturbation_reliability.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Reliability and Spearman’s Correction: Binding vs.&nbsp;Perturbation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./materialized_db_schema.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Database Schema</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./sql_operations.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SQL Operations Reference</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./development.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Developer Notes</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#database-schema" id="toc-database-schema" class="nav-link active" data-scroll-target="#database-schema">Database Schema</a>
+  <ul class="collapse">
+  <li><a href="#overview" id="toc-overview" class="nav-link" data-scroll-target="#overview">Overview</a></li>
+  <li><a href="#coordinating-layer" id="toc-coordinating-layer" class="nav-link" data-scroll-target="#coordinating-layer">Coordinating Layer</a>
+  <ul class="collapse">
+  <li><a href="#promoter_sets" id="toc-promoter_sets" class="nav-link" data-scroll-target="#promoter_sets"><code>promoter_sets</code></a></li>
+  <li><a href="#binding_methods" id="toc-binding_methods" class="nav-link" data-scroll-target="#binding_methods"><code>binding_methods</code></a></li>
+  <li><a href="#dataset_registry" id="toc-dataset_registry" class="nav-link" data-scroll-target="#dataset_registry"><code>dataset_registry</code></a></li>
+  <li><a href="#comparative_dataset_registry" id="toc-comparative_dataset_registry" class="nav-link" data-scroll-target="#comparative_dataset_registry"><code>comparative_dataset_registry</code></a></li>
+  <li><a href="#dataset_column_metadata" id="toc-dataset_column_metadata" class="nav-link" data-scroll-target="#dataset_column_metadata"><code>dataset_column_metadata</code></a></li>
+  <li><a href="#schema_version" id="toc-schema_version" class="nav-link" data-scroll-target="#schema_version"><code>schema_version</code></a></li>
+  </ul></li>
+  <li><a href="#metadata-layer" id="toc-metadata-layer" class="nav-link" data-scroll-target="#metadata-layer">Metadata Layer</a>
+  <ul class="collapse">
+  <li><a href="#db_name_meta" id="toc-db_name_meta" class="nav-link" data-scroll-target="#db_name_meta"><code>{db_name}_meta</code></a></li>
+  <li><a href="#sample_regulator" id="toc-sample_regulator" class="nav-link" data-scroll-target="#sample_regulator"><code>sample_regulator</code></a></li>
+  <li><a href="#regulator_display_names" id="toc-regulator_display_names" class="nav-link" data-scroll-target="#regulator_display_names"><code>regulator_display_names</code></a></li>
+  </ul></li>
+  <li><a href="#comparison-layer" id="toc-comparison-layer" class="nav-link" data-scroll-target="#comparison-layer">Comparison Layer</a>
+  <ul class="collapse">
+  <li><a href="#dto" id="toc-dto" class="nav-link" data-scroll-target="#dto"><code>dto</code></a></li>
+  <li><a href="#topn_results" id="toc-topn_results" class="nav-link" data-scroll-target="#topn_results"><code>topn_results</code></a></li>
+  <li><a href="#topn_agreement" id="toc-topn_agreement" class="nav-link" data-scroll-target="#topn_agreement"><code>topn_agreement</code></a></li>
+  <li><a href="#topn_target_sets" id="toc-topn_target_sets" class="nav-link" data-scroll-target="#topn_target_sets"><code>topn_target_sets</code></a></li>
+  <li><a href="#correlations" id="toc-correlations" class="nav-link" data-scroll-target="#correlations"><code>correlations</code></a></li>
+  <li><a href="#method-promoter-set-model" id="toc-method-promoter-set-model" class="nav-link" data-scroll-target="#method-promoter-set-model">Method × promoter-set model</a></li>
+  </ul></li>
+  <li><a href="#entityrelationship-diagram" id="toc-entityrelationship-diagram" class="nav-link" data-scroll-target="#entityrelationship-diagram">Entity–Relationship Diagram</a></li>
+  <li><a href="#materialization-parameters" id="toc-materialization-parameters" class="nav-link" data-scroll-target="#materialization-parameters">Materialization Parameters</a></li>
+  <li><a href="#example-queries" id="toc-example-queries" class="nav-link" data-scroll-target="#example-queries">Example Queries</a>
+  <ul class="collapse">
+  <li><a href="#primary-binding-datasets-with-their-promoter-set-and-method" id="toc-primary-binding-datasets-with-their-promoter-set-and-method" class="nav-link" data-scroll-target="#primary-binding-datasets-with-their-promoter-set-and-method">Primary binding datasets with their promoter set and method</a></li>
+  <li><a href="#every-variant-of-a-primary-binding-dataset" id="toc-every-variant-of-a-primary-binding-dataset" class="nav-link" data-scroll-target="#every-variant-of-a-primary-binding-dataset">Every variant of a primary binding dataset</a></li>
+  <li><a href="#top-n-results-for-calling-cards-kemmeren-relaxed-preset" id="toc-top-n-results-for-calling-cards-kemmeren-relaxed-preset" class="nav-link" data-scroll-target="#top-n-results-for-calling-cards-kemmeren-relaxed-preset">Top-N results for Calling Cards × Kemmeren, Relaxed preset</a></li>
+  <li><a href="#binding-correlations-for-one-pair-galactose-samples-only" id="toc-binding-correlations-for-one-pair-galactose-samples-only" class="nav-link" data-scroll-target="#binding-correlations-for-one-pair-galactose-samples-only">Binding correlations for one pair, galactose samples only</a></li>
+  <li><a href="#dto-results-for-one-binding-perturbation-pair" id="toc-dto-results-for-one-binding-perturbation-pair" class="nav-link" data-scroll-target="#dto-results-for-one-binding-perturbation-pair">DTO results for one binding × perturbation pair</a></li>
+  <li><a href="#the-datasets-the-method-comparison-covers" id="toc-the-datasets-the-method-comparison-covers" class="nav-link" data-scroll-target="#the-datasets-the-method-comparison-covers">The datasets the method comparison covers</a></li>
+  </ul></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/BrentLab/tfbpshiny/edit/main/docs/materialized_db_schema.md" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./binding_perturbation_reliability.html">Reference</a></li><li class="breadcrumb-item"><a href="./materialized_db_schema.html">Database Schema</a></li></ol></nav></header>
+
+
+
+
+<section id="database-schema" class="level1">
+<h1>Database Schema</h1>
+<section id="overview" class="level2">
+<h2 class="anchored" data-anchor-id="overview">Overview</h2>
+<p>The app reads a single DuckDB file, <code>brentlab_yeast.duckdb</code>, built offline by <code>tfbpshiny materialize</code> from the collection config (<code>tfbpshiny/brentlab_yeast_collection.yaml</code>) through <code>labretriever.VirtualDB</code>. Every comparison the app shows (top-N responsiveness, DTO, correlations, agreement, the method × promoter-set model) is computed or copied at build time; the running app only reads and aggregates.</p>
+<p><strong>Layers:</strong></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 28%">
+<col style="width: 46%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Layer</th>
+<th>Tables</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Coordinating</td>
+<td><code>promoter_sets</code>, <code>binding_methods</code>, <code>dataset_registry</code>, <code>comparative_dataset_registry</code>, <code>dataset_column_metadata</code>, <code>schema_version</code></td>
+<td>Dataset identity and presentation (labels, colours, references, notes), from the collection config’s <code>tags</code> and <code>tfbpshiny/datasets.py</code></td>
+</tr>
+<tr class="even">
+<td>Metadata</td>
+<td><code>{db_name}_meta</code> (one per dataset), <code>sample_regulator</code>, <code>regulator_display_names</code></td>
+<td>Sample metadata copied from the VirtualDB <code>_meta</code> views, plus two lookups built from them</td>
+</tr>
+<tr class="odd">
+<td>Comparison, copied</td>
+<td><code>dto</code></td>
+<td>Copied from the HuggingFace comparative dataset</td>
+</tr>
+<tr class="even">
+<td>Comparison, computed</td>
+<td><code>topn_results</code>, <code>topn_agreement</code>, <code>topn_target_sets</code>, <code>correlations</code>, <code>method_promoter_model_*</code></td>
+<td>Computed at build time</td>
+</tr>
+</tbody>
+</table>
+<p>Target-level measurement data (the <code>{db_name}</code> views: <code>target_locus_tag</code>, <code>enrichment</code>, <code>log2FoldChange</code> and so on) is not stored. It stays in the HuggingFace Parquet files and is read only during the build. Field definitions, aliases and mappings stay in labretriever.</p>
+<hr>
+</section>
+<section id="coordinating-layer" class="level2">
+<h2 class="anchored" data-anchor-id="coordinating-layer">Coordinating Layer</h2>
+<section id="promoter_sets" class="level3">
+<h3 class="anchored" data-anchor-id="promoter_sets"><code>promoter_sets</code></h3>
+<p>The genomic region definitions binding datasets are quantified over. Rows come from <code>PROMOTER_SETS</code> in <code>tfbpshiny/datasets.py</code>. The description of each promoter window is taken from the labretriever region set it names, declared in the <code>genome_resources</code> block of the collection config.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> promoter_sets (</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    promoter_set_id  <span class="dt">VARCHAR</span>  <span class="kw">PRIMARY</span> <span class="kw">KEY</span>,</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    display_name     <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    description      <span class="dt">VARCHAR</span>,   <span class="co">-- from the labretriever region set it names</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    color            <span class="dt">VARCHAR</span>,   <span class="co">-- series colour (figures 7/8)</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    reference        <span class="dt">VARCHAR</span>    <span class="co">-- defining publication URL</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>promoter_set_id</th>
+<th>display_name</th>
+<th>description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>kang</code></td>
+<td>Kang</td>
+<td>700 bp upstream of each start codon, truncated if there exists a feature within 700 bp of the ORF</td>
+</tr>
+<tr class="even">
+<td><code>mindel</code></td>
+<td>Mindel</td>
+<td>Start codon to at least 700 bp upstream of the TSS (Park 2014, Pelechano 2013, Policastro 2020); the start codon when no TSS is defined</td>
+</tr>
+<tr class="odd">
+<td><code>500bp</code></td>
+<td>500bp</td>
+<td>Exactly 500bp upstream of the start codon, with no truncation or extension</td>
+</tr>
+<tr class="even">
+<td><code>intergenic</code></td>
+<td>Intergenic</td>
+<td>The intergenic region upstream of the 5′ end of a feature; 1,410 of 6,040 features are divergently transcribed</td>
+</tr>
+<tr class="odd">
+<td><code>peaks</code></td>
+<td>Peaks</td>
+<td>Regions as called by the original authors’ peak-calling pipeline; not a fixed promoter window</td>
+</tr>
+<tr class="even">
+<td><code>array</code></td>
+<td>Array Probes</td>
+<td>Regions fixed by the ChIP-chip microarray platform; not re-quantifiable over a promoter window</td>
+</tr>
+</tbody>
+</table>
+<p>The first four are the comparable windows, <code>PROMOTER_SET_LEVELS</code> in <code>tfbpshiny/datasets.py</code>, and the only promoter sets that appear as columns in the Comparison page’s promoter-definition and method tables. <code>peaks</code> and <code>array</code> are fixed by something other than a choice of upstream window.</p>
+<hr>
+</section>
+<section id="binding_methods" class="level3">
+<h3 class="anchored" data-anchor-id="binding_methods"><code>binding_methods</code></h3>
+<p>How binding signal was quantified. Rows come from <code>BINDING_METHODS</code> in <code>tfbpshiny/datasets.py</code>.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> binding_methods (</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    binding_method_id  <span class="dt">VARCHAR</span>  <span class="kw">PRIMARY</span> <span class="kw">KEY</span>,</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    display_name       <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    color              <span class="dt">VARCHAR</span>   <span class="co">-- series colour (figure 9, Comparison method rows)</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>binding_method_id</th>
+<th>display_name</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>promoter_enrichment</code></td>
+<td>Promoter Enrichment</td>
+</tr>
+<tr class="even">
+<td><code>peak_calling</code></td>
+<td>Peak Calling</td>
+</tr>
+</tbody>
+</table>
+<p><code>peak_calling</code> datasets score a target from the peaks overlapping it; the others use counts aggregated over a fixed promoter window. They come in two kinds, distinguished by <code>promoter_set_id</code>:</p>
+<ul>
+<li><strong><code>promoter_set_id = 'peaks'</code></strong>: the original authors’ peak annotations (<code>rossi_peaks</code>, <code>chec_m2025_peaks</code>). These are sparse, and have no fixed upstream window.</li>
+<li><strong><code>promoter_set_id</code> one of the four windows</strong>: peaks re-called from the raw data and intersected with that promoter definition (<code>rossi_peaks_*</code> with MACS, <code>chec_m2025_peaks_*</code> with HOMER). Each pairs one-to-one with the promoter-enrichment dataset over the same window, which is what the Comparison page’s “Compare Analysis Methods” tab tabulates.</li>
+</ul>
+<p>The re-called peak datasets are <strong>dense</strong>: every promoter of the set is reported for every sample. A promoter with no qualifying peak has a NULL <code>nearest_score</code>, <code>median_score</code> and <code>max_score</code> (Rossi: <code>n_peaks = 0</code>; ChEC-seq: fewer than two replicates with a peak, <code>n_replicates &lt; 2</code>). Test <code>max_score IS NOT NULL</code>, not <code>n_peaks &gt; 0</code>. They are ranked on <code>max_score</code>, and a NULL ranks as a score of 0, below every real score. The Rossi score is MACS -log10(q). The ChEC-seq score is HOMER’s normalized tag count (the datacard calls it -log10(q), which it is not), so the two scales are not comparable.</p>
+<hr>
+</section>
+<section id="dataset_registry" class="level3">
+<h3 class="anchored" data-anchor-id="dataset_registry"><code>dataset_registry</code></h3>
+<p>One row per <code>db_name</code>. Every column comes from the collection config: the HuggingFace repository and config from the dataset’s location, and the rest from its <code>tags</code>, where repository-level tags apply to every dataset in the repository and dataset-level tags override them. <code>materialize</code> checks the tags before writing (known promoter set and method, consistent primaries) and fails on an inconsistency.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> dataset_registry (</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    db_name              <span class="dt">VARCHAR</span>  <span class="kw">PRIMARY</span> <span class="kw">KEY</span>,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    hf_repo              <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,     <span class="co">-- e.g. 'BrentLab/callingcards'</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    hf_config            <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    data_type            <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,     <span class="co">-- 'binding' | 'perturbation'</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    assay                <span class="dt">VARCHAR</span>,               <span class="co">-- e.g. 'CallingCards', 'ChIPexo', 'RNA-seq'</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    display_name         <span class="dt">VARCHAR</span>,               <span class="co">-- full label, e.g. '2026 Calling Cards (Mindel)'</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    base_label           <span class="dt">VARCHAR</span>,               <span class="co">-- label without the variant suffix</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    is_primary           <span class="dt">BOOLEAN</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,     <span class="co">-- TRUE: listed on the Dataset selection page</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    is_active_default    <span class="dt">BOOLEAN</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,     <span class="co">-- TRUE: switched on at startup</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- NULL for primaries; the primary this row is a variant of</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    primary_db_name      <span class="dt">VARCHAR</span>  <span class="kw">REFERENCES</span> dataset_registry(db_name),</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- binding only (NULL for perturbation datasets)</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    promoter_set_id      <span class="dt">VARCHAR</span>  <span class="kw">REFERENCES</span> promoter_sets(promoter_set_id),</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    binding_method_id    <span class="dt">VARCHAR</span>  <span class="kw">REFERENCES</span> binding_methods(binding_method_id),</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- presentation, on primaries; variants share their primary's base_label</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>    color                <span class="dt">VARCHAR</span>,               <span class="co">-- series colour of the experiment</span></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>    peak_calling_note    <span class="dt">VARCHAR</span>,               <span class="co">-- how the assay's peak calls were made</span></span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>    description          <span class="dt">VARCHAR</span>                <span class="co">-- dataset description (selection tooltip)</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong><code>primary_db_name</code></strong> is NULL for a primary and names the primary for a promoter-set or method variant (e.g.&nbsp;<code>callingcards_mindel</code> has <code>callingcards_500bp</code>). <code>(primary_db_name, promoter_set_id, binding_method_id)</code> identifies every binding variant; <code>build_binding_index</code> in <code>modules/comparison/queries.py</code> reads exactly these columns.</p>
+<p><strong><code>description</code></strong> is labretriever’s dataset description: the collection config’s <code>description</code> if it has one, else the HuggingFace DataCard’s. The Dataset selection page shows it as the tooltip of each dataset’s name.</p>
+<p><strong>Colours:</strong> <code>callingcards_500bp</code>, <code>rossi_500bp</code>, <code>chec_m2025_500bp</code>, <code>harbison</code>, <code>kemmeren</code>, <code>hackett</code> and <code>degron</code> carry a colour. <strong>Peak-calling notes:</strong> <code>rossi_500bp</code> and <code>chec_m2025_500bp</code>, the two assays with re-called peaks.</p>
+<p><strong>Rows:</strong></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 11%">
+<col style="width: 11%">
+<col style="width: 11%">
+<col style="width: 11%">
+<col style="width: 11%">
+<col style="width: 11%">
+<col style="width: 11%">
+<col style="width: 11%">
+<col style="width: 11%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>db_name</th>
+<th>data_type</th>
+<th>display_name</th>
+<th>base_label</th>
+<th>is_primary</th>
+<th>is_active_default</th>
+<th>primary_db_name</th>
+<th>promoter_set_id</th>
+<th>binding_method_id</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>callingcards_500bp</code></td>
+<td>binding</td>
+<td>2026 Calling Cards</td>
+<td>2026 Calling Cards</td>
+<td>TRUE</td>
+<td>TRUE</td>
+<td>NULL</td>
+<td>500bp</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="even">
+<td><code>chec_m2025_500bp</code></td>
+<td>binding</td>
+<td>2025 ChEC-seq (Mahendrawada)</td>
+<td>2025 ChEC-seq</td>
+<td>TRUE</td>
+<td>TRUE</td>
+<td>NULL</td>
+<td>500bp</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="odd">
+<td><code>harbison</code></td>
+<td>binding</td>
+<td>2004 ChIP-chip (Harbison)</td>
+<td>2004 ChIP-chip</td>
+<td>TRUE</td>
+<td>FALSE</td>
+<td>NULL</td>
+<td>array</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="even">
+<td><code>rossi_500bp</code></td>
+<td>binding</td>
+<td>2021 ChIP-exo (Rossi)</td>
+<td>2021 ChIP-exo</td>
+<td>TRUE</td>
+<td>TRUE</td>
+<td>NULL</td>
+<td>500bp</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="odd">
+<td><code>degron</code></td>
+<td>perturbation</td>
+<td>2025 Degron (Mahendrawada)</td>
+<td>2025 Degron</td>
+<td>TRUE</td>
+<td>TRUE</td>
+<td>NULL</td>
+<td>NULL</td>
+<td>NULL</td>
+</tr>
+<tr class="even">
+<td><code>hackett</code></td>
+<td>perturbation</td>
+<td>2020 Overexpression (Hackett)</td>
+<td>2020 Overexpression</td>
+<td>TRUE</td>
+<td>TRUE</td>
+<td>NULL</td>
+<td>NULL</td>
+<td>NULL</td>
+</tr>
+<tr class="odd">
+<td><code>hu_reimand</code></td>
+<td>perturbation</td>
+<td>2007 TFKO (Hu)</td>
+<td>2007 TFKO</td>
+<td>TRUE</td>
+<td>FALSE</td>
+<td>NULL</td>
+<td>NULL</td>
+<td>NULL</td>
+</tr>
+<tr class="even">
+<td><code>hughes_knockout</code></td>
+<td>perturbation</td>
+<td>2006 TFKO (Hughes)</td>
+<td>2006 TFKO</td>
+<td>TRUE</td>
+<td>FALSE</td>
+<td>NULL</td>
+<td>NULL</td>
+<td>NULL</td>
+</tr>
+<tr class="odd">
+<td><code>hughes_overexpression</code></td>
+<td>perturbation</td>
+<td>2006 Overexpression (Hughes)</td>
+<td>2006 Overexpression</td>
+<td>TRUE</td>
+<td>FALSE</td>
+<td>NULL</td>
+<td>NULL</td>
+<td>NULL</td>
+</tr>
+<tr class="even">
+<td><code>kemmeren</code></td>
+<td>perturbation</td>
+<td>2014 TFKO (Kemmeren)</td>
+<td>2014 TFKO</td>
+<td>TRUE</td>
+<td>TRUE</td>
+<td>NULL</td>
+<td>NULL</td>
+<td>NULL</td>
+</tr>
+<tr class="odd">
+<td><code>callingcards_intergenic</code></td>
+<td>binding</td>
+<td>2026 Calling Cards (Intergenic)</td>
+<td>2026 Calling Cards</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>callingcards_500bp</td>
+<td>intergenic</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="even">
+<td><code>callingcards_kang</code></td>
+<td>binding</td>
+<td>2026 Calling Cards (Kang)</td>
+<td>2026 Calling Cards</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>callingcards_500bp</td>
+<td>kang</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="odd">
+<td><code>callingcards_mindel</code></td>
+<td>binding</td>
+<td>2026 Calling Cards (Mindel)</td>
+<td>2026 Calling Cards</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>callingcards_500bp</td>
+<td>mindel</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="even">
+<td><code>chec_m2025</code></td>
+<td>binding</td>
+<td>2025 ChEC-seq (Mahendrawada, Kang)</td>
+<td>2025 ChEC-seq</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>chec_m2025_500bp</td>
+<td>kang</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="odd">
+<td><code>chec_m2025_intergenic</code></td>
+<td>binding</td>
+<td>2025 ChEC-seq (Mahendrawada, Intergenic)</td>
+<td>2025 ChEC-seq</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>chec_m2025_500bp</td>
+<td>intergenic</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="even">
+<td><code>chec_m2025_mindel</code></td>
+<td>binding</td>
+<td>2025 ChEC-seq (Mahendrawada, Mindel)</td>
+<td>2025 ChEC-seq</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>chec_m2025_500bp</td>
+<td>mindel</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="odd">
+<td><code>chec_m2025_peaks</code></td>
+<td>binding</td>
+<td>2025 ChEC-seq Peaks (Mahendrawada)</td>
+<td>2025 ChEC-seq</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>chec_m2025_500bp</td>
+<td>peaks</td>
+<td>peak_calling</td>
+</tr>
+<tr class="even">
+<td><code>chec_m2025_peaks_500bp</code></td>
+<td>binding</td>
+<td>2025 ChEC-seq Peaks (HOMER, 500bp)</td>
+<td>2025 ChEC-seq</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>chec_m2025_500bp</td>
+<td>500bp</td>
+<td>peak_calling</td>
+</tr>
+<tr class="odd">
+<td><code>chec_m2025_peaks_intergenic</code></td>
+<td>binding</td>
+<td>2025 ChEC-seq Peaks (HOMER, Intergenic)</td>
+<td>2025 ChEC-seq</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>chec_m2025_500bp</td>
+<td>intergenic</td>
+<td>peak_calling</td>
+</tr>
+<tr class="even">
+<td><code>chec_m2025_peaks_kang</code></td>
+<td>binding</td>
+<td>2025 ChEC-seq Peaks (HOMER, Kang)</td>
+<td>2025 ChEC-seq</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>chec_m2025_500bp</td>
+<td>kang</td>
+<td>peak_calling</td>
+</tr>
+<tr class="odd">
+<td><code>chec_m2025_peaks_mindel</code></td>
+<td>binding</td>
+<td>2025 ChEC-seq Peaks (HOMER, Mindel)</td>
+<td>2025 ChEC-seq</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>chec_m2025_500bp</td>
+<td>mindel</td>
+<td>peak_calling</td>
+</tr>
+<tr class="even">
+<td><code>rossi</code></td>
+<td>binding</td>
+<td>2021 ChIP-exo (Rossi, Kang)</td>
+<td>2021 ChIP-exo</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>rossi_500bp</td>
+<td>kang</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="odd">
+<td><code>rossi_intergenic</code></td>
+<td>binding</td>
+<td>2021 ChIP-exo (Rossi, Intergenic)</td>
+<td>2021 ChIP-exo</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>rossi_500bp</td>
+<td>intergenic</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="even">
+<td><code>rossi_mindel</code></td>
+<td>binding</td>
+<td>2021 ChIP-exo (Rossi, Mindel)</td>
+<td>2021 ChIP-exo</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>rossi_500bp</td>
+<td>mindel</td>
+<td>promoter_enrichment</td>
+</tr>
+<tr class="odd">
+<td><code>rossi_peaks</code></td>
+<td>binding</td>
+<td>2021 ChIP-exo Peaks</td>
+<td>2021 ChIP-exo</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>rossi_500bp</td>
+<td>peaks</td>
+<td>peak_calling</td>
+</tr>
+<tr class="even">
+<td><code>rossi_peaks_500bp</code></td>
+<td>binding</td>
+<td>2021 ChIP-exo Peaks (MACS, 500bp)</td>
+<td>2021 ChIP-exo</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>rossi_500bp</td>
+<td>500bp</td>
+<td>peak_calling</td>
+</tr>
+<tr class="odd">
+<td><code>rossi_peaks_intergenic</code></td>
+<td>binding</td>
+<td>2021 ChIP-exo Peaks (MACS, Intergenic)</td>
+<td>2021 ChIP-exo</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>rossi_500bp</td>
+<td>intergenic</td>
+<td>peak_calling</td>
+</tr>
+<tr class="even">
+<td><code>rossi_peaks_kang</code></td>
+<td>binding</td>
+<td>2021 ChIP-exo Peaks (MACS, Kang)</td>
+<td>2021 ChIP-exo</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>rossi_500bp</td>
+<td>kang</td>
+<td>peak_calling</td>
+</tr>
+<tr class="odd">
+<td><code>rossi_peaks_mindel</code></td>
+<td>binding</td>
+<td>2021 ChIP-exo Peaks (MACS, Mindel)</td>
+<td>2021 ChIP-exo</td>
+<td>FALSE</td>
+<td>FALSE</td>
+<td>rossi_500bp</td>
+<td>mindel</td>
+<td>peak_calling</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="comparative_dataset_registry" class="level3">
+<h3 class="anchored" data-anchor-id="comparative_dataset_registry"><code>comparative_dataset_registry</code></h3>
+<p>One row per comparison table, recording whether it was copied from a HuggingFace Parquet file or computed during the build.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> comparative_dataset_registry (</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    analysis_name    <span class="dt">VARCHAR</span>  <span class="kw">PRIMARY</span> <span class="kw">KEY</span>,  <span class="co">-- table name</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    provenance       <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,     <span class="co">-- 'hf_parquet' | 'computed'</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    description      <span class="dt">VARCHAR</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- hf_parquet only (NULL for computed analyses)</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    hf_repo          <span class="dt">VARCHAR</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    hf_config        <span class="dt">VARCHAR</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>analysis_name</th>
+<th>provenance</th>
+<th>hf_repo</th>
+<th>hf_config</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>dto</code></td>
+<td><code>hf_parquet</code></td>
+<td><code>BrentLab/yeast_comparative_analysis</code></td>
+<td><code>dto</code></td>
+</tr>
+<tr class="even">
+<td><code>topn_results</code></td>
+<td><code>computed</code></td>
+<td>NULL</td>
+<td>NULL</td>
+</tr>
+<tr class="odd">
+<td><code>correlations</code></td>
+<td><code>computed</code></td>
+<td>NULL</td>
+<td>NULL</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="dataset_column_metadata" class="level3">
+<h3 class="anchored" data-anchor-id="dataset_column_metadata"><code>dataset_column_metadata</code></h3>
+<p>The metadata columns the Dataset selection page offers as filters, one row per <code>(db_name, column_name)</code>, from labretriever’s column metadata (the DataCards). <code>role</code> is <code>'condition'</code> for an experimental-condition column with defined levels and <code>'upstream'</code> for any other filterable column. Columns in <code>HIDDEN_FILTER_FIELDS</code> (<code>utils/vdb_init.py</code>, keyed by primary dataset and inherited by its variants) are left out.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> dataset_column_metadata (</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    db_name           <span class="dt">VARCHAR</span> <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    column_name       <span class="dt">VARCHAR</span> <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">role</span>              <span class="dt">VARCHAR</span> <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- 'condition' | 'upstream'</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    description       <span class="dt">VARCHAR</span>,            <span class="co">-- the column's DataCard description</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    level_definitions <span class="dt">VARCHAR</span>,            <span class="co">-- JSON object, level -&gt; definition</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (db_name, column_name)</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The filter modal shows a condition column as checkboxes labelled “definition (level)”, and uses a column’s description to label a yes/no toggle.</p>
+</section>
+<section id="schema_version" class="level3">
+<h3 class="anchored" data-anchor-id="schema_version"><code>schema_version</code></h3>
+<p>One row stamped by every build. The app compares <code>version</code> with <code>tfbpshiny.datasets.SCHEMA_VERSION</code> at startup; a database built at another version is reported on every page and the figures refuse to draw from it.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> schema_version (</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    version   <span class="dt">INTEGER</span>   <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- tfbpshiny.datasets.SCHEMA_VERSION at build time</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    built_at  <span class="dt">TIMESTAMP</span> <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    git_sha   <span class="dt">VARCHAR</span>               <span class="co">-- commit the materializer ran from; NULL outside git</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
+</section>
+</section>
+<section id="metadata-layer" class="level2">
+<h2 class="anchored" data-anchor-id="metadata-layer">Metadata Layer</h2>
+<section id="db_name_meta" class="level3">
+<h3 class="anchored" data-anchor-id="db_name_meta"><code>{db_name}_meta</code></h3>
+<p>Each registered dataset’s VirtualDB <code>{db_name}_meta</code> view is copied verbatim as a DuckDB table, one per dataset, 29 in all. There is no shared schema: each table’s columns come from the dataset’s HuggingFace datacard and the field mappings in the collection config. Every variant has its own table, with the same columns as its primary’s.</p>
+<p><strong>Columns in every <code>_meta</code> table:</strong></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>sample_id</code></td>
+<td>Primary key within the dataset (VARCHAR or INTEGER, by dataset)</td>
+</tr>
+<tr class="even">
+<td><code>regulator_locus_tag</code></td>
+<td>Systematic gene identifier</td>
+</tr>
+<tr class="odd">
+<td><code>regulator_symbol</code></td>
+<td>Gene name</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples of dataset-specific columns</strong> (the datacard is authoritative):</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Table</th>
+<th>Notable columns</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>rossi_500bp_meta</code></td>
+<td><code>antibody</code>, <code>growth_media</code>, <code>multi_antibody</code>, <code>treatment</code></td>
+</tr>
+<tr class="even">
+<td><code>hackett_meta</code></td>
+<td><code>time</code>, <code>date</code>, <code>mechanism</code>, <code>restriction</code>, <code>strain</code></td>
+</tr>
+</tbody>
+</table>
+<p>Most tables also carry display-named condition columns such as <code>Carbon source</code> and <code>Temperature</code>. Columns in <code>HIDDEN_FILTER_FIELDS</code> are kept here and only hidden in the UI; <code>FIELD_TYPE_OVERRIDES</code> (<code>utils/vdb_init.py</code>) governs how the UI treats a column’s type.</p>
+</section>
+<section id="sample_regulator" class="level3">
+<h3 class="anchored" data-anchor-id="sample_regulator"><code>sample_regulator</code></h3>
+<p><code>(db_name, sample_id) -&gt; regulator_locus_tag</code>, built from every <code>_meta</code> table.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> sample_regulator (</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    db_name             <span class="dt">VARCHAR</span> <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    sample_id           <span class="dt">VARCHAR</span> <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    regulator_locus_tag <span class="dt">VARCHAR</span> <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (db_name, sample_id)</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><code>sample_id</code> is VARCHAR because the <code>_meta</code> tables disagree on its type and the DTO composite identifiers are strings. It is used to:</p>
+<ol type="1">
+<li>populate <code>dto.regulator_locus_tag</code>, since the DTO source has no regulator column;</li>
+<li>count the regulators two datasets share (the DTO denominator);</li>
+<li>intersect regulator sets for the Figures page. Measured intersections:</li>
+</ol>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>set</th>
+<th>regulators</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>the four binding primaries</td>
+<td>70</td>
+</tr>
+<tr class="even">
+<td>the three 500bp binding primaries (no ChIP-chip)</td>
+<td>77</td>
+</tr>
+<tr class="odd">
+<td>the four binding primaries ∩ kemmeren / hackett / degron</td>
+<td>69 / 61 / 61</td>
+</tr>
+<tr class="even">
+<td>the four binding primaries ∩ all three perturbation datasets</td>
+<td>54</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="regulator_display_names" class="level3">
+<h3 class="anchored" data-anchor-id="regulator_display_names"><code>regulator_display_names</code></h3>
+<p>One display name per regulator, from the <code>regulator_symbol</code> values across every <code>_meta</code> table.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> regulator_display_names (</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    regulator_locus_tag <span class="dt">VARCHAR</span>,</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    regulator_symbol    <span class="dt">VARCHAR</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    display_name        <span class="dt">VARCHAR</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
+</section>
+</section>
+<section id="comparison-layer" class="level2">
+<h2 class="anchored" data-anchor-id="comparison-layer">Comparison Layer</h2>
+<p>Every comparison row involves two samples. Each sample is identified two ways:</p>
+<ul>
+<li>a composite <code>source_sample</code> string, <code>hf_repo;hf_config;sample_id</code>, the labretriever comparative-dataset format, which is the primary key;</li>
+<li>plain identity columns beside it (<code>binding_db</code> / <code>binding_sample_id</code>, <code>db_a</code> / <code>sample_a</code>, and so on) holding the <code>db_name</code> and <code>sample_id</code>. Readers filter and join on these.</li>
+</ul>
+<section id="dto" class="level3">
+<h3 class="anchored" data-anchor-id="dto"><code>dto</code></h3>
+<p>Dual threshold optimization (<a href="https://github.com/BrentLab/dual_threshold_optimization">DTO</a>) empirical p-values, computed by the Brent Lab and stored in <code>BrentLab/yeast_comparative_analysis</code>, config <code>dto</code>. Each row is a (binding sample, perturbation sample) pair for the <strong>same regulator</strong>.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> dto (</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    binding_source_sample       <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- 'hf_repo;hf_config;sample_id'</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    perturbation_source_sample  <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    binding_db                  <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    binding_sample_id           <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    perturbation_db             <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    perturbation_sample_id      <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    regulator_locus_tag         <span class="dt">VARCHAR</span>,            <span class="co">-- resolved via sample_regulator</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    pr_ranking_column           <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- 'log2fc' | 'pvalue'</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>    dto_empirical_pvalue        <span class="dt">DOUBLE</span>,</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>    dto_fdr                     <span class="dt">DOUBLE</span>,</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>    binding_set_size            <span class="dt">DOUBLE</span>,</span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>    perturbation_set_size       <span class="dt">DOUBLE</span>,</span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (binding_source_sample, perturbation_source_sample, pr_ranking_column)</span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>Grain:</strong> one row per <code>(binding sample, perturbation sample, pr_ranking_column)</code>. A regulator has several rows per dataset pair when either side has several samples for it; Hackett averages about 7.9 rows per regulator across timepoints, most others one or two.</p>
+<p><strong>Source view.</strong> The rows come from VirtualDB’s <code>dto_expanded</code> view. labretriever treats a dataset with a <code>links:</code> block as comparative and registers only <code>__dto_parquet</code> and <code>dto_expanded</code> for it. <code>dto_expanded</code> resolves each composite identifier’s <code>repo;config</code> prefix to a <code>db_name</code> using that <code>links:</code> block, so the block must list every binding and perturbation dataset present in the DTO partitions.</p>
+<p><strong>Measured contents</strong> (51,968 rows):</p>
+<table class="caption-top table">
+<tbody>
+<tr class="odd">
+<td><code>pr_ranking_column = 'log2fc'</code></td>
+<td>39,484 rows</td>
+</tr>
+<tr class="even">
+<td><code>pr_ranking_column = 'pvalue'</code></td>
+<td>12,484 rows</td>
+</tr>
+<tr class="odd">
+<td><code>dto_empirical_pvalue</code> NULL</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td><code>dto_empirical_pvalue &lt; 0.01</code></td>
+<td>18,563 (35.7%)</td>
+</tr>
+<tr class="odd">
+<td>distinct <code>binding_db</code> / <code>perturbation_db</code></td>
+<td>23 / 6</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Notes:</strong></p>
+<ul>
+<li>Coverage of <code>pr_ranking_column</code> is uneven: Hackett and both Hughes datasets exist only as <code>log2fc</code>; Kemmeren, Hu and Degron have both. A comparison across perturbation datasets should pin one value.</li>
+<li><code>harbison</code> has DTO results (3,848 rows in the current build). The Figures page draws its DTO figures over the three 500bp promoter-enrichment datasets only.</li>
+<li>DTO does not test every regulator a dataset pair shares. For <code>rossi_peaks_kang</code> × <code>kemmeren</code> it covers 414 of 446 shared regulators, so a denominator taken from <code>sample_regulator</code> is larger than DTO’s own coverage.</li>
+<li><code>dto_fdr</code> is not bounded by 1 (239 rows exceed it, the largest 4.71) and is not consistent with the p-value column. Check <code>scripts/parse_dto_results.R</code> upstream before using it.</li>
+</ul>
+</section>
+<section id="topn_results" class="level3">
+<h3 class="anchored" data-anchor-id="topn_results"><code>topn_results</code></h3>
+<p>The fraction of a regulator’s top-N bound targets that respond when it is perturbed, for one (binding sample, perturbation sample, regulator) and one analysis setting. Built by <code>materialize/comparison/topn.py</code>.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> topn_results (</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    binding_source_sample       <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- 'hf_repo;hf_config;sample_id'</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    perturbation_source_sample  <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    regulator_locus_tag         <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    top_n                       <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- rank cutoff; 0 = authors' bound set</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    rank_col                    <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- column used to rank binding targets</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    rank_asc                    <span class="dt">BOOLEAN</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- TRUE: lowest value is rank 1 (p-values)</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    effect_threshold            <span class="dt">DOUBLE</span>   <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- |effect| &gt; threshold: responsive</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    pvalue_threshold            <span class="dt">DOUBLE</span>   <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- p-value &lt; threshold: responsive</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    n                           <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- targets in the top N present in both</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>                                                     <span class="co">-- datasets (can be &lt; or &gt; top_n)</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>    n_responsive                <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>    responsive_ratio            <span class="dt">DOUBLE</span>   <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- n_responsive / n</span></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>    n_intersecting_targets      <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- targets the two samples share for</span></span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>                                                     <span class="co">-- this regulator, not capped by top_n</span></span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>    binding_db                  <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>    binding_sample_id           <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb10-18"><a href="#cb10-18" aria-hidden="true" tabindex="-1"></a>    perturbation_db             <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb10-19"><a href="#cb10-19" aria-hidden="true" tabindex="-1"></a>    perturbation_sample_id      <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb10-20"><a href="#cb10-20" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (</span>
+<span id="cb10-21"><a href="#cb10-21" aria-hidden="true" tabindex="-1"></a>        binding_source_sample,</span>
+<span id="cb10-22"><a href="#cb10-22" aria-hidden="true" tabindex="-1"></a>        perturbation_source_sample,</span>
+<span id="cb10-23"><a href="#cb10-23" aria-hidden="true" tabindex="-1"></a>        regulator_locus_tag,</span>
+<span id="cb10-24"><a href="#cb10-24" aria-hidden="true" tabindex="-1"></a>        top_n, rank_col, rank_asc,</span>
+<span id="cb10-25"><a href="#cb10-25" aria-hidden="true" tabindex="-1"></a>        effect_threshold, pvalue_threshold</span>
+<span id="cb10-26"><a href="#cb10-26" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb10-27"><a href="#cb10-27" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>Notes:</strong></p>
+<ul>
+<li>Self-interactions (regulator equals target) are excluded.</li>
+<li>The Calling Cards target blacklist (<code>YOR201C</code>, <code>YOR202W</code>, <code>YOR203W</code>, <code>YCL018W</code>, <code>YEL021W</code>) is applied during the build; it is <code>CC_TARGET_BLACKLIST</code> in <code>materialize/comparison/topn.py</code>.</li>
+<li><strong>Ties: a tie group is in the top N only if its average rank is within N.</strong> A group spanning ranks a..b has average rank (a+b)/2. A large tie group straddling the cutoff is excluded whole and leaves <code>n &lt; top_n</code>, while a group kept whole can push <code>n</code> above <code>top_n</code> (a group of 2N-1 starting at rank 1 has average rank N). The ratio is taken over the <code>n</code> kept.</li>
+<li><strong>NULL scores rank as no signal.</strong> For the re-called peak datasets (<code>BINDING_TOPN_CONFIGS[...]["no_signal_value"] = 0</code>) a NULL score ranks as 0, so the no-peak promoters form one tie group at the bottom and a sample with few peaks has a short list. Those promoters still count toward <code>n_intersecting_targets</code>.</li>
+<li><code>n_intersecting_targets</code> comes from the raw binding/perturbation overlap for the sample pair (blacklist and deduplication applied, self-targets excluded) and repeats across every analysis setting for that pair and regulator. Dense peak tables report every promoter, so it is large for every peak sample and does not say whether a top-N list is complete.</li>
+<li><strong>The Comparison page’s “Require full overlap” toggle checks <code>n &gt;= top_n</code>.</strong> A regulator with too few scored targets, or a large tie group around rank N, is excluded when it is on.</li>
+<li>Built in three stages: <code>binding_stage_sql</code> and <code>perturbation_stage_sql</code> materialize each source once, and <code>topn_pair_select_sql_v2</code> emits every <code>(top_n, effect_threshold, pvalue_threshold)</code> combination for a pair from one scan. Ranking happens after the restriction to intersecting targets, so a target’s rank depends on the perturbation dataset it is compared against.</li>
+<li><strong>Cutoffs:</strong> <code>top_n</code> is one of <code>TOP_N_CHOICES</code> (10, 25, 50, 75, 100), plus <code>top_n = 0</code> for <code>rossi_peaks</code>, <code>chec_m2025_peaks</code>, <code>harbison</code> and <code>callingcards_500bp</code>, meaning “every bound target, no rank cutoff” (<code>n</code> is then the size of the bound set). For the two peak datasets the bound set is the authors’ own call; Harbison uses <code>pvalue &lt;= 0.001</code> (YPD) and Calling Cards a Poisson p &lt; 1e-4.</li>
+<li><strong>Responsiveness is decided by <code>(effect_threshold, pvalue_threshold)</code> and nothing else.</strong> The build stores the pair each preset (<code>Relaxed</code>, <code>Stringent</code>) resolves to for each perturbation dataset, from <code>DEFAULT_RESPONSIVENESS_PRESETS</code> in <code>utils/vdb_init.py</code>. Every dataset stores <code>(0.0, 0.05)</code> for <code>Relaxed</code> and <code>(0.77, 0.05)</code> for <code>Stringent</code>; a dataset with no p-value column (Hackett, Hughes) ignores the p-value half. A row is responsive when <code>|effect| &gt; effect_threshold</code> and <code>pvalue &lt;= pvalue_threshold</code>. <strong>Every read must pin the pair</strong>; a query that does not takes a median across both definitions of responsive.</li>
+</ul>
+</section>
+<section id="topn_agreement" class="level3">
+<h3 class="anchored" data-anchor-id="topn_agreement"><code>topn_agreement</code></h3>
+<p>Per-regulator overlap between the top-N target sets of two datasets of the <strong>same</strong> type: binding vs.&nbsp;binding, or perturbation vs.&nbsp;perturbation. Built by <code>materialize/comparison/agreement.py</code>.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> topn_agreement (</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    source_sample_a     <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    source_sample_b     <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    comparison_type     <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- 'binding' | 'perturbation'</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    regulator_locus_tag <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    top_n               <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>    n_a                 <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>    n_b                 <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>    n_intersect         <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>    db_a                <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>    sample_a            <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>    db_b                <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>    sample_b            <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (source_sample_a, source_sample_b, regulator_locus_tag, top_n)</span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Only counts are stored. Enrichment over chance is computed at read time as <code>log2(n_intersect * 6000 / (n_a * n_b))</code> (<code>GENE_UNIVERSE</code> in <code>tfbpshiny/datasets.py</code>), so the gene universe can be changed without a rebuild. The expectation uses the observed set sizes rather than <code>top_n^2</code>; they differ whenever a dataset has fewer than <code>top_n</code> targets for a regulator, which is routine for peak calling.</p>
+<p><strong>Notes:</strong></p>
+<ul>
+<li>Measured at 20 cutoffs, 10 to 200 in steps of 10 (<code>AGREEMENT_TOP_N</code>).</li>
+<li>Ranking uses <code>ROW_NUMBER()</code> with <code>target_locus_tag</code> as the final sort key, not the tie rule <code>topn_results</code> uses: sets are exactly N, so figures 6 and 10 read as “shared out of N”, and the same targets fall inside the cutoff on every build.</li>
+<li>For the re-called peak datasets only scored rows are ranked (<code>drop_null_scores_*</code>), so a regulator with fewer than N peaks is not padded with no-peak promoters.</li>
+<li><code>AGREEMENT_RANK_OVERRIDES</code> sets the ranking column for this table only: Calling Cards ranks on <code>log_poisson_pval</code> and Hackett on <code>log2_cleaned_ratio</code>. These do not affect <code>topn_results</code>.</li>
+<li>Perturbation datasets are ranked by <code>ABS(effect)</code>, so a knockout and an overexpression experiment are ordered by magnitude and can be compared.</li>
+<li><strong>Every same-type dataset pair is stored</strong>, variants included, because figure 6 lets the user compare promoter definitions and calling methods as well as assays. 21 binding datasets give 210 pairs. <code>rossi_peaks</code> and <code>chec_m2025_peaks</code> (<code>AGREEMENT_EXCLUDED</code>) are left out: their regions are not a fixed upstream window, so a pair involving one differs in both the caller and the region.</li>
+<li>Sanity check: a sample compared with itself gives <code>n_intersect = n_a = n_b</code>, and so the maximum enrichment <code>log2(6000/N)</code>, 7.91 at N = 25.</li>
+</ul>
+</section>
+<section id="topn_target_sets" class="level3">
+<h3 class="anchored" data-anchor-id="topn_target_sets"><code>topn_target_sets</code></h3>
+<p>The ranked targets behind figure 10’s Venn diagram and overlap boxes, per sample and regulator, for the datasets in <code>PROMOTER_ENRICHMENT_500BP</code> and <code>HEADLINE_PERTURBATION</code>. <code>topn_agreement</code> keeps only overlap counts on a fixed grid, which cannot draw a Venn diagram and lacks the 25 and 75 the Figures sidebar offers.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> topn_target_sets (</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    source_sample       <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- 'hf_repo;hf_config;sample_id'</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    comparison_type     <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- 'binding' | 'perturbation'</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    regulator_locus_tag <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    target_locus_tag    <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    rnk                 <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- 1 = best; kept to 100</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>    db_name             <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>    sample_id           <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (source_sample, regulator_locus_tag, target_locus_tag)</span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>“In the top N” is <code>rnk &lt;= N</code>, for any N up to 100. Ranking follows <code>topn_agreement</code> (same ranking columns and overrides, absolute effect for perturbation, <code>target_locus_tag</code> tiebreak), except that duplicate rows for a target are collapsed first: Kemmeren and Hackett measure some genes with several probes, which would otherwise count one target twice.</p>
+</section>
+<section id="correlations" class="level3">
+<h3 class="anchored" data-anchor-id="correlations"><code>correlations</code></h3>
+<p>Per-regulator Pearson or Spearman correlation between two samples of the same data type, over their shared targets. Built by <code>materialize/comparison/correlations.py</code>.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> correlations (</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    source_sample_a      <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- 'hf_repo;hf_config;sample_id'</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    source_sample_b      <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    regulator_locus_tag  <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    comparison_type      <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- 'binding' | 'perturbation'</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">method</span>               <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- 'pearson' | 'spearman'</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    score_type           <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- 'effect' | 'pvalue' | 'log10pval'</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>    score_col_a          <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- column used from sample_a's dataset</span></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>    score_col_b          <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- column used from sample_b's dataset</span></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>    correlation          <span class="dt">DOUBLE</span>   <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- rounded, see --float-decimals</span></span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>    n_shared_targets     <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- targets used; always &gt;= 3</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>    db_a                 <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>    sample_a             <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>    db_b                 <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>    sample_b             <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>        source_sample_a, source_sample_b,</span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a>        regulator_locus_tag,</span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a>        <span class="kw">method</span>, score_type</span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>Pair ordering:</strong> <code>source_sample_a &lt;= source_sample_b</code>, so each unordered pair is stored once.</p>
+<p><strong>Notes:</strong></p>
+<ul>
+<li>The score columns come from <code>BINDING_DATASET_COLUMNS</code> and <code>PERTURBATION_CORRELATION_COLUMNS</code> in <code>tfbpshiny/datasets.py</code>.</li>
+<li><code>effect</code> is computed for every pair. <code>pvalue</code> and <code>log10pval</code> are computed only when both datasets have a p-value column; <code>hackett</code>, <code>hughes_overexpression</code> and <code>hughes_knockout</code> have none, so their pairs have only <code>effect</code> rows. <code>log10pval</code> is computed for Pearson only.</li>
+<li><code>log10pval</code> is <code>-log10(GREATEST(pvalue, 1e-10))</code>, so a single near-zero p-value cannot dominate the scale.</li>
+<li><code>score_col_*</code> records the column actually used (e.g.&nbsp;<code>poisson_pval</code> for <code>pvalue</code>, <code>callingcards_enrichment</code> for <code>effect</code>). It is not part of the key, since <code>score_type</code> and the dataset pair determine it.</li>
+<li>A row is written only when the two samples share at least 3 targets.</li>
+</ul>
+</section>
+<section id="method-promoter-set-model" class="level3">
+<h3 class="anchored" data-anchor-id="method-promoter-set-model">Method × promoter-set model</h3>
+<p>Four tables, built by <code>materialize/comparison/method_promoter_model.py</code>. They estimate how much the binding method (peak calling vs.&nbsp;promoter enrichment) and the promoter definition each affect the percent of top-N targets that respond, holding regulator and assay constant.</p>
+<p><strong>Design.</strong> A 16-cell panel (2 methods × 4 promoter sets × 2 assays, Rossi ChIP-exo and Mahendrawada ChEC-seq, <code>METHOD_COMPARISON_ASSAYS</code>) is fitted with a pooled OLS, <code>responsive_ratio ~ method + promoter_set + assay + C(regulator_locus_tag)</code>, with standard errors clustered by regulator. The regulator fixed effect holds each regulator’s baseline responsiveness constant; its coefficients are fitted but not stored. Harbison (<code>array</code>), the authors’ peaks (<code>peaks</code>) and Calling Cards (no peak-calling arm) are not in the panel. The panel is restricted to:</p>
+<ul>
+<li>samples allowed by <code>DEFAULT_DATASET_FILTERS</code> (e.g.&nbsp;Hackett’s 30-minute timepoint), the same default filters every Comparison query applies;</li>
+<li>regulators present in the perturbation dataset and both assays, so every cell covers the same regulators.</li>
+</ul>
+<p>One model is fitted per <code>(perturbation_db, top_n, criteria)</code>, where <code>criteria</code> is the preset name.</p>
+<p><strong>Candidate pool and pairing.</strong> Every cell ranks only the targets shared by all eight views of its assay (4 promoter sets × 2 methods), so a wider window cannot win by offering more candidates. Within each assay and promoter set a regulator is kept only where both methods have a row; a regulator with no usable peak-calling list is left out, not scored as zero.</p>
+<p>This is a fixed-effects linear model, not a mixed model.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> method_promoter_model_topn (</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- same columns as topn_results, for the 16 panel cells, with each cell ranked</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- over its assay's shared-target universe</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">..</span>.</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>);</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> method_promoter_model_target_universe (</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>    assay_primary  <span class="dt">VARCHAR</span>,   <span class="co">-- 'rossi_500bp' | 'chec_m2025_500bp'</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    n_targets      <span class="dt">INTEGER</span>    <span class="co">-- size of the assay's shared-target universe</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>);</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> method_promoter_model_coefs (</span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- Intercept, method, promoter_set (3 rows) and assay terms only</span></span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>    perturbation_db  <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>    top_n            <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>    criteria         <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- 'Relaxed' | 'Stringent'</span></span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a>    term             <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,  <span class="co">-- patsy term name</span></span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a>    <span class="kw">estimate</span>         <span class="dt">DOUBLE</span>,             <span class="co">-- percentage points</span></span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a>    std_error        <span class="dt">DOUBLE</span>,             <span class="co">-- percentage points</span></span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a>    t_value          <span class="dt">DOUBLE</span>,</span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a>    p_value          <span class="dt">DOUBLE</span>,</span>
+<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (perturbation_db, top_n, criteria, term)</span>
+<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a>);</span>
+<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> method_promoter_model_fit_summary (</span>
+<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a>    <span class="co">-- one row per fit; `note` explains a failed or degenerate fit</span></span>
+<span id="cb14-27"><a href="#cb14-27" aria-hidden="true" tabindex="-1"></a>    perturbation_db  <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb14-28"><a href="#cb14-28" aria-hidden="true" tabindex="-1"></a>    top_n            <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb14-29"><a href="#cb14-29" aria-hidden="true" tabindex="-1"></a>    criteria         <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb14-30"><a href="#cb14-30" aria-hidden="true" tabindex="-1"></a>    n_obs            <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb14-31"><a href="#cb14-31" aria-hidden="true" tabindex="-1"></a>    n_regulators     <span class="dt">INTEGER</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb14-32"><a href="#cb14-32" aria-hidden="true" tabindex="-1"></a>    r_squared        <span class="dt">DOUBLE</span>,</span>
+<span id="cb14-33"><a href="#cb14-33" aria-hidden="true" tabindex="-1"></a>    converged        <span class="dt">BOOLEAN</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb14-34"><a href="#cb14-34" aria-hidden="true" tabindex="-1"></a>    note             <span class="dt">VARCHAR</span>,</span>
+<span id="cb14-35"><a href="#cb14-35" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (perturbation_db, top_n, criteria)</span>
+<span id="cb14-36"><a href="#cb14-36" aria-hidden="true" tabindex="-1"></a>);</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>Notes:</strong></p>
+<ul>
+<li>The fit reads <code>method_promoter_model_topn</code>, <code>dataset_registry</code> and the <code>_meta</code> tables from the output database.</li>
+<li><code>--skip-method-promoter-model</code> skips these four tables.</li>
+<li>The Comparison page’s “Method × Promoter Model” tab only reads them.</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="entityrelationship-diagram" class="level2">
+<h2 class="anchored" data-anchor-id="entityrelationship-diagram">Entity–Relationship Diagram</h2>
+<pre class="text"><code>promoter_sets ──&lt; dataset_registry &gt;── binding_methods
+                        │ (primary_db_name: self-reference for variants)
+                        │
+                        ├── {db_name}_meta, sample_regulator,
+                        │   dataset_column_metadata          (by db_name)
+                        │
+                        └── dto.binding_db / perturbation_db
+                            topn_results.binding_db / perturbation_db
+                            method_promoter_model_topn.binding_db / perturbation_db
+                            topn_agreement.db_a / db_b
+                            correlations.db_a / db_b
+                            topn_target_sets.db_name          (by db_name)
+
+comparative_dataset_registry: one row per comparison table</code></pre>
+<hr>
+</section>
+<section id="materialization-parameters" class="level2">
+<h2 class="anchored" data-anchor-id="materialization-parameters">Materialization Parameters</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 26%">
+<col style="width: 30%">
+<col style="width: 43%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--config</code></td>
+<td>required</td>
+<td>Path to the collection config YAML</td>
+</tr>
+<tr class="even">
+<td><code>--output</code></td>
+<td><code>brentlab_yeast.duckdb</code></td>
+<td>Output <code>.duckdb</code> file path</td>
+</tr>
+<tr class="odd">
+<td><code>--methods</code></td>
+<td><code>pearson,spearman</code></td>
+<td>Correlation methods to compute</td>
+</tr>
+<tr class="even">
+<td><code>--top-n</code></td>
+<td><code>10, 25, 50, 75, 100</code></td>
+<td>Rank cutoffs for <code>topn_results</code> (repeatable)</td>
+</tr>
+<tr class="odd">
+<td><code>--preset</code></td>
+<td><code>Relaxed</code>, <code>Stringent</code></td>
+<td>Responsiveness presets whose per-dataset thresholds to store (repeatable)</td>
+</tr>
+<tr class="even">
+<td><code>--effect-threshold</code></td>
+<td><code>0.0</code></td>
+<td>Extra effect threshold applied to every dataset (repeatable)</td>
+</tr>
+<tr class="odd">
+<td><code>--pvalue-threshold</code></td>
+<td><code>0.05</code></td>
+<td>Extra p-value threshold applied to every dataset (repeatable)</td>
+</tr>
+<tr class="even">
+<td><code>--float-decimals</code></td>
+<td><code>9</code></td>
+<td>Decimal places kept for computed floats; <code>-1</code> stores raw values</td>
+</tr>
+<tr class="odd">
+<td><code>--skip-correlations</code></td>
+<td>false</td>
+<td>Skip <code>correlations</code></td>
+</tr>
+<tr class="even">
+<td><code>--skip-topn</code></td>
+<td>false</td>
+<td>Skip <code>topn_results</code></td>
+</tr>
+<tr class="odd">
+<td><code>--skip-method-promoter-model</code></td>
+<td>false</td>
+<td>Skip the method × promoter-set tables</td>
+</tr>
+<tr class="even">
+<td><code>--token</code></td>
+<td>env <code>HF_TOKEN</code></td>
+<td>HuggingFace token for private repos</td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+<section id="example-queries" class="level2">
+<h2 class="anchored" data-anchor-id="example-queries">Example Queries</h2>
+<section id="primary-binding-datasets-with-their-promoter-set-and-method" class="level3">
+<h3 class="anchored" data-anchor-id="primary-binding-datasets-with-their-promoter-set-and-method">Primary binding datasets with their promoter set and method</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    dr.db_name,</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    dr.display_name,</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    ps.display_name  <span class="kw">AS</span> promoter_set,</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>    bm.display_name  <span class="kw">AS</span> binding_method</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> dataset_registry dr</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a><span class="kw">LEFT</span> <span class="kw">JOIN</span> promoter_sets ps <span class="kw">ON</span> ps.promoter_set_id <span class="op">=</span> dr.promoter_set_id</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a><span class="kw">LEFT</span> <span class="kw">JOIN</span> binding_methods bm <span class="kw">ON</span> bm.binding_method_id <span class="op">=</span> dr.binding_method_id</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> dr.data_type <span class="op">=</span> <span class="st">'binding'</span></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> dr.is_primary</span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> dr.base_label;</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="every-variant-of-a-primary-binding-dataset" class="level3">
+<h3 class="anchored" data-anchor-id="every-variant-of-a-primary-binding-dataset">Every variant of a primary binding dataset</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> db_name, display_name, promoter_set_id, binding_method_id</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> dataset_registry</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> primary_db_name <span class="op">=</span> <span class="st">'callingcards_500bp'</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>   <span class="kw">OR</span> db_name         <span class="op">=</span> <span class="st">'callingcards_500bp'</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> promoter_set_id;</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="top-n-results-for-calling-cards-kemmeren-relaxed-preset" class="level3">
+<h3 class="anchored" data-anchor-id="top-n-results-for-calling-cards-kemmeren-relaxed-preset">Top-N results for Calling Cards × Kemmeren, Relaxed preset</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    regulator_locus_tag,</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    binding_sample_id,</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    perturbation_sample_id,</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    responsive_ratio,</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>    n,</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>    n_responsive</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> topn_results</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> binding_db       <span class="op">=</span> <span class="st">'callingcards_500bp'</span></span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> perturbation_db  <span class="op">=</span> <span class="st">'kemmeren'</span></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> top_n            <span class="op">=</span> <span class="dv">25</span></span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> effect_threshold <span class="op">=</span> <span class="fl">0.0</span></span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> pvalue_threshold <span class="op">=</span> <span class="fl">0.05</span></span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> responsive_ratio <span class="kw">DESC</span>;</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="binding-correlations-for-one-pair-galactose-samples-only" class="level3">
+<h3 class="anchored" data-anchor-id="binding-correlations-for-one-pair-galactose-samples-only">Binding correlations for one pair, galactose samples only</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> c.sample_a, c.sample_b, c.regulator_locus_tag, c.correlation</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> correlations c</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> c.db_a <span class="op">=</span> <span class="st">'callingcards_500bp'</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> c.db_b <span class="op">=</span> <span class="st">'rossi_500bp'</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> c.<span class="kw">method</span>     <span class="op">=</span> <span class="st">'spearman'</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> c.score_type <span class="op">=</span> <span class="st">'pvalue'</span></span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> c.sample_a <span class="kw">IN</span> (</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>      <span class="kw">SELECT</span> <span class="fu">CAST</span>(sample_id <span class="kw">AS</span> <span class="dt">VARCHAR</span>)</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>      <span class="kw">FROM</span> callingcards_500bp_meta</span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>      <span class="kw">WHERE</span> <span class="ot">"Carbon source"</span> <span class="op">=</span> <span class="st">'galactose'</span></span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>  );</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="dto-results-for-one-binding-perturbation-pair" class="level3">
+<h3 class="anchored" data-anchor-id="dto-results-for-one-binding-perturbation-pair">DTO results for one binding × perturbation pair</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb20"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    regulator_locus_tag,</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    binding_sample_id,</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>    perturbation_sample_id,</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    dto_empirical_pvalue</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> dto</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> binding_db        <span class="op">=</span> <span class="st">'rossi_500bp'</span></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> perturbation_db   <span class="op">=</span> <span class="st">'kemmeren'</span></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>  <span class="kw">AND</span> pr_ranking_column <span class="op">=</span> <span class="st">'log2fc'</span></span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> dto_empirical_pvalue;</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="the-datasets-the-method-comparison-covers" class="level3">
+<h3 class="anchored" data-anchor-id="the-datasets-the-method-comparison-covers">The datasets the method comparison covers</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    dr.base_label,</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    dr.db_name,</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>    bm.display_name  <span class="kw">AS</span> <span class="kw">method</span>,</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>    ps.display_name  <span class="kw">AS</span> promoter_set</span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> dataset_registry dr</span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a><span class="kw">JOIN</span> binding_methods bm <span class="kw">ON</span> bm.binding_method_id <span class="op">=</span> dr.binding_method_id</span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a><span class="kw">JOIN</span> promoter_sets   ps <span class="kw">ON</span> ps.promoter_set_id   <span class="op">=</span> dr.promoter_set_id</span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> dr.primary_db_name <span class="kw">IN</span> (<span class="st">'rossi_500bp'</span>, <span class="st">'chec_m2025_500bp'</span>)</span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>   <span class="kw">OR</span> dr.db_name         <span class="kw">IN</span> (<span class="st">'rossi_500bp'</span>, <span class="st">'chec_m2025_500bp'</span>)</span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> dr.base_label, dr.binding_method_id, dr.promoter_set_id;</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+
+
+</section>
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/BrentLab\.github\.io\/tfbpshiny\/");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/BrentLab/tfbpshiny/edit/main/docs/materialized_db_schema.md" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li></ul></div></div></div></footer></body></html>

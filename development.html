@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>development – TFBPShiny</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-55617497126496852ff9f5a59253c640.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "sidebar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "start",
+  "type": "textbox",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+</head>
+
+<body class="nav-sidebar floating quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./development.html">Developer Notes</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header">
+    <div class="sidebar-title mb-0 py-0">
+      <a href="./">TFBPShiny</a> 
+    </div>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TFBPShiny</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Page guides</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./select_datasets_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Dataset selection</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./binding_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Binding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./perturbation_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Perturbation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./comparison_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Binding/Perturbation Comparisons</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./binding_perturbation_reliability.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Reliability and Spearman’s Correction: Binding vs.&nbsp;Perturbation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./materialized_db_schema.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Database Schema</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./sql_operations.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">SQL Operations Reference</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./development.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Developer Notes</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#developer-notes" id="toc-developer-notes" class="nav-link active" data-scroll-target="#developer-notes">Developer Notes</a>
+  <ul class="collapse">
+  <li><a href="#architecture-overview" id="toc-architecture-overview" class="nav-link" data-scroll-target="#architecture-overview">Architecture Overview</a></li>
+  <li><a href="#data-layer" id="toc-data-layer" class="nav-link" data-scroll-target="#data-layer">Data Layer</a>
+  <ul class="collapse">
+  <li><a href="#the-materialized-database" id="toc-the-materialized-database" class="nav-link" data-scroll-target="#the-materialized-database">The materialized database</a></li>
+  <li><a href="#what-virtualdb-is-and-where-it-is-used" id="toc-what-virtualdb-is-and-where-it-is-used" class="nav-link" data-scroll-target="#what-virtualdb-is-and-where-it-is-used">What VirtualDB is, and where it is used</a></li>
+  <li><a href="#dataset-identity-and-presentation-the-collection-config" id="toc-dataset-identity-and-presentation-the-collection-config" class="nav-link" data-scroll-target="#dataset-identity-and-presentation-the-collection-config">Dataset identity and presentation: the collection config</a></li>
+  <li><a href="#dataset-level-configuration-in-code" id="toc-dataset-level-configuration-in-code" class="nav-link" data-scroll-target="#dataset-level-configuration-in-code">Dataset-level configuration in code</a></li>
+  </ul></li>
+  <li><a href="#app-startup-and-reactivity" id="toc-app-startup-and-reactivity" class="nav-link" data-scroll-target="#app-startup-and-reactivity">App Startup and Reactivity</a>
+  <ul class="collapse">
+  <li><a href="#startup" id="toc-startup" class="nav-link" data-scroll-target="#startup">Startup</a></li>
+  <li><a href="#shared-reactive-state" id="toc-shared-reactive-state" class="nav-link" data-scroll-target="#shared-reactive-state">Shared reactive state</a></li>
+  <li><a href="#navigation" id="toc-navigation" class="nav-link" data-scroll-target="#navigation">Navigation</a></li>
+  <li><a href="#where-the-work-happens" id="toc-where-the-work-happens" class="nav-link" data-scroll-target="#where-the-work-happens">Where the work happens</a></li>
+  </ul></li>
+  <li><a href="#known-challenges" id="toc-known-challenges" class="nav-link" data-scroll-target="#known-challenges">Known Challenges</a>
+  <ul class="collapse">
+  <li><a href="#duckdb-multi-threading-and-correlation-edge-cases" id="toc-duckdb-multi-threading-and-correlation-edge-cases" class="nav-link" data-scroll-target="#duckdb-multi-threading-and-correlation-edge-cases">DuckDB multi-threading and correlation edge cases</a></li>
+  <li><a href="#plotly-rendering" id="toc-plotly-rendering" class="nav-link" data-scroll-target="#plotly-rendering">Plotly rendering</a></li>
+  </ul></li>
+  <li><a href="#posit-connect-cloud-deployment" id="toc-posit-connect-cloud-deployment" class="nav-link" data-scroll-target="#posit-connect-cloud-deployment">Posit Connect Cloud Deployment</a>
+  <ul class="collapse">
+  <li><a href="#prerequisites" id="toc-prerequisites" class="nav-link" data-scroll-target="#prerequisites">Prerequisites</a></li>
+  <li><a href="#add-a-credential" id="toc-add-a-credential" class="nav-link" data-scroll-target="#add-a-credential">1. Add a credential</a></li>
+  <li><a href="#build-the-database-locally" id="toc-build-the-database-locally" class="nav-link" data-scroll-target="#build-the-database-locally">2. Build the database locally</a></li>
+  <li><a href="#keep-requirements.txt-current" id="toc-keep-requirements.txt-current" class="nav-link" data-scroll-target="#keep-requirements.txt-current">3. Keep <code>requirements.txt</code> current</a></li>
+  <li><a href="#the-configuration-file" id="toc-the-configuration-file" class="nav-link" data-scroll-target="#the-configuration-file">4. The configuration file</a></li>
+  <li><a href="#deploy" id="toc-deploy" class="nav-link" data-scroll-target="#deploy">5. Deploy</a></li>
+  <li><a href="#updating-the-data" id="toc-updating-the-data" class="nav-link" data-scroll-target="#updating-the-data">Updating the data</a></li>
+  </ul></li>
+  <li><a href="#documentation-site" id="toc-documentation-site" class="nav-link" data-scroll-target="#documentation-site">Documentation Site</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/BrentLab/tfbpshiny/edit/main/docs/development.md" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"></header>
+
+
+
+
+<section id="developer-notes" class="level1">
+<h1>Developer Notes</h1>
+<section id="architecture-overview" class="level2">
+<h2 class="anchored" data-anchor-id="architecture-overview">Architecture Overview</h2>
+<p>TFBPShiny is a Shiny for Python (Core, not Express) application that serves as a browser-based explorer for transcription factor binding and perturbation data from the Brent Lab yeast collection. The source data are Parquet files on HuggingFace; the app itself never reads them. Instead a one-off command line step, <code>tfbpshiny materialize</code>, pulls every dataset through <code>labretriever.VirtualDB</code>, runs every cross-dataset analysis the app can show, and writes the results to a single DuckDB file, <code>brentlab_yeast.duckdb</code>. The app opens that file read-only and every page is a set of SQL reads against it.</p>
+<p>The application has six pages — Home, Dataset selection, Binding, Perturbation, Binding/Perturbation Comparisons, and Figures — each a self-contained Shiny module with its own <code>ui.py</code> and <code>server/</code> package.</p>
+<pre><code>HuggingFace parquet  --VirtualDB--&gt;  tfbpshiny materialize  --&gt;  brentlab_yeast.duckdb
+                                                                        |
+                                                 tfbpshiny launch  &lt;----+  (read-only)</code></pre>
+<hr>
+</section>
+<section id="data-layer" class="level2">
+<h2 class="anchored" data-anchor-id="data-layer">Data Layer</h2>
+<section id="the-materialized-database" class="level3">
+<h3 class="anchored" data-anchor-id="the-materialized-database">The materialized database</h3>
+<p><code>tfbpshiny/materialize/</code> builds the database. The entry point is <code>coordinator.materialize(output_path, vdb, args)</code>, which runs five logged phases:</p>
+<ol type="1">
+<li><strong>Coordinating layer</strong> — <code>promoter_sets</code>, <code>binding_methods</code>, <code>dataset_registry</code>, <code>comparative_dataset_registry</code>, <code>dataset_column_metadata</code>, <code>schema_version</code>. The registry tables come from the collection config’s tags and <code>tfbpshiny/datasets.py</code> (see below), the column metadata from VirtualDB. The registry’s <code>is_primary</code> / <code>is_active_default</code> columns say which datasets the selection tab shows and which start switched on.</li>
+<li><strong>Metadata layer</strong> — one <code>{db_name}_meta</code> table per dataset (one row per sample, copied verbatim from the VirtualDB <code>_meta</code> view), <code>regulator_display_names</code>, and <code>sample_regulator</code> (<code>(db_name, sample_id) -&gt; regulator_locus_tag</code>).</li>
+<li><strong>HF-sourced comparison</strong> — the <code>dto</code> table, copied from the comparative dataset’s <code>dto_expanded</code> view and joined to <code>sample_regulator</code> to recover the regulator.</li>
+<li><strong>Computed comparison tables</strong> — <code>topn_results</code> (per binding sample × perturbation sample × top-N cutoff × responsiveness threshold pair; also the authors’-criteria rows at <code>top_n = 0</code> for the authors’ peak calls, Harbison and Calling Cards), <code>topn_agreement</code>, <code>topn_target_sets</code>, and <code>correlations</code>. Each is filled pair by pair through VirtualDB in regulator batches.</li>
+<li><strong>Method × promoter-set model</strong> — <code>method_promoter_model_topn</code>, <code>method_promoter_model_target_universe</code>, <code>method_promoter_model_coefs</code>, <code>method_promoter_model_fit_summary</code>: the pooled OLS comparing peak calling with promoter enrichment across promoter definitions.</li>
+</ol>
+<p>Every table, its columns and the SQL that generates it are described in <a href="./materialized_db_schema.html">materialized_db_schema.md</a>. The read-side SQL the app runs against those tables is catalogued in <a href="./sql_operations.html">sql_operations.md</a>.</p>
+<p>Build it with:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">poetry</span> run python <span class="at">-m</span> tfbpshiny materialize <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--config</span> tfbpshiny/brentlab_yeast_collection.yaml <span class="dt">\</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--output</span> brentlab_yeast.duckdb</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>A full build takes roughly fifteen to twenty minutes; <code>--skip-topn</code>, <code>--skip-correlations</code> and <code>--skip-method-promoter-model</code> trim it while iterating on a single phase. <code>materialize</code> writes to <code>brentlab_yeast.duckdb</code> in the current directory, which is where <code>shinyapps_entry.py</code> looks; <code>tfbpshiny launch</code> defaults to <code>tfbpshiny/brentlab_yeast.duckdb</code>, so pass <code>--db-path brentlab_yeast.duckdb</code> when running locally. Computed floats are rounded (<code>--float-decimals</code>, default ~1e-9) so two builds of the same data can be diffed; <code>scripts/snapshot_db.py</code> / <code>scripts/diff_snapshots.py</code> fingerprint every table for exactly that purpose.</p>
+<p>The database file is gitignored (<code>brentlab_yeast*.duckdb</code>); it is a build artifact, not source.</p>
+</section>
+<section id="what-virtualdb-is-and-where-it-is-used" class="level3">
+<h3 class="anchored" data-anchor-id="what-virtualdb-is-and-where-it-is-used">What VirtualDB is, and where it is used</h3>
+<p><code>VirtualDB</code> (from the <code>labretriever</code> package) is a DuckDB-backed in-memory database that exposes the HuggingFace Parquet datasets as named SQL views: <code>&lt;db_name&gt;</code> for the target-level data and <code>&lt;db_name&gt;_meta</code> for one row per sample with the derived columns the collection YAML’s property mappings define. The configuration is <code>tfbpshiny/brentlab_yeast_collection.yaml</code>, which pins a HuggingFace revision per repository so a build is reproducible.</p>
+<p>VirtualDB is used <strong>only</strong> by <code>tfbpshiny materialize</code> and by the analysis notebooks under <code>tmp/</code>. Its initialization is slow — one <code>snapshot_download()</code> per dataset config, each contacting HuggingFace even on a warm cache — which is the reason the app does not initialize it at runtime. <code>HF_HOME</code> controls where the downloads land; <code>HF_TOKEN</code> (or <code>--token</code>) is needed only for private repositories.</p>
+</section>
+<section id="dataset-identity-and-presentation-the-collection-config" class="level3">
+<h3 class="anchored" data-anchor-id="dataset-identity-and-presentation-the-collection-config">Dataset identity and presentation: the collection config</h3>
+<p><code>tfbpshiny/brentlab_yeast_collection.yaml</code> is the one place a dataset’s identity and presentation are declared, as labretriever <code>tags</code> (repository-level tags apply to every dataset in the repository; dataset-level tags override them):</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Tag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>data_type</code></td>
+<td><code>binding</code> or <code>perturbation</code>; datasets without one (the comparative <code>dto</code>) are not in the registry</td>
+</tr>
+<tr class="even">
+<td><code>display_name</code>, <code>base_label</code></td>
+<td>full label, and the label shared by every variant of one experiment</td>
+</tr>
+<tr class="odd">
+<td><code>primary</code></td>
+<td><code>db_name</code> of the primary this dataset is a variant of (a primary names itself or nothing)</td>
+</tr>
+<tr class="even">
+<td><code>promoter_set</code>, <code>binding_method</code></td>
+<td>binding only; keys of <code>PROMOTER_SETS</code> / <code>BINDING_METHODS</code> in <code>tfbpshiny/datasets.py</code></td>
+</tr>
+<tr class="odd">
+<td><code>assay</code>, <code>active_default</code>, <code>color</code>, <code>peak_calling_note</code></td>
+<td>assay name; on in a new session; series colour and peak-caller tooltip (primaries)</td>
+</tr>
+</tbody>
+</table>
+<p>The promoter sets and binding methods those tags refer to are app vocabulary, in <code>tfbpshiny/datasets.py</code> (<code>PROMOTER_SETS</code>, <code>BINDING_METHODS</code>: display name, colour, publication). A promoter set names the labretriever <code>genome_resources.region_sets</code> entry it corresponds to, and takes its description from there.</p>
+<p>Only <code>materialize</code> reads any of this, through labretriever (<code>vdb.get_tags</code>, <code>vdb.db_name_map</code>, <code>vdb.get_region_sets</code>); <code>coordinating/sql.py::registry_rows</code> checks the tags are coherent and writes the <code>dataset_registry</code>, <code>promoter_sets</code> and <code>binding_methods</code> tables, labels, colours, links and notes included. The app reads only those tables. Adding or relabelling a dataset is a YAML edit plus a rebuild.</p>
+</section>
+<section id="dataset-level-configuration-in-code" class="level3">
+<h3 class="anchored" data-anchor-id="dataset-level-configuration-in-code">Dataset-level configuration in code</h3>
+<p>Per-dataset facts the app needs that are not in the database live in <code>tfbpshiny/utils/vdb_init.py</code>:</p>
+<ul>
+<li><code>DEFAULT_DATASET_FILTERS</code> — the sample filters applied on first load. They are keyed by the primary dataset the selection tab shows; the promoter-set and peak-calling variants of a primary inherit its filter via <code>utils.corr_query.expand_filters_to_variants</code>. The filters are chosen so that every dataset has exactly one sample per regulator.</li>
+<li><code>DEFAULT_RESPONSIVENESS_PRESETS</code> — the <code>Relaxed</code> / <code>Stringent</code> (effect, p-value) threshold pairs per perturbation dataset. <code>materialize</code> stores a <code>topn_results</code> row for each pair a preset resolves to, so the app’s preset selector is a filter, not a recomputation.</li>
+<li><code>HIDDEN_FILTER_FIELDS</code> (keyed by primary dataset; variants inherit, see <code>hidden_filter_fields</code>), <code>FIELD_TYPE_OVERRIDES</code> — which metadata columns the filter UI hides, and how it types the ones it shows. To keep a column out of a dataset’s filter modal, add it to that dataset’s entry in <code>HIDDEN_FILTER_FIELDS</code> (<code>utils/vdb_init.py</code>), or to <code>"*"</code> to hide it everywhere. The database keeps the column; only the filter UI skips it. Two kinds of column are hidden on purpose: identifiers (<code>regulator_locus_tag</code>, <code>regulator_symbol</code>) and the raw source columns behind a standardized alias (<code>condition</code>, <code>env_condition</code>, <code>timepoint</code>), because the collection config already exposes the standardized column (<code>Experimental condition</code>) and showing both would offer the same filter twice.</li>
+<li><code>load_app_datasets(conn)</code> — reads <code>dataset_column_metadata</code> into the condition/upstream column lists the selection tab builds its filter cards from.</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="app-startup-and-reactivity" class="level2">
+<h2 class="anchored" data-anchor-id="app-startup-and-reactivity">App Startup and Reactivity</h2>
+<section id="startup" class="level3">
+<h3 class="anchored" data-anchor-id="startup">Startup</h3>
+<p><code>tfbpshiny/app.py</code> is small. At import time it declares the six module UIs once and assembles <code>ui.page_navbar</code>. <code>app_server</code> then, per browser session:</p>
+<ol type="1">
+<li>opens <code>duckdb.connect(TFBPSHINY_DB_PATH, read_only=True)</code> (the path is set by <code>python -m tfbpshiny launch --db-path</code>, defaulting to <code>tfbpshiny/brentlab_yeast.duckdb</code>);</li>
+<li>runs <code>utils.schema_check.check_schema_version</code>, which compares the database’s <code>schema_version</code> stamp with <code>tfbpshiny.datasets.SCHEMA_VERSION</code>; on a mismatch a banner is shown above every page;</li>
+<li>calls <code>load_app_datasets(conn)</code>;</li>
+<li>registers the home-card navigation effects and every module server, directly and unconditionally — there is no deferred registration and no loading state, because opening a DuckDB file is instantaneous.</li>
+</ol>
+<p>Opening a new connection per session (rather than sharing one) is what makes the read-only file safe under concurrent users.</p>
+</section>
+<section id="shared-reactive-state" class="level3">
+<h3 class="anchored" data-anchor-id="shared-reactive-state">Shared reactive state</h3>
+<p><code>select_datasets_server</code> returns three reactives that every other module consumes: <code>active_binding_datasets</code>, <code>active_perturbation_datasets</code> (lists of <code>db_name</code>) and <code>dataset_filters</code> (the committed per-dataset filter dict). <code>app.py</code> wraps the last in <code>analysis_filters</code>, a <code>reactive.calc</code> that applies <code>expand_filters_to_variants</code> so the analysis modules can look a filter up by whatever dataset variant they resolved. Modules receive <code>analysis_filters</code> under the parameter name <code>dataset_filters</code>; it is a drop-in because they only ever call it.</p>
+</section>
+<section id="navigation" class="level3">
+<h3 class="anchored" data-anchor-id="navigation">Navigation</h3>
+<p>Pages are <code>ui.nav_panel</code>s of one <code>page_navbar</code> (<code>id="main_nav"</code>), so Shiny owns the active tab; the home page’s card links call <code>ui.update_navset("main_nav", ...)</code>. A module’s outputs are only computed while its panel is visible, which is Shiny’s default for hidden outputs, so there is no explicit gating of expensive calcs.</p>
+</section>
+<section id="where-the-work-happens" class="level3">
+<h3 class="anchored" data-anchor-id="where-the-work-happens">Where the work happens</h3>
+<p>Every analysis the app shows was computed at materialize time; the server code restricts rows to the filtered samples, aggregates (medians, fractions, set intersections) and draws. Reads filter the computed tables on their plain <code>db_name</code> / <code>sample_id</code> columns; the registry is read only to resolve a primary’s variants and to look up labels and colours. Nothing on the read side touches target-level data.</p>
+<hr>
+</section>
+</section>
+<section id="known-challenges" class="level2">
+<h2 class="anchored" data-anchor-id="known-challenges">Known Challenges</h2>
+<section id="duckdb-multi-threading-and-correlation-edge-cases" class="level3">
+<h3 class="anchored" data-anchor-id="duckdb-multi-threading-and-correlation-edge-cases">DuckDB multi-threading and correlation edge cases</h3>
+<p>For the correlation calculations, DuckDB can produce undefined results when stddev is 0 (zero-variance columns). This produces <code>NaN</code> correlations that need to be handled gracefully downstream. See:</p>
+<ul>
+<li>https://github.com/duckdb/duckdb/issues/13763</li>
+<li>https://duckdb.org/docs/current/operations_manual/non-deterministic_behavior#floating-point-aggregate-operations-with-multi-threading</li>
+</ul>
+<p>Do not set DuckDB threads to 1 unless it becomes a correctness requirement — the performance cost is significant.</p>
+</section>
+<section id="plotly-rendering" class="level3">
+<h3 class="anchored" data-anchor-id="plotly-rendering">Plotly rendering</h3>
+<p>Plots are rendered as static HTML blobs via <code>plotly.io.to_html</code> + <code>ui.HTML</code> with <code>@render.ui</code>, rather than using <code>render_widget</code> / <code>output_widget</code> from shinywidgets.</p>
+<p>The shinywidgets approach maintains a persistent comm channel between the Python server and browser. When the user navigates away from a module the DOM is destroyed, tearing down the comm. On return, shinywidgets fails to reattach with <code>t.views is undefined</code> / <code>[anywidget] Runtime not found</code> client errors.</p>
+<p>The <code>to_html</code> approach produces a self-contained HTML+JS blob that is fully re-rendered by the browser on each <code>@render.ui</code> update, with no persistent state. Plotly figures remain fully interactive client-side (hover, zoom, pan) but server-side plot event callbacks are not possible. For large datasets or frequent updates this will be less efficient.</p>
+<p>If server-side callbacks become necessary, or rendering becomes prohibitively slow, options include: a different plotting library, a custom Shiny widget wrapping raw Plotly JS, or D3-based custom components.</p>
+<hr>
+</section>
+</section>
+<section id="posit-connect-cloud-deployment" class="level2">
+<h2 class="anchored" data-anchor-id="posit-connect-cloud-deployment">Posit Connect Cloud Deployment</h2>
+<p>The app is deployed to <a href="https://connect.posit.cloud">Posit Connect Cloud</a> from VS Code with the Posit Publisher extension. Publisher uploads the files named in <code>.posit/publish/tfbpshiny-LARU.toml</code> directly from the working tree; Connect Cloud does not pull from GitHub for this deployment.</p>
+<section id="prerequisites" class="level3">
+<h3 class="anchored" data-anchor-id="prerequisites">Prerequisites</h3>
+<ul>
+<li>The <a href="https://marketplace.visualstudio.com/items?itemName=posit.publisher">Posit Publisher</a> extension (pre-installed in Positron)</li>
+<li>A Connect Cloud account with access to the account the deployment targets</li>
+<li>A HuggingFace token if any datasets are private</li>
+</ul>
+</section>
+<section id="add-a-credential" class="level3">
+<h3 class="anchored" data-anchor-id="add-a-credential">1. Add a credential</h3>
+<p>In the Posit Publisher panel, open <strong>Credentials</strong>, click <strong>+</strong> and choose <strong>Posit Connect Cloud</strong>. Log in through the browser, confirm the authorization code matches the one shown in the IDE, authorize, and name the credential. This is done once per machine.</p>
+</section>
+<section id="build-the-database-locally" class="level3">
+<h3 class="anchored" data-anchor-id="build-the-database-locally">2. Build the database locally</h3>
+<p>The app never touches the network, so the materialized database must travel with the upload. Build it at the repository root (the path <code>shinyapps_entry.py</code> points at):</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="va">HF_TOKEN</span><span class="op">=&lt;</span>your_token<span class="op">&gt;</span> poetry <span class="ex">run</span> python <span class="at">-m</span> tfbpshiny materialize <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">--config</span> tfbpshiny/brentlab_yeast_collection.yaml <span class="dt">\</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">--output</span> brentlab_yeast.duckdb</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Re-run this any time the upstream datasets or the materialize code change. The database is roughly 200 MB; Connect Cloud’s bundle limit is 1 GiB on free plans and 5 GiB on all others.</p>
+</section>
+<section id="keep-requirements.txt-current" class="level3">
+<h3 class="anchored" data-anchor-id="keep-requirements.txt-current">3. Keep <code>requirements.txt</code> current</h3>
+<p>Connect Cloud installs dependencies from <code>requirements.txt</code> at the repository root. It is generated from <code>poetry.lock</code>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">poetry</span> export <span class="at">--without-hashes</span> <span class="at">--without</span> dev <span class="at">-f</span> requirements.txt <span class="at">-o</span> requirements.txt</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The <code>poetry-export-requirements</code> pre-commit hook runs this whenever <code>poetry.lock</code> or <code>pyproject.toml</code> is committed. When the export changes the file, the commit fails once; stage the updated <code>requirements.txt</code> and commit again. The file is tracked, so it is also what Publisher uploads.</p>
+</section>
+<section id="the-configuration-file" class="level3">
+<h3 class="anchored" data-anchor-id="the-configuration-file">4. The configuration file</h3>
+<p><code>.posit/publish/tfbpshiny-LARU.toml</code> holds the deployment settings:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="dt">type</span> <span class="op">=</span> <span class="st">"python-shiny"</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="dt">entrypoint</span> <span class="op">=</span> <span class="st">"shinyapps_entry.py"</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="dt">title</span> <span class="op">=</span> <span class="st">"TF Binding and Perturbation"</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="dt">files</span> <span class="op">=</span> <span class="op">[</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"/shinyapps_entry.py"</span><span class="op">,</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"/requirements.txt"</span><span class="op">,</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"/brentlab_yeast.duckdb"</span><span class="op">,</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"/tfbpshiny"</span><span class="op">,</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a><span class="op">]</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="dt">product_type</span> <span class="op">=</span> <span class="st">"connect_cloud"</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a><span class="kw">[python]</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a><span class="dt">version</span> <span class="op">=</span> <span class="st">"3.12"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<ul>
+<li><code>entrypoint</code> is a file, not a <code>module:object</code> reference. <code>shinyapps_entry.py</code> sets <code>TFBPSHINY_DB_PATH</code> to the bundled <code>brentlab_yeast.duckdb</code> and exposes the Shiny <code>app</code> object, so no environment variables or CLI flags are needed at runtime.</li>
+<li><code>files</code> is an allowlist: only the listed paths are uploaded, so nothing needs to be excluded. The database is named by its exact path because the repository root holds other <code>brentlab_yeast*.duckdb</code> backups that must not be uploaded.</li>
+<li><code>[python] version</code> matches <code>python</code> in <code>pyproject.toml</code>. Connect Cloud defaults to 3.11, which the app does not support.</li>
+</ul>
+<p><code>.posit/publish/deployments/</code> records which Connect Cloud content item the configuration publishes to. Both directories are committed; without the deployment record, Publisher cannot update the existing content item.</p>
+</section>
+<section id="deploy" class="level3">
+<h3 class="anchored" data-anchor-id="deploy">5. Deploy</h3>
+<p>Open the Posit Publisher panel, select the <code>tfbpshiny-LARU</code> configuration and credential, and under <strong>Project Files</strong> confirm that <code>brentlab_yeast.duckdb</code>, <code>requirements.txt</code> and <code>tfbpshiny/</code> (including the gitignored <code>tfbpshiny/www/plotly-*.min.js</code>) are included and that <code>__pycache__</code> and <code>*.log</code> files are not. Then click <strong>Deploy Your Project</strong>. The panel shows <strong>View Content</strong> on success and <strong>View Publishing Log</strong> on failure.</p>
+<p>The app reads no secrets and makes no network requests at runtime, so the <strong>Secrets</strong> section stays empty.</p>
+</section>
+<section id="updating-the-data" class="level3">
+<h3 class="anchored" data-anchor-id="updating-the-data">Updating the data</h3>
+<p>When upstream datasets change, re-run step 2 and deploy again from the Publisher panel. Any previous revision can be downloaded as a <code>.zip</code> from the content’s history page on Connect Cloud.</p>
+<hr>
+</section>
+</section>
+<section id="documentation-site" class="level2">
+<h2 class="anchored" data-anchor-id="documentation-site">Documentation Site</h2>
+<p>The pages in <code>docs/</code> are built into a static site by <a href="https://quarto.org">Quarto</a>, configured in <code>docs/_quarto.yml</code>. The sidebar lists each page explicitly, so a new page must be added there to appear in the navigation.</p>
+<p>Quarto is a standalone program, not a Python dependency, so <code>poetry install</code> does not provide it. Install it from <a href="https://quarto.org/docs/download/">quarto.org/docs/download</a> (on Debian or Ubuntu, <code>sudo dpkg -i quarto-*.deb</code> with the downloaded <code>.deb</code>). The <a href="https://marketplace.visualstudio.com/items?itemName=quarto.quarto">Quarto VS Code extension</a> adds a preview command to the editor but still needs the Quarto program installed.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> preview docs    <span class="co"># build, serve locally and rebuild on save</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render docs     <span class="co"># write the static site to docs/_site/</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><code>.github/workflows/docs.yml</code> renders the site and publishes it to the <code>gh-pages</code> branch on every push to <code>main</code> that changes <code>docs/</code>. <code>docs/_site/</code> and the <code>.quarto</code> cache directories are gitignored.</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/BrentLab\.github\.io\/tfbpshiny\/");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/BrentLab/tfbpshiny/edit/main/docs/development.md" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li></ul></div></div></div></footer></body></html>

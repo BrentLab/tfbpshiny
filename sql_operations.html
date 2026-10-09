@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.10.19">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>sql_operations – TFBPShiny</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: 1.5em;}
+div.column{flex: auto;}
+@media screen {
+div.columns{gap: min(4vw, 1.5em);}
+div.column{overflow-x: auto;}
+}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-55617497126496852ff9f5a59253c640.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "sidebar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "start",
+  "type": "textbox",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+</head>
+
+<body class="nav-sidebar floating quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./binding_perturbation_reliability.html">Reference</a></li><li class="breadcrumb-item"><a href="./sql_operations.html">SQL Operations Reference</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header">
+    <div class="sidebar-title mb-0 py-0">
+      <a href="./">TFBPShiny</a> 
+    </div>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">TFBPShiny</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Page guides</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./select_datasets_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Dataset selection</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./binding_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Binding</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./perturbation_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Perturbation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./comparison_workflow.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Binding/Perturbation Comparisons</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./binding_perturbation_reliability.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Reliability and Spearman’s Correction: Binding vs.&nbsp;Perturbation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./materialized_db_schema.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Database Schema</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./sql_operations.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">SQL Operations Reference</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./development.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Developer Notes</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#sql-operations-reference" id="toc-sql-operations-reference" class="nav-link active" data-scroll-target="#sql-operations-reference">SQL Operations Reference</a>
+  <ul class="collapse">
+  <li><a href="#select_datasets-module" id="toc-select_datasets-module" class="nav-link" data-scroll-target="#select_datasets-module"><code>select_datasets</code> module</a></li>
+  <li><a href="#shared-sample-filter-helpers" id="toc-shared-sample-filter-helpers" class="nav-link" data-scroll-target="#shared-sample-filter-helpers">Shared sample-filter helpers</a></li>
+  <li><a href="#comparison-module" id="toc-comparison-module" class="nav-link" data-scroll-target="#comparison-module"><code>comparison</code> module</a></li>
+  <li><a href="#figures-module" id="toc-figures-module" class="nav-link" data-scroll-target="#figures-module"><code>figures</code> module</a></li>
+  <li><a href="#registry-readers" id="toc-registry-readers" class="nav-link" data-scroll-target="#registry-readers">Registry readers</a></li>
+  <li><a href="#reading-the-sql-directly" id="toc-reading-the-sql-directly" class="nav-link" data-scroll-target="#reading-the-sql-directly">Reading the SQL directly</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/BrentLab/tfbpshiny/edit/main/docs/sql_operations.md" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./binding_perturbation_reliability.html">Reference</a></li><li class="breadcrumb-item"><a href="./sql_operations.html">SQL Operations Reference</a></li></ol></nav></header>
+
+
+
+
+<section id="sql-operations-reference" class="level1">
+<h1>SQL Operations Reference</h1>
+<p>Catalogue of the SQL the running app executes against the materialized DuckDB file. Every function here reads <code>brentlab_yeast.duckdb</code> through a read-only connection; the SQL that <em>builds</em> that file lives in <code>tfbpshiny/materialize/</code> and is documented in <a href="./materialized_db_schema.html">materialized_db_schema.md</a>.</p>
+<p>Conventions:</p>
+<ul>
+<li>Table and column names are f-string interpolated (DuckDB cannot parameterize identifiers); values are bound as <code>?</code> positional parameters for <code>conn.execute</code>, or as <code>$name</code> parameters where the function returns <code>(sql, params)</code> for the caller to run.</li>
+<li>“Builder” functions return <code>(sql, params)</code> without executing. “Executes” functions run the query and return a <code>pandas.DataFrame</code> (or a plain Python object where stated).</li>
+<li>A <code>filters</code> argument is the per-dataset sample filter dict committed on the selection tab, already expanded so every variant carries its primary’s filter (<code>app.py::analysis_filters</code> → <code>expand_filters_to_variants</code>).</li>
+</ul>
+<hr>
+<section id="select_datasets-module" class="level2">
+<h2 class="anchored" data-anchor-id="select_datasets-module"><code>select_datasets</code> module</h2>
+<p><strong>File:</strong> <code>tfbpshiny/modules/select_datasets/queries.py</code> <strong>Called from:</strong> <code>server/workspace.py</code>, <code>server/sidebar.py</code>, <code>server/dataset_row.py</code></p>
+<p>All seven public functions are <strong>Builders</strong> that read one dataset’s <code>{db_name}_meta</code> table (or the full data view) with an optional filter spec <code>{field: {"type": categorical | numeric | bool, "value": ...}}</code>. Filter clauses are built once by <code>_build_filter_clauses</code> and bound as <code>$cat_{field}_{i}</code>, <code>$num_{field}_lo/_hi</code>, <code>$bool_{field}</code>.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Purpose</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>metadata_query(db_name, filters)</code></td>
+<td>All sample-level metadata for one dataset, optionally filtered.</td>
+<td>Every column of <code>{db_name}_meta</code>.</td>
+</tr>
+<tr class="even">
+<td><code>sample_count_query(db_name, filters, restrict_to_regulators)</code></td>
+<td>Count samples passing the filter, optionally only for a regulator list.</td>
+<td>one row: <code>n_samples</code>.</td>
+</tr>
+<tr class="odd">
+<td><code>regulator_locus_tags_query(db_name, filters)</code></td>
+<td>Distinct regulators among the samples passing the filter.</td>
+<td><code>regulator_locus_tag</code>, <code>regulator_symbol</code>.</td>
+</tr>
+<tr class="even">
+<td><code>regulator_breakdown_query(db_name, candidate_cols, filters)</code></td>
+<td>One pass counting multi-sample regulators and distinct values per candidate condition column.</td>
+<td>counts per column.</td>
+</tr>
+<tr class="odd">
+<td><code>regulator_conditions_query(db_name, locus_tag, candidate_cols, filters)</code></td>
+<td><code>sample_id</code> plus the condition columns for every sample of one regulator (every sample is returned, with a flag for whether it passes the filter).</td>
+<td>per-sample rows.</td>
+</tr>
+<tr class="even">
+<td><code>regulator_display_labels_query(db_name)</code></td>
+<td>Distinct regulator locus tags and symbols, unfiltered, for labels.</td>
+<td><code>regulator_locus_tag</code>, <code>regulator_symbol</code>.</td>
+</tr>
+<tr class="odd">
+<td><code>full_data_query(db_name, filters)</code></td>
+<td>The dataset’s full data view restricted to the filtered samples, for export.</td>
+<td>Every column of the data view.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+<section id="shared-sample-filter-helpers" class="level2">
+<h2 class="anchored" data-anchor-id="shared-sample-filter-helpers">Shared sample-filter helpers</h2>
+<p><strong>File:</strong> <code>tfbpshiny/utils/corr_query.py</code></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Kind</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>expand_filters_to_variants(conn, filters, registry=None)</code></td>
+<td>Executes (reads <code>dataset_registry</code> and the <code>_meta</code> catalog)</td>
+<td>Copies each primary dataset’s filter onto its promoter-set and peak-calling variants, keeping only the filter fields a variant’s metadata actually has. The one place filters are widened; every analysis module receives the result.</td>
+</tr>
+<tr class="even">
+<td><code>get_filtered_sample_ids(conn, db_name, filters)</code></td>
+<td>Executes</td>
+<td><code>CAST(sample_id AS VARCHAR)</code> of the rows of <code>{db_name}_meta</code> that pass <code>filters</code>. Every other query restricts to samples via this list.</td>
+</tr>
+<tr class="odd">
+<td><code>sample_filter_clause(conn, db_name, filters, column)</code></td>
+<td>Builder</td>
+<td><code>AND &lt;column&gt; IN (...)</code> for one dataset’s filtered samples, or <code>AND FALSE</code> when none pass.</td>
+</tr>
+<tr class="even">
+<td><code>per_dataset_sample_clause(conn, db_names, filters, db_column, sample_column)</code></td>
+<td>Builder</td>
+<td>The same restriction for several datasets at once, each to its own filtered samples.</td>
+</tr>
+<tr class="odd">
+<td><code>sample_in_clause(column, ids)</code></td>
+<td>Builder</td>
+<td><code>AND &lt;column&gt; IN (...)</code> for an already-resolved sample list; no restriction when <code>ids</code> is <code>None</code>.</td>
+</tr>
+<tr class="even">
+<td><code>fetch_corr_pairs(conn, pairs, filters, method, score_type, comparison_type)</code></td>
+<td>Executes</td>
+<td>Pre-computed per-regulator correlations from <code>correlations</code> for a list of <code>(db_a, db_b)</code> pairs, both sides restricted to filtered samples. Returns <code>{(db_a, db_b): DataFrame}</code> with <code>regulator_locus_tag</code>, <code>correlation</code>, <code>n_shared_targets</code>. Used by the Binding and Perturbation tabs.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+<section id="comparison-module" class="level2">
+<h2 class="anchored" data-anchor-id="comparison-module"><code>comparison</code> module</h2>
+<p><strong>File:</strong> <code>tfbpshiny/modules/comparison/queries.py</code> <strong>Called from:</strong> the modules in <code>server/</code></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Kind</th>
+<th>Purpose</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>build_binding_index(registry_df, promoter_set_labels=None, method_labels=None)</code></td>
+<td>pure</td>
+<td>Index of <code>dataset_registry</code> rows: variant → primary, promoter set, method; <code>resolve(primary, promoter_set, method)</code> → <code>db_name</code>.</td>
+<td><code>BindingIndex</code></td>
+</tr>
+<tr class="even">
+<td><code>fetch_topn_results(conn, pairs, filters, top_n, preset, require_full_overlap=True)</code></td>
+<td>Executes</td>
+<td>Rows of <code>topn_results</code> for each <code>(binding_db, perturbation_db)</code> pair at one cutoff and the <code>(effect, pvalue)</code> pair <code>preset</code> (a per-dataset threshold table) gives the perturbation dataset, restricted to filtered samples. With <code>require_full_overlap</code> only rows whose top-N list is complete after the tie rule (<code>n &gt;= top_n</code>) are kept.</td>
+<td><code>topn_results</code> columns + <code>pair_key</code>, <code>binding_db</code>, <code>perturbation_db</code></td>
+</tr>
+<tr class="odd">
+<td><code>fetch_dto_results(conn, pairs, filters, pr_ranking_column, pvalue_threshold)</code></td>
+<td>Executes</td>
+<td>DTO-significant fraction per pair over the regulators shared by the two datasets’ filtered samples (<code>sample_regulator</code>).</td>
+<td>one row per pair: <code>n_significant</code>, <code>n_covered</code>, <code>n_intersect</code>, <code>percent_significant</code></td>
+</tr>
+<tr class="even">
+<td><code>fetch_dto_results_method_intersected(conn, cells, filters, ...)</code></td>
+<td>Executes</td>
+<td>Same metric for the Compare Analysis Methods tab, where each <code>(promoter_enrichment_db, peak_calling_db, perturbation_db)</code> cell shares one 3-way regulator universe so the two methods are compared over the same TFs.</td>
+<td>two rows per cell</td>
+</tr>
+<tr class="odd">
+<td><code>fetch_method_promoter_target_universe(conn)</code></td>
+<td>Executes</td>
+<td>Size of the candidate target pool each assay’s model panel was restricted to (<code>method_promoter_model_target_universe</code>).</td>
+<td><code>assay_primary</code>, <code>display_name</code>, <code>n_targets</code></td>
+</tr>
+<tr class="even">
+<td><code>fetch_method_promoter_model(conn, perturbation_db, top_n, preset_name)</code></td>
+<td>Executes</td>
+<td>The stored coefficients and fit summary of the method × promoter-set OLS for one <code>(dataset, N, preset)</code>.</td>
+<td><code>(coefs, fit_summary)</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+<section id="figures-module" class="level2">
+<h2 class="anchored" data-anchor-id="figures-module"><code>figures</code> module</h2>
+<p><strong>File:</strong> <code>tfbpshiny/modules/figures/queries.py</code> <strong>Called from:</strong> the modules in <code>server/</code></p>
+<p>Registry and helpers:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Kind</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>dataset_labels(conn)</code></td>
+<td>Executes</td>
+<td><code>db_name</code> → <code>base_label</code> for every registry row (variants share their primary’s label).</td>
+</tr>
+<tr class="even">
+<td><code>resolve_promoter_variant(conn, primary, promoter_set_id, method_id)</code></td>
+<td>Executes</td>
+<td>The <code>db_name</code> of one (assay, promoter set, method) cell, or <code>None</code>.</td>
+</tr>
+<tr class="odd">
+<td><code>regulator_intersection(conn, db_names)</code></td>
+<td>Executes</td>
+<td>Regulators present in every listed dataset, from <code>sample_regulator</code>. The TF population every figure is drawn over.</td>
+</tr>
+<tr class="even">
+<td><code>sort_regulators_by_symbol(tags, symbols)</code></td>
+<td>pure</td>
+<td>Alphabetical order by gene symbol for the Featured TF selector.</td>
+</tr>
+<tr class="odd">
+<td><code>scoring_clause(pr_db, preset_name, alias)</code></td>
+<td>Builder</td>
+<td><code>AND effect_threshold = ? AND pvalue_threshold = ?</code> pinning one responsiveness definition; every <code>topn_results</code> read must include it.</td>
+</tr>
+<tr class="even">
+<td><code>agreement_dataset_choices(conn, comparison_type)</code></td>
+<td>Executes</td>
+<td>Selectable datasets for figure 6, labelled and ordered.</td>
+</tr>
+</tbody>
+</table>
+<p>Figure data (all <strong>Execute</strong>; <code>filters</code> restricts both the binding and the perturbation side to filtered samples):</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Figure</th>
+<th>Result columns</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>fetch_rank_response(conn, binding_dbs, pr_db, regulators, filters, preset_name)</code></td>
+<td>1</td>
+<td><code>binding_db</code>, <code>regulator_locus_tag</code>, <code>n</code>, <code>percent_responsive</code> (median across samples per <code>n</code>)</td>
+</tr>
+<tr class="even">
+<td><code>fetch_topn_percent_responsive(conn, binding_dbs, pr_db, regulators, top_n, filters, preset_name)</code></td>
+<td>2, 7, 9</td>
+<td><code>binding_db</code>, <code>regulator_locus_tag</code>, <code>percent_responsive</code></td>
+</tr>
+<tr class="odd">
+<td><code>fetch_authors_bound(conn, binding_dbs, pr_db, filters, preset_name)</code></td>
+<td>3</td>
+<td><code>binding_db</code>, <code>regulator_locus_tag</code>, <code>percent_responsive</code>, <code>n_bound</code> (the <code>top_n = 0</code> rows)</td>
+</tr>
+<tr class="even">
+<td><code>fetch_dto_significance(conn, binding_dbs, pr_dbs, ...)</code></td>
+<td>4</td>
+<td>per pair: <code>n_significant</code>, <code>n_covered</code>, <code>n_shared</code>, <code>fraction_significant</code></td>
+</tr>
+<tr class="odd">
+<td><code>fetch_dto_significant_sets(conn, binding_dbs, pr_db, ...)</code></td>
+<td>5</td>
+<td><code>{binding_db: set of regulators}</code></td>
+</tr>
+<tr class="even">
+<td><code>fetch_dto_significance_for_universe(conn, binding_db, pr_db, universe, ...)</code></td>
+<td>9 (bottom)</td>
+<td><code>{"n_significant", "n_covered"}</code> within an explicit regulator universe</td>
+</tr>
+<tr class="odd">
+<td><code>fetch_agreement(conn, comparison_type, db_names, filters)</code></td>
+<td>6</td>
+<td><code>pair</code>, <code>db_a</code>, <code>db_b</code>, <code>regulator_locus_tag</code>, <code>top_n</code>, <code>log2_enrichment</code></td>
+</tr>
+<tr class="even">
+<td><code>weighted_agreement(df, half_life)</code> (pure)</td>
+<td>6</td>
+<td><code>pair</code>, <code>regulator_locus_tag</code>, <code>weighted_enrichment</code></td>
+</tr>
+<tr class="odd">
+<td><code>fetch_shared_targets(conn, comparison_type, db_names, top_n, filters)</code></td>
+<td>10</td>
+<td><code>pair</code>, <code>regulator_locus_tag</code>, <code>n_shared</code></td>
+</tr>
+<tr class="even">
+<td><code>fetch_target_sets(conn, db_names, regulator, top_n, filters)</code></td>
+<td>10 (Venn)</td>
+<td><code>{db_name: set of targets}</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+<section id="registry-readers" class="level2">
+<h2 class="anchored" data-anchor-id="registry-readers">Registry readers</h2>
+<p><strong>File:</strong> <code>tfbpshiny/utils/vdb_init.py</code></p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>load_app_datasets(conn)</code></td>
+<td>Reads <code>dataset_column_metadata</code> into the condition / upstream column lists the selection tab builds its filter UI from.</td>
+</tr>
+<tr class="even">
+<td><code>get_regulator_display_name(conn, locus_tags=None)</code></td>
+<td>Reads <code>regulator_display_names</code> (locus tag, symbol, display name).</td>
+</tr>
+<tr class="odd">
+<td><code>promoter_set_labels(conn)</code>, <code>binding_method_labels(conn)</code></td>
+<td>Display label of each promoter set and binding method.</td>
+</tr>
+<tr class="even">
+<td><code>promoter_set_info(conn)</code></td>
+<td>Label, description, colour and reference of each promoter set.</td>
+</tr>
+<tr class="odd">
+<td><code>binding_method_colors(conn)</code></td>
+<td>Series colour of each binding method.</td>
+</tr>
+<tr class="even">
+<td><code>dataset_colors(conn, data_type)</code></td>
+<td>Series colour of each experiment of one data type, keyed by <code>base_label</code>.</td>
+</tr>
+<tr class="odd">
+<td><code>peak_calling_notes(conn)</code></td>
+<td>How each assay’s peak calls were made, keyed by its primary <code>db_name</code>.</td>
+</tr>
+<tr class="even">
+<td><code>get_responsiveness_label(preset_name, p_db)</code></td>
+<td>Pure: human-readable text for a preset’s thresholds on one dataset.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+<section id="reading-the-sql-directly" class="level2">
+<h2 class="anchored" data-anchor-id="reading-the-sql-directly">Reading the SQL directly</h2>
+<p>Every builder is importable and side-effect free, so a notebook can inspect a query with <code>sql, params = metadata_query("rossi_500bp", filters)</code> and run it against a read-only connection. For the materialize-side generators (<code>topn_pair_select_sql_v2</code>, <code>agreement_pair_select_sql</code>, <code>target_sets_select_sql</code>, …), see <code>tfbpshiny/materialize/comparison/</code> and the schema document.</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/BrentLab\.github\.io\/tfbpshiny\/");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/BrentLab/tfbpshiny/edit/main/docs/sql_operations.md" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li></ul></div></div></div></footer></body></html>
