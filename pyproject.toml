@@ -1,0 +1,90 @@
+[tool.poetry]
+name = "tfbpshiny"
+version = "1.2.1"
+description = "A shiny app which provides a dashboard to https://huggingface.co/collections/BrentLab/yeastresources"
+authors = ["chasem <chasem@wustl.edu>"]
+license = "GPL-3.0"
+readme = "README.md"
+# Pre-DuckDB implementation kept only for historical reference -- never installed.
+exclude = ["tfbpshiny/deprecated/**"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+labretriever = "^1.1.5"
+shiny = "^1.4.0"
+scikit-learn = "^1.6.1"
+plotly = "^6.0.1"
+faicons = "^0.2.2"
+matplotlib-venn = "^1.1.2"
+matplotlib = "^3.11.1"
+statsmodels = "^0.15.0"
+shapely = "^2.1.2"
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^7.2.0"
+pytest = "^9.0.2"
+nbformat = "^5.10.4"
+playwright = "^1.58.0"
+pytest-playwright = "^0.7.2"
+nbclient = "^0.11.0"
+black = "^26.5.1"
+isort = "^9.0.0"
+flake8 = "^7.3.0"
+quarto = "^0.1.0"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+python_files = [
+    "tests.py",
+    "test_*.py",
+]
+pythonpath = ['.']
+addopts = "--ignore=tmp"
+
+[tool.coverage.run]
+include = ["tfbpshiny/**"]
+omit = ["*/tests/*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+include = '\.py$'
+
+[tool.isort]
+profile = "black"
+line_length = 88
+known_first_party = [
+    "tfbpshiny",
+]
+skip = ["venv/"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+ignore_missing_imports = true
+warn_unused_ignores = false
+warn_redundant_casts = true
+warn_unused_configs = true
+
+[tool.vulture]
+paths = ["tfbpshiny"]
+# Shiny registers these by decoration alone -- vulture can't see the framework-side
+# call, so it flags every reactive/render/module function as unused without this.
+ignore_decorators = [
+    "@reactive.calc",
+    "@reactive.effect",
+    "@reactive.event",
+    "@render.ui",
+    "@render.download",
+    "@module.server",
+    "@module.ui",
+]
+min_confidence = 80
+sort_by_size = true
+
+[tool.pylint.FORMAT]
+max-line-length = 88
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

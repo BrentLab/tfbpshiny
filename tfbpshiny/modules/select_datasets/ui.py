@@ -1,0 +1,691 @@
+"""UI functions for the Select Datasets page."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+import pandas as pd
+from labretriever import ColumnMeta
+from shiny import module, ui
+
+from tfbpshiny.components import workspace_heading
+from tfbpshiny.utils.vdb_init import FIELD_TYPE_OVERRIDES
+
+
+def _slugify(s: str) -> str:
+    """
+    Convert a string to a slug suitable for use in HTML element IDs.
+
+    This is primarily used to replace spaces, eg in aliased fields like
+    `Regulator locus tag`, to `regulator_locus_tag` for the filter control IDs.
+
+    """
+    return s.lower().replace(" ", "_")
+
+
+def _filter_control(
+    field: str,
+    col: pd.Series,
+    saved_spec: dict[str, Any] | None,
+    db_name: str = "",
+    is_common: bool = False,
+    union_levels: list[str] | None = None,
+    field_description: str | None = None,
+    ns: Callable[[str], str] = lambda x: x,
+) -> ui.Tag | None:
+    """
+    Build a single filter-option card for ``field``.
+
+    Returns ``None`` if the field type is not filterable or has no usable data.
+
+    Note: this function uses Bootstrap card classes directly rather than
+    ``components.filter_option_card`` because it conditionally injects an
+    "Apply to all datasets" toggle into the card header — a variant that the
+    generic component does not support.
+
+    :param field_description: Optional description from the DataCard. When
+        provided, boolean toggles display ``"field (description)"`` as their
+        label; defaults to ``"field (Undefined)"`` when the field is boolean
+        and no description is given.
+    :param is_common: When ``True``, appends an "Apply to all datasets" toggle
+        inside the card. The toggle is pre-set from ``saved_spec["apply_to_all"]``
+        if present, defaulting to ``True``.
+
+    """
+    dtype = col.dtype
+    type_override = FIELD_TYPE_OVERRIDES.get(
+        (db_name, field)
+    ) or FIELD_TYPE_OVERRIDES.get(("", field))
+    override_kind = type_override[0] if type_override else None
+    override_level_dtype = type_override[1] if type_override else None
+
+    def _apply_to_all_toggle() -> ui.Tag:
+        saved_val = saved_spec.get("apply_to_all", False) if saved_spec else False
+        return ui.input_switch(
+            ns(f"apply_to_all_{_slugify(field)}"),
+            "Apply to all datasets",
+            value=saved_val,
+        )
+
+    if override_kind == "categorical" or dtype.name in ("object", "category"):
+        raw = (
+            union_levels
+            if union_levels is not None
+            else [str(v) for v in col.dropna().unique()]
+        )
+        choices = sorted(
+            raw, key=lambda x: float(x) if override_level_dtype == "numeric" else x
+        )
+        selected = [str(v) for v in saved_spec["value"]] if saved_spec else []
+        return ui.div(
+            {"class": "card"},
+            ui.div(
+                {"class": "card-body p-2"},
+                ui.div(
+                    {
+                        "class": "d-flex align-items-center "
+                        "justify-content-between gap-2 mb-2"
+                    },
+                    ui.span({"class": "fw-bold small"}, field),
+                    _apply_to_all_toggle() if is_common else ui.span(),
+                ),
+                ui.input_selectize(
+                    ns(f"filter_{_slugify(field)}"),
+                    label=None,
+                    choices=choices,
+                    selected=selected,
+                    multiple=True,
+                    options={"plugins": ["remove_button"]},
+                ),
+            ),
+        )
+
+    if dtype == "bool":
+        saved_val = bool(saved_spec["value"]) if saved_spec else False
+        desc = field_description if field_description else "Undefined"
+        switch_label = f"{field} ({desc})"
+        return ui.div(
+            {"class": "card"},
+            ui.div(
+                {"class": "card-body p-2"},
+                ui.div(
+                    {
+                        "class": "d-flex align-items-center "
+                        "justify-content-between gap-2 mb-2"
+                    },
+                    ui.span({"class": "fw-bold small"}, field),
+                    _apply_to_all_toggle() if is_common else ui.span(),
+                ),
+                ui.input_switch(
+                    ns(f"filter_{_slugify(field)}"), label=switch_label, value=saved_val
+                ),
+            ),
+        )
+
+    if dtype.name in ("float64", "int64", "float32", "int32"):
+        non_null = col.dropna()
+        if non_null.empty:
+            return None
+        data_min = float(non_null.min())
+        data_max = float(non_null.max())
+        if data_min == data_max:
+            data_max = data_min + 1.0
+        # TODO: fix typing issue and remove type: ignore
+        saved_val = saved_spec["value"] if saved_spec else [data_min, data_max]  # type: ignore # noqa: E501
+        return ui.div(
+            {"class": "card"},
+            ui.div(
+                {"class": "card-body p-2"},
+                ui.div(
+                    {
+                        "class": "d-flex align-items-center "
+                        "justify-content-between gap-2 mb-2"
+                    },
+                    ui.span({"class": "fw-bold small"}, field),
+                    _apply_to_all_toggle() if is_common else ui.span(),
+                ),
+                ui.input_slider(
+                    ns(f"filter_{_slugify(field)}"),
+                    label=None,
+                    min=data_min,
+                    max=data_max,
+                    value=saved_val,
+                ),
+            ),
+        )
+
+    return None
+
+
+def _condition_checkbox(
+    field: str,
+    col: pd.Series,
+    saved_spec: dict[str, Any] | None,
+    level_definitions: dict[str, str],
+    is_common: bool = False,
+    ns: Callable[[str], str] = lambda x: x,
+) -> ui.Tag:
+    """
+    Render a checkbox group for a condition column with labelled choices.
+
+    :param field: Display name of the field (used as the card label and input ID).
+    :param col: Series of raw condition level values from the metadata DataFrame.
+    :param saved_spec: Previously saved filter spec for pre-selection.
+    :param level_definitions: Mapping of ``{level_value: description}`` from
+        ``ColumnMeta.level_definitions``.
+    :param is_common: When ``True``, appends an "Apply to all datasets" toggle
+        in the card header. The toggle is pre-set from ``saved_spec["apply_to_all"]``
+        if present, defaulting to ``True``.
+    :param ns: Namespace function applied to all input IDs.
+
+    """
+    counts = col.dropna().astype(str).value_counts()
+    all_levels = counts.index.tolist()
+    choices = {
+        v: f"{level_definitions[v]} ({v})" if level_definitions.get(v) else v
+        for v in all_levels
+    }
+    selected = saved_spec["value"] if saved_spec else []
+    apply_to_all: ui.Tag
+    if is_common:
+        saved_val = saved_spec.get("apply_to_all", True) if saved_spec else True
+        apply_to_all = ui.input_switch(
+            ns(f"apply_to_all_{_slugify(field)}"),
+            "Apply to all datasets",
+            value=saved_val,
+        )
+    else:
+        apply_to_all = ui.span()
+    return ui.div(
+        {"class": "card"},
+        ui.div(
+            {"class": "card-body p-2"},
+            ui.div(
+                {
+                    "class": "d-flex align-items-center "
+                    "justify-content-between gap-2 mb-2"
+                },
+                ui.span({"class": "fw-bold small"}, field),
+                apply_to_all,
+            ),
+            ui.input_checkbox_group(
+                ns(f"filter_{_slugify(field)}"),
+                label=None,
+                choices=choices,
+                selected=selected,
+            ),
+        ),
+    )
+
+
+def _section_heading(label: str) -> ui.Tag:
+    return ui.div(
+        {
+            "style": "font-weight:bold; border-bottom: 1px solid #e0e0e0;"
+            " padding-bottom:4px; margin-bottom:6px;"
+        },
+        label,
+    )
+
+
+def dataset_filter_modal_ui(
+    db_name: str,
+    df: pd.DataFrame,
+    saved_filters: dict[str, Any] | None = None,
+    common_fields: set[str] | None = None,
+    display_name: str | None = None,
+    common_field_levels: dict[str, list[str]] | None = None,
+    hidden_fields: set[str] | None = None,
+    regulator_display_labels: dict[str, str] | None = None,
+    col_meta: dict[str, ColumnMeta] | None = None,
+    ns: Callable[[str], str] = lambda x: x,
+) -> ui.Tag:
+    """
+    Build the filter modal for a given dataset from live metadata.
+
+    Characteristics shared across all datasets (``common_fields``) are shown in the
+    left column; dataset-specific characteristics are shown in the right column. An
+    "Apply to all datasets" toggle controls whether common-characteristic changes
+    propagate to every dataset or only to this one.
+
+    Columns whose ``ColumnMeta.role`` is ``"experimental_condition"`` and that have
+    ``level_definitions`` are rendered as labelled checkbox groups via
+    ``_condition_checkbox``. All other filterable columns use ``_filter_control``,
+    which uses the column's ``ColumnMeta.description`` for boolean toggle labels.
+
+    :param db_name: Internal dataset key (used for filter IDs).
+    :param df: The dataset's ``{db_name}_meta`` rows (``metadata_query``).
+    :param saved_filters: Previously applied filters for this dataset, used to
+        pre-populate controls.
+    :param common_fields: Characteristic names shared across all datasets. If
+        ``None``, all characteristics are treated as dataset-specific.
+    :param display_name: Human-readable dataset name used as the modal title.
+        Falls back to ``db_name`` if not provided.
+    :param common_field_levels: For common categorical fields, the union of factor
+        levels across all active datasets. Used to populate the selectize choices
+        so that valid values from other datasets remain selectable.
+    :param regulator_display_labels: Maps ``locus_tag`` to ``"SYMBOL (LOCUS_TAG)"``
+        display strings. When provided, a Regulator card is prepended to the Common
+        Characteristics column with a combined searchable selectize.
+    :param col_meta: Per-column labretriever ``ColumnMeta``. Used to identify
+        condition columns (for checkbox rendering) and to supply descriptions for
+        boolean toggle labels. The app passes ``None``, so every column is rendered
+        with ``_filter_control``.
+    :param ns: Namespace function applied to all input IDs in the modal. Pass
+        ``session.ns`` from the calling module server so inputs are registered
+        under the correct module scope.
+
+    """
+    saved = saved_filters or {}
+    cf = (common_fields or set()) - {"sample_id"}
+    cfl = common_field_levels or {}
+    title = display_name or db_name
+    _meta = col_meta or {}
+
+    common_cards: list[ui.Tag] = []
+    specific_cards: list[ui.Tag] = []
+
+    _hidden = hidden_fields or set()
+    for field in df.columns:
+        if field == "sample_id":
+            continue
+        if field in _hidden:
+            continue
+        is_common = field in cf
+        meta = _meta.get(field)
+        # Experimental condition columns with per-level definitions → checkbox group.
+        card: ui.Tag | None
+        if (
+            meta is not None
+            and meta.role == "experimental_condition"
+            and meta.level_definitions is not None
+        ):
+            card = _condition_checkbox(
+                field,
+                df[field],
+                saved.get(field),
+                meta.level_definitions,
+                is_common=is_common,
+                ns=ns,
+            )
+        else:
+            card = _filter_control(
+                field,
+                df[field],
+                saved.get(field),
+                db_name,
+                is_common=is_common,
+                union_levels=cfl.get(field) if is_common else None,
+                field_description=meta.description if meta else None,
+                ns=ns,
+            )
+        if card is None:
+            continue
+        if is_common:
+            common_cards.append(card)
+        else:
+            specific_cards.append(card)
+
+    # --- regulator card (prepended to common column) ---
+    regulator_card: list[ui.Tag] = []
+    if regulator_display_labels is not None:
+        saved_reg = saved.get("regulator_locus_tag", {})
+        selected_reg = saved_reg.get("value", []) if saved_reg else []
+        from_pair: tuple[str, str] | None = (
+            saved_reg.get("from_pair") if saved_reg else None
+        )
+        apply_to_all_reg = saved_reg.get("apply_to_all", True) if saved_reg else True
+
+        if from_pair:
+            # Pairwise regulator filter is active: restrict choices to the intersection
+            # of this dataset's regulators with the active filter values; show a note.
+            # The selectize starts empty — the pairwise filter is implicit context,
+            # not a pre-selection. The user may optionally narrow further by picking
+            # from the available restricted choices.
+            restricted_choices = {
+                tag: label
+                for tag, label in regulator_display_labels.items()
+                if tag in selected_reg
+            }
+            regulator_card = [
+                ui.div(
+                    {"class": "card"},
+                    ui.div(
+                        {"class": "card-body p-2"},
+                        ui.div(
+                            {
+                                "class": "d-flex align-items-center "
+                                "justify-content-between gap-2 mb-2"
+                            },
+                            ui.span({"class": "fw-bold small"}, "Regulator"),
+                        ),
+                        ui.p(
+                            {"class": "text-muted small mb-2"},
+                            "Regulators are limited to the "
+                            f"{len(selected_reg):,} common "
+                            f"regulators between {from_pair[0]} and {from_pair[1]}. "
+                            "To clear this, deselect the highlighted "
+                            "cell in the matrix.",
+                        ),
+                        ui.input_selectize(
+                            ns("filter_regulator_locus_tag"),
+                            label=None,
+                            choices=restricted_choices,
+                            selected=[],
+                            multiple=True,
+                            options={"plugins": ["remove_button"]},
+                        ),
+                    ),
+                )
+            ]
+        else:
+            regulator_card = [
+                ui.div(
+                    {"class": "card"},
+                    ui.div(
+                        {"class": "card-body p-2"},
+                        ui.div(
+                            {
+                                "class": "d-flex align-items-center "
+                                "justify-content-between gap-2 mb-2"
+                            },
+                            ui.span({"class": "fw-bold small"}, "Regulator"),
+                            ui.div(
+                                {"class": "d-flex align-items-center gap-2"},
+                                ui.input_action_button(
+                                    ns("modal_clear_regulator_filter"),
+                                    "Clear",
+                                    class_="btn btn-sm btn-outline-secondary",
+                                ),
+                                ui.input_switch(
+                                    ns("apply_to_all_regulator_locus_tag"),
+                                    "Apply to all datasets",
+                                    value=apply_to_all_reg,
+                                ),
+                            ),
+                        ),
+                        ui.input_selectize(
+                            ns("filter_regulator_locus_tag"),
+                            label=None,
+                            choices=regulator_display_labels,
+                            selected=selected_reg,
+                            multiple=True,
+                            options={"plugins": ["remove_button"]},
+                        ),
+                    ),
+                )
+            ]
+
+    # --- common characteristics column ---
+    if common_cards or regulator_card:
+        common_col_children: list[ui.Tag] = [
+            _section_heading("Common Characteristics"),
+            ui.p(
+                {
+                    "class": "text-muted",
+                    "style": "font-size:0.8rem; margin-bottom:8px;",
+                },
+                "These characteristics appear in every dataset.",
+            ),
+            *regulator_card,
+            *common_cards,
+        ]
+    else:
+        common_col_children = [
+            _section_heading("Common Characteristics"),
+            ui.p(
+                {"class": "text-muted"},
+                "No common characteristics available.",
+            ),
+        ]
+
+    # --- dataset-specific characteristics column ---
+    if specific_cards:
+        specific_col_children: list[ui.Tag] = [
+            _section_heading(f"{title} Characteristics"),
+            ui.p(
+                {
+                    "class": "text-muted",
+                    "style": "font-size:0.8rem; margin-bottom:8px;",
+                },
+                "These characteristics are specific to this dataset.",
+            ),
+            *specific_cards,
+        ]
+    else:
+        specific_col_children = [
+            _section_heading(f"{title} Characteristics"),
+            ui.p(
+                {"class": "text-muted"},
+                "No dataset-specific characteristics available.",
+            ),
+        ]
+
+    body = ui.row(
+        ui.column(
+            6, ui.div({"class": "d-flex flex-column gap-2"}, *common_col_children)
+        ),
+        ui.column(
+            6, ui.div({"class": "d-flex flex-column gap-2"}, *specific_col_children)
+        ),
+    )
+
+    return ui.modal(
+        body,
+        title=title,
+        size="xl",
+        easy_close=True,
+        footer=ui.div(
+            ui.input_action_button(
+                ns("modal_reset_filters"),
+                "Reset",
+                class_="btn btn-sm btn-outline-secondary",
+            ),
+            ui.input_action_button(
+                ns("modal_apply_filters"),
+                "Queue Filters",
+                class_="btn btn-sm btn-primary",
+            ),
+        ),
+    )
+
+
+@module.ui
+def selection_ui() -> ui.Tag:
+    """Sidebar + workspace layout for the dataset selection page."""
+    return ui.layout_sidebar(
+        ui.sidebar(
+            ui.output_ui("sidebar_content"),
+            id="select_datasets_sidebar",
+            class_="selection-sidebar",
+            width=390,
+            open="open",
+            resizable=False,
+        ),
+        workspace_heading("Regulator Counts in Dataset Intersections"),
+        ui.output_ui("matrix_content"),
+        workspace_heading("Regulators by Dataset"),
+        ui.input_selectize(
+            "regulator_search",
+            label=None,
+            choices=[],
+            selected=[],
+            multiple=True,
+            options={
+                "plugins": ["remove_button"],
+                "placeholder": "Search regulators…",
+            },
+        ),
+        ui.output_ui("regulator_dataset_table_content"),
+    )
+
+
+def diagonal_cell_modal_ui(display_name: str, breakdown: dict) -> ui.Tag:
+    """
+    Modal for diagonal matrix cells summarising sample/regulator multiplicity.
+
+    This will either say that each sample interrogates a unique regulator,
+    or provide information about which columns differentiate samples that share
+    regulators.
+
+    :param display_name: Human-readable dataset name for the modal title.
+    :param breakdown: Dict produced by the multiplicity analysis in workspace.py.
+        ``{"uniform": True}`` when each regulator maps to exactly one sample;
+        ``{"uniform": False, "n_multi": int, "differentiating_columns": list[str]}``
+        otherwise.
+
+    """
+    if breakdown.get("uniform"):
+        body = ui.p("Each sample represents a unique interrogated regulator.")
+    else:
+        cols = breakdown.get("differentiating_columns", [])
+        body = ui.div(
+            ui.p(
+                f"{breakdown['n_multi']:,} regulators appear in multiple samples. "
+                f"Samples differ by:"
+            ),
+            (
+                ui.tags.ul(*[ui.tags.li(c) for c in cols])
+                if cols
+                else ui.p(ui.tags.em("unknown columns"))
+            ),
+        )
+    return ui.modal(
+        body,
+        title=display_name,
+        easy_close=True,
+        footer=ui.modal_button("Close"),
+    )
+
+
+def off_diagonal_cell_modal_ui(
+    display_a: str,
+    display_b: str,
+    n_common: int,
+    pending_pair_display: tuple[str, str] | None = None,
+) -> ui.Tag:
+    """
+    Modal for off-diagonal (cross-dataset) matrix cells.
+
+    Shows the number of common regulators shared between two datasets and offers a
+    button to queue the intersection as a cross-dataset regulator filter.
+
+    :param display_a: Human-readable name of the first dataset.
+    :param display_b: Human-readable name of the second dataset.
+    :param n_common: Number of regulators shared between the two datasets.
+    :param pending_pair_display: When not ``None``, a ``(display_a, display_b)``
+        tuple for a different pair already queued. A warning is shown that the
+        existing pending filter will be replaced.
+
+    """
+    replace_warning: list[ui.Tag] = []
+    if pending_pair_display is not None:
+        replace_warning = [
+            ui.p(
+                {"class": "text-warning", "style": "font-size:0.85rem;"},
+                f"A pending filter for {pending_pair_display[0]} and "
+                f"{pending_pair_display[1]} will be replaced.",
+            )
+        ]
+    return ui.modal(
+        ui.p(
+            f"{display_a} and {display_b} share ",
+            ui.strong(f"{n_common:,}"),
+            " regulators in common.",
+        ),
+        ui.p(
+            {"class": "text-muted", "style": "font-size:0.85rem;"},
+            "Queuing this filter will restrict both datasets to only samples "
+            "whose regulator appears in both datasets. Click Apply in the "
+            "sidebar to commit.",
+        ),
+        *replace_warning,
+        easy_close=True,
+        footer=ui.div(
+            ui.modal_button("Close", class_="btn btn-sm btn-outline-secondary"),
+            ui.input_action_button(
+                "modal_queue_common_regulators",
+                f"Select {n_common:,} common regulators",
+                class_="btn btn-sm btn-primary",
+            ),
+        ),
+    )
+
+
+def regulator_cell_modal_ui(
+    display_name: str,
+    regulator_symbol: str,
+    regulator_locus_tag: str,
+    columns: list[str],
+    rows: list[dict[str, Any]],
+    active_sample_ids: set[str],
+) -> ui.Tag:
+    """
+    Modal listing every sample that interrogates a regulator within one dataset,
+    regardless of the dataset's active filters. Samples that pass the active filters are
+    highlighted and sorted to the top (see ``regulator_conditions_query``'s ``ORDER BY
+    __matches_filters DESC``).
+
+    :param display_name: Human-readable dataset name.
+    :param regulator_symbol: Regulator gene symbol (falls back to the locus tag
+        when no symbol is available).
+    :param regulator_locus_tag: Regulator systematic locus tag.
+    :param columns: Column names to display, in order (``sample_id`` first).
+    :param rows: One dict per sample, keyed by ``columns``, pre-sorted with
+        filter-matching samples first.
+    :param active_sample_ids: ``sample_id`` values (as strings) that pass the
+        dataset's active filters; their rows are highlighted.
+
+    """
+    title = f"{regulator_symbol} ({regulator_locus_tag}) in {display_name}"
+    if not rows:
+        body: ui.Tag = ui.p("No samples reference this regulator in this dataset.")
+    else:
+        body_children: list[ui.Tag] = []
+        if 0 < len(active_sample_ids) < len(rows):
+            body_children.append(
+                ui.p(
+                    {"class": "text-muted small mb-2"},
+                    "Bold rows pass the dataset's active filters.",
+                )
+            )
+        body_children.append(
+            ui.div(
+                {"class": "matrix-scroll-container"},
+                ui.tags.table(
+                    {"class": "table table-sm table-bordered mb-0"},
+                    ui.tags.thead(ui.tags.tr(*[ui.tags.th(c) for c in columns])),
+                    ui.tags.tbody(
+                        *[
+                            ui.tags.tr(
+                                (
+                                    {"class": "condition-row-active"}
+                                    if str(row.get("sample_id")) in active_sample_ids
+                                    else {}
+                                ),
+                                *[ui.tags.td(str(row.get(c, ""))) for c in columns],
+                            )
+                            for row in rows
+                        ]
+                    ),
+                ),
+            )
+        )
+        body = ui.div(*body_children)
+    return ui.modal(
+        body,
+        title=title,
+        size="l",
+        easy_close=True,
+        footer=ui.modal_button("Close"),
+    )
+
+
+__all__ = [
+    "dataset_filter_modal_ui",
+    "diagonal_cell_modal_ui",
+    "off_diagonal_cell_modal_ui",
+    "regulator_cell_modal_ui",
+    "selection_ui",
+]
