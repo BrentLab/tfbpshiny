@@ -4,21 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-# TODO: open a labretriever issue to expose datacard field types (e.g. factor vs numeric)
-# via VirtualDB, so this override can come from the datacard.
-# The datacard for hackett_2020 marks `time` as a factor, but the _meta view
-# exposes it as a numeric column (DOUBLE). Override it here so the filter modal
-# renders a sorted selectize instead of a slider.
-# if the first element in the tuple key is an empty string, then the override
-# will apply to all datasets that have that key
-# Values are ("categorical", level_dtype) where level_dtype is "numeric" or "string".
-# "numeric" means the category labels are numeric strings and should be sorted
-# numerically; "string" means they should be sorted lexicographically.
-FIELD_TYPE_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
-    ("hackett", "time"): ("categorical", "numeric"),
-    ("", "temperature_celsius"): ("categorical", "string"),
-}
-
 
 def _build_filter_clauses(
     filters: dict[str, Any] | None,
@@ -313,7 +298,6 @@ def full_data_query(
 
 
 __all__ = [
-    "FIELD_TYPE_OVERRIDES",
     "metadata_query",
     "full_data_query",
     "sample_count_query",

@@ -14,14 +14,17 @@ from shiny.types import SilentException
 from tfbpshiny import components
 from tfbpshiny.modules.select_datasets.modal_state import initial_modal_view
 from tfbpshiny.modules.select_datasets.queries import (
-    FIELD_TYPE_OVERRIDES,
     metadata_query,
     regulator_display_labels_query,
 )
 from tfbpshiny.modules.select_datasets.ui import (
     dataset_filter_modal_ui,
 )
-from tfbpshiny.utils.vdb_init import AppDatasets, hidden_filter_fields
+from tfbpshiny.utils.vdb_init import (
+    FIELD_TYPE_OVERRIDES,
+    AppDatasets,
+    hidden_filter_fields,
+)
 
 
 @module.ui

@@ -98,6 +98,12 @@ DEFAULT_DATASET_FILTERS: dict[str, dict] = {
 # has the field. Values are ``("categorical", level_dtype)`` where
 # ``level_dtype`` is ``"numeric"`` (sort levels numerically) or ``"string"``
 # (sort lexicographically).
+#
+# The hackett_2020 datacard declares ``time`` as a class label, but the ``_meta``
+# view exposes it as a numeric column (DOUBLE); the override makes the filter modal
+# render a sorted selectize instead of a slider.
+# TODO: open a labretriever issue to expose datacard field types (factor vs numeric)
+# through VirtualDB, so this override can come from the datacard.
 FIELD_TYPE_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
     ("hackett", "time"): ("categorical", "numeric"),
     ("", "temperature_celsius"): ("categorical", "string"),

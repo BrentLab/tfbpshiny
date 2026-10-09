@@ -29,7 +29,6 @@ from tfbpshiny.modules.select_datasets.modal_state import (
     upstream_mask,
 )
 from tfbpshiny.modules.select_datasets.queries import (
-    FIELD_TYPE_OVERRIDES,
     full_data_query,
     metadata_query,
 )
@@ -38,7 +37,11 @@ from tfbpshiny.modules.select_datasets.server.dataset_row import (
     dataset_row_ui,
 )
 from tfbpshiny.modules.select_datasets.ui import _slugify
-from tfbpshiny.utils.vdb_init import DEFAULT_DATASET_FILTERS, AppDatasets
+from tfbpshiny.utils.vdb_init import (
+    DEFAULT_DATASET_FILTERS,
+    FIELD_TYPE_OVERRIDES,
+    AppDatasets,
+)
 
 
 def select_datasets_sidebar_server(

@@ -16,7 +16,7 @@ from typing import Any
 import pandas as pd
 from labretriever import ColumnMeta
 
-from tfbpshiny.modules.select_datasets.queries import FIELD_TYPE_OVERRIDES
+from tfbpshiny.utils.vdb_init import FIELD_TYPE_OVERRIDES
 
 
 def is_categorical(df: pd.DataFrame, db_name: str, col: str) -> bool:
