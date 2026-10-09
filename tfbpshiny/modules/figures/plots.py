@@ -35,8 +35,9 @@ logger = logging.getLogger("shiny")
 #
 # Adjust these if a warning fires.
 
-#: Figure 1, rank vs. response. A percentage.
-FIG1_RANK_RESPONSE_Y: tuple[float, float] = (0.0, 100.0)
+#: Figure 1, rank vs. response. A percentage, padded on both sides so a line at 0% or
+#: 100% is not clipped by the axis edge.
+FIG1_RANK_RESPONSE_Y: tuple[float, float] = (-2.0, 102.0)
 
 #: Figure 1's x axis, the number of top binding targets. Fixed so every regulator's
 #: curve is read on the same scale. Note `n` can exceed the largest materialized

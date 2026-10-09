@@ -20,7 +20,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `dataset_column_metadata` loses rows.
 - Figure 3 is a scrolling window, three perturbation datasets visible at a time with
   panels as wide as figure 1's; each panel keeps its own y axis.
-- Figure 1's x axis runs to 102 so a point at n = 100 is not cut off by the edge.
+- Figure 1's axes run from -2 to 102 on y and 0 to 102 on x, so a point at 0%,
+  100% or n = 100 is not cut off by the edge.
 - Figure 3A's y axis runs from -2 to 102 so points at 0% and 100% are not cut off.
   The Venn diagrams (figures 4, 5 and 10) name their sets in a legend under the
   diagram instead of beside each circle, where the labels ran into each other when
