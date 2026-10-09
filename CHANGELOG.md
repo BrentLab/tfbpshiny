@@ -18,17 +18,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   computed from it changes on rebuild. The `responsive` column was removed from
   every perturbation dataset. The app never read it, so only
   `dataset_column_metadata` loses rows.
-- **Rebuild required.** ChEC-seq `Carbon source` and `Temperature` now follow
-  each sample's condition. They were the dataset-wide default (glucose, 30) for
-  all 197 samples, so the filter modal's narrowing of conditions by carbon
-  source or temperature had nothing to act on. The galactose induction is now
-  "raffinose, galactose", the raffinose control "raffinose" and the heat shock
-  37; every other condition stays glucose at 30. The values are `expression`
-  mappings in the collection config, declared once with YAML anchors for the
-  eight ChEC-seq datasets that have a `condition` column. A `field` plus `path`
-  mapping, as Harbison uses, would label the 16 conditions the datacard does not
-  restate "unspecified", including `standard`. Only the eight ChEC-seq `_meta`
-  tables change; every computed table is identical.
+- **Rebuild required; labretriever 1.1.5.** ChEC-seq `Carbon source` and
+  `Temperature` follow each sample's condition. They were the dataset-wide
+  default (glucose, 30) for all 197 samples, so the filter modal's narrowing of
+  conditions by carbon source or temperature had nothing to act on. The
+  galactose induction is "raffinose, galactose", the raffinose control
+  "raffinose" and the heat shock 37; every other condition is glucose at 30.
+  The collection config maps them as `field: condition` plus
+  `media.carbon_source.compound` / `temperature_celsius`, like Harbison, which
+  labretriever 1.1.5 resolves with the documented precedence (field-level, then
+  config-level, then top-level `experimental_conditions`). The minimum version is
+  now `labretriever ^1.1.5` in `pyproject.toml` and in the requirements file the
+  Dataset selection export writes. The database holds the same ChEC-seq values as
+  the earlier workaround produced. The same labretriever fix corrects Harbison
+  `Temperature`, which was 37 for all 352 samples and is now 30 for the 346 that
+  are not the heat shock.
 - The filter modal opens on the conditions that co-occur with the dataset's
   other characteristics as set by its filters, and offers every condition when
   those characteristics do not vary. Previously a dataset whose characteristics

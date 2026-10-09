@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from labretriever import VirtualDB
 
-_REQUIREMENTS_TXT = "labretriever>=1.1.3,<2.0\n"
+_REQUIREMENTS_TXT = "labretriever>=1.1.5,<2.0\n"
 
 # Base name for the export run -- timestamped to build each run's name.
 EXPORT_DIR_NAME = "tfbpshiny_export"
@@ -281,7 +281,7 @@ def render_requirements_txt() -> str:
     data and the SQL in ``select_datasets/queries.py`` depend on the VirtualDB
     view/table schema, which is stable across labretriever patch/minor
     versions within the same major version, matching the floor declared in
-    ``pyproject.toml`` (``labretriever = "^1.1.3"``).
+    ``pyproject.toml`` (``labretriever = "^1.1.5"``).
 
     :returns: Contents for ``requirements.txt``.
 

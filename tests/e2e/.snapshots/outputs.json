@@ -8,7 +8,7 @@
   "Binding/Perturbation Comparisons": {
     "analysis_status": "",
     "cd_distribution_container": "Click a row header to view distributions for a binding dataset, or a column header to view distributions for a perturbation dataset.",
-    "cd_matrix_container": "2014 TFKO 2020 Overexpression 2025 Degron 2021 ChIP-exo (Rossi, Kang) 16.0% 16.0% 12.0% 2025 ChEC-seq (Mahendrawada, Kang) 19.2% 32.0% 12.0% 2026 Calling Cards (Kang) 40.0% 52.0% 24.0%",
+    "cd_matrix_container": "2014 TFKO 2020 Overexpression 2025 Degron 2021 ChIP-exo (Rossi, Kang) 16.0% 16.0% 12.0% 2025 ChEC-seq (Mahendrawada, Kang) 19.2% 32.0% 12.0% 2026 Calling Cards (Kang) 36.0% 52.0% 16.0%",
     "metric_controls": "Top N 10 25 50 75 100 Require full overlap Responsiveness Relaxed Stringent",
     "tab_specific_controls": "Binding Method Promoter Enrichment Peaks Promoter Set Promoter Set 1 (Kang) Promoter Set 2 (Mindel) Promoter Set 3 (500bp) Promoter Set 4 (Intergenic)"
   },

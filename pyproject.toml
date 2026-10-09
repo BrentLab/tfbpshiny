@@ -10,7 +10,7 @@ exclude = ["tfbpshiny/deprecated/**"]
 
 [tool.poetry.dependencies]
 python = "^3.12"
-labretriever = "^1.1.3"
+labretriever = "^1.1.5"
 shiny = "^1.4.0"
 scikit-learn = "^1.6.1"
 plotly = "^6.0.1"

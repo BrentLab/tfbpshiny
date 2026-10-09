@@ -333,19 +333,12 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
-        # The datacard states a carbon source and temperature only where a condition
-        # departs from the dataset default (D-glucose, 30 C): the galactose induction
-        # (raffinose then galactose), the raffinose control and the 37 C heat shock.
-        # A field+path mapping would label every other condition "unspecified", so the
-        # defaults are spelled out here. Declared once and reused by anchor.
         Carbon source: &chec_carbon_source
-          expression: >-
-            CASE condition
-            WHEN 'galactose' THEN 'raffinose, galactose'
-            WHEN 'raffinose' THEN 'raffinose'
-            ELSE 'glucose' END
+          field: condition
+          path: media.carbon_source.compound
         Temperature: &chec_temperature
-          expression: "CASE condition WHEN '37' THEN '37' ELSE '30' END"
+          field: condition
+          path: temperature_celsius
       chec_mahendrawada_m2025_af_combined_mindel:
         tags:
           data_type: "binding"
