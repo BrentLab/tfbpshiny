@@ -24,13 +24,16 @@ executes them.
 
 from __future__ import annotations
 
-from tfbpshiny.datasets import FIGURE_BINDING_500BP, HEADLINE_PERTURBATION
+from tfbpshiny.datasets import (
+    FIGURE_MODULE_DEFAULT_BINDING_DATASETS,
+    HEADLINE_PERTURBATION,
+)
 
 #: Largest Top N the Figures sidebar offers. Ranks beyond this are not stored.
 TARGET_SET_MAX_N = 100
 
 #: Binding datasets figure 10 compares: the three 500bp figure datasets.
-TARGET_SET_BINDING: tuple[str, ...] = FIGURE_BINDING_500BP
+TARGET_SET_BINDING: tuple[str, ...] = FIGURE_MODULE_DEFAULT_BINDING_DATASETS
 
 #: Perturbation datasets figure 10 compares: the three headline datasets.
 TARGET_SET_PERTURBATION: tuple[str, ...] = HEADLINE_PERTURBATION

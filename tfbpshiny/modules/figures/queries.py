@@ -17,7 +17,7 @@ import pandas as pd
 
 from tfbpshiny.datasets import (
     DTO_PVALUE_THRESHOLD,
-    FIGURE_BINDING_500BP,
+    FIGURE_MODULE_DEFAULT_BINDING_DATASETS,
     GENE_UNIVERSE,
     HEADLINE_PERTURBATION,
     METHOD_COMPARISON_ASSAYS,
@@ -35,7 +35,7 @@ from tfbpshiny.utils.vdb_init import DEFAULT_RESPONSIVENESS_PRESETS
 
 #: Binding datasets shown in the figures, in display order: Harbison plus the 500bp
 #: figure datasets, which are concrete db_names (two of them peak-calling variants).
-BINDING_ORDER: tuple[str, ...] = ("harbison", *FIGURE_BINDING_500BP)
+BINDING_ORDER: tuple[str, ...] = ("harbison", *FIGURE_MODULE_DEFAULT_BINDING_DATASETS)
 
 #: Perturbation datasets shown, in display order.
 PR_ORDER: tuple[str, ...] = HEADLINE_PERTURBATION
@@ -43,7 +43,7 @@ PR_ORDER: tuple[str, ...] = HEADLINE_PERTURBATION
 #: Binding datasets the DTO figures are drawn over, in display order. Harbison has DTO
 #: results too, but figure 5's Venn diagrams take exactly three binding datasets (see
 #: ``dto_venn_figure``), so the DTO figures use the three 500bp figure datasets.
-DTO_BINDING_ORDER: tuple[str, ...] = FIGURE_BINDING_500BP
+DTO_BINDING_ORDER: tuple[str, ...] = FIGURE_MODULE_DEFAULT_BINDING_DATASETS
 
 #: The only ranking variant present for all six perturbation datasets.
 DTO_RANKING_COLUMN = "log2fc"
@@ -72,7 +72,7 @@ AUTHORS_PEAK_BINDING: tuple[str, ...] = (
 #: *target sets*, not genomic regions, so the overlap is still well defined -- but a
 #: pair involving it compares one assay's promoter-window ranking against another's
 #: probe-level ranking, and the promoter definition is not held fixed.
-AGREEMENT_DEFAULT_BINDING: tuple[str, ...] = FIGURE_BINDING_500BP
+AGREEMENT_DEFAULT_BINDING: tuple[str, ...] = FIGURE_MODULE_DEFAULT_BINDING_DATASETS
 
 #: Perturbation datasets figure 6 compares by default. These have no promoter
 #: variants, so the default is simply the three headline datasets.

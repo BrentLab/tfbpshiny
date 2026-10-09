@@ -196,7 +196,8 @@ DTO_PVALUE_THRESHOLD = 0.01
 #: the one promoter definition every re-quantified assay shares, so comparing them
 #: compares assays rather than promoter definitions. These are the assay primaries
 #: figures 7 and 8 resolve their per-promoter-set variants from (see
-#: :func:`figure_method`); the other figures draw :data:`FIGURE_BINDING_500BP`.
+#: :func:`figure_method`); the other figures draw
+#: :data:`FIGURE_MODULE_DEFAULT_BINDING_DATASETS`.
 PROMOTER_ENRICHMENT_500BP: tuple[str, ...] = (
     "callingcards_500bp",
     "rossi_500bp",
@@ -208,7 +209,7 @@ PROMOTER_ENRICHMENT_500BP: tuple[str, ...] = (
 #: 500bp start-codon window. Calling Cards has no peak-calling arm. Figures 3 and 9
 #: choose their own datasets, and figures 7 and 8 resolve variants per promoter set
 #: from :data:`PROMOTER_ENRICHMENT_500BP`'s primaries.
-FIGURE_BINDING_500BP: tuple[str, ...] = (
+FIGURE_MODULE_DEFAULT_BINDING_DATASETS: tuple[str, ...] = (
     "callingcards_500bp",
     "rossi_peaks_500bp",
     "chec_m2025_peaks_500bp",
@@ -253,7 +254,7 @@ __all__ = [
     "PROMOTER_SETS",
     "Vocab",
     "SCHEMA_VERSION",
-    "FIGURE_BINDING_500BP",
+    "FIGURE_MODULE_DEFAULT_BINDING_DATASETS",
     "figure_method",
     "HEADLINE_PERTURBATION",
     "METHOD_COMPARISON_ASSAYS",

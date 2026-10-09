@@ -529,7 +529,7 @@ which is routine for peak calling.
 ### `topn_target_sets`
 
 The ranked targets behind figure 10's Venn diagram and overlap boxes, per
-sample and regulator, for the datasets in `FIGURE_BINDING_500BP` and
+sample and regulator, for the datasets in `FIGURE_MODULE_DEFAULT_BINDING_DATASETS` and
 `HEADLINE_PERTURBATION`. `topn_agreement` keeps only overlap counts on a fixed
 grid, which cannot draw a Venn diagram and lacks the 25 and 75 the Figures
 sidebar offers.

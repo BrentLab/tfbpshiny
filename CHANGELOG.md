@@ -18,7 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   4, 5, 7, 8 and 10; for figure 6 it changes only the default selection. Figures 3
   and 9 are unchanged. `topn_target_sets` now holds the peak-calling datasets, so
   figure 10's binding panels need a rebuild. The new constant is
-  `FIGURE_BINDING_500BP`.
+  `FIGURE_MODULE_DEFAULT_BINDING_DATASETS`.
 
 ## [1.2.0]
 
