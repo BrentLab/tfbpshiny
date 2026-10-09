@@ -170,6 +170,15 @@ columns, levels and the dataset groups the figures use also live in `datasets.py
    to its `fillable` list), and call the module server from `app_server` with `conn`,
    `logger` and whichever shared reactives it needs
 
+### Hiding a column from the filter UI
+
+The filter modal lists every metadata column in `dataset_column_metadata` except those
+in `HIDDEN_FILTER_FIELDS` in `tfbpshiny/utils/vdb_init.py` (keyed by primary dataset,
+`"*"` for all; variants inherit). Raw source columns behind a standardized alias
+(`condition` behind `Experimental condition`) are hidden there on purpose. How a
+shown column is typed is set by `FIELD_TYPE_OVERRIDES` in the same file. The
+materialized database is not changed by either.
+
 ### Working with the database
 
 Module servers receive `conn`, a read-only `duckdb.DuckDBPyConnection`. Put SQL in

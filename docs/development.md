@@ -133,7 +133,14 @@ Per-dataset facts the app needs that are not in the database live in
   not a recomputation.
 - `HIDDEN_FILTER_FIELDS` (keyed by primary dataset; variants inherit, see
   `hidden_filter_fields`), `FIELD_TYPE_OVERRIDES` — which metadata columns the filter
-  UI hides, and how it types the ones it shows.
+  UI hides, and how it types the ones it shows. To keep a column out of a dataset's
+  filter modal, add it to that dataset's entry in `HIDDEN_FILTER_FIELDS`
+  (`utils/vdb_init.py`), or to `"*"` to hide it everywhere. The database keeps the
+  column; only the filter UI skips it. Two kinds of column are hidden on purpose:
+  identifiers (`regulator_locus_tag`, `regulator_symbol`) and the raw source columns
+  behind a standardized alias (`condition`, `env_condition`, `timepoint`), because
+  the collection config already exposes the standardized column
+  (`Experimental condition`) and showing both would offer the same filter twice.
 - `load_app_datasets(conn)` — reads `dataset_column_metadata` into the
   condition/upstream column lists the selection tab builds its filter cards from.
 

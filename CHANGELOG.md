@@ -33,6 +33,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the earlier workaround produced. The same labretriever fix corrects Harbison
   `Temperature`, which was 37 for all 352 samples and is now 30 for the 346 that
   are not the heat shock.
+- `FIELD_TYPE_OVERRIDES` is defined once, in `utils/vdb_init.py`; the Dataset
+  selection modules had imported two identical copies. The `temperature_celsius`
+  entry, which matched no column, is removed. `docs/development.md` and
+  `CLAUDE.md` say where to hide a column from the filter modal
+  (`HIDDEN_FILTER_FIELDS`).
 - The filter modal opens on the conditions that co-occur with the dataset's
   other characteristics as set by its filters, and offers every condition when
   those characteristics do not vary. Previously a dataset whose characteristics
