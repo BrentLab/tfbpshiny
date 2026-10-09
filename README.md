@@ -3,6 +3,8 @@
 A Shiny web application for exploring transcription factor binding and perturbation
 data from the [Brent Lab yeast collection](https://huggingface.co/collections/BrentLab/yeastresources).
 
+Documentation: <https://brentlab.github.io/tfbpshiny/>
+
 ## Table of contents
 
 - [Resource Requirements](#resource-requirements)

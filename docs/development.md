@@ -353,3 +353,24 @@ quarto render docs     # write the static site to docs/_site/
 `.github/workflows/docs.yml` renders the site and publishes it to the `gh-pages`
 branch on every push to `main` that changes `docs/`. `docs/_site/` and the `.quarto`
 cache directories are gitignored.
+
+### Publishing manually
+
+`quarto publish gh-pages` pushes to the remote named `origin`. When `origin` is a
+fork and the site belongs to the BrentLab repository, swap the remote names for the
+duration of the publish and restore them afterwards:
+
+```bash
+# move the fork out of the way, then make the BrentLab remote 'origin'
+git remote rename origin old-origin
+git remote rename upstream origin
+
+quarto publish gh-pages docs
+
+# restore the original names
+git remote rename origin upstream
+git remote rename old-origin origin
+```
+
+Restore the names even if the publish fails; otherwise `origin` keeps pointing at the
+BrentLab repository.
