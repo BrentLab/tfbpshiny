@@ -18,6 +18,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   computed from it changes on rebuild. The `responsive` column was removed from
   every perturbation dataset. The app never read it, so only
   `dataset_column_metadata` loses rows.
+- Figure 3A's y axis runs from -2 to 102 so points at 0% and 100% are not cut off.
+  The Venn diagrams (figures 4, 5 and 10) name their sets in a legend under the
+  diagram instead of beside each circle, where the labels ran into each other when
+  circles sat close together or did not overlap.
 - **Rebuild required.** `Stringent` responsiveness is one rule for every
   perturbation dataset: `|effect| > 0.77` (log2(1.7)) and `pvalue <= 0.05`, each
   on the dataset's own effect and p-value column (`padj` for Degron). Datasets

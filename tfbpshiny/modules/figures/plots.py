@@ -50,8 +50,9 @@ FIG1_RANK_X: tuple[float, float] = (0.0, 100.0)
 #: than half clipped by the axis edge.
 FIG2_TOPN_BOX_Y: tuple[float, float] = (-2.0, 102.0)
 
-#: Figure 3A, percent responsive over the authors' bound targets. A percentage.
-FIG3A_RESPONSE_Y: tuple[float, float] = (0.0, 100.0)
+#: Figure 3A, percent responsive over the authors' bound targets. A percentage, padded
+#: on both sides so a point at 0% or 100% is not clipped by the axis edge.
+FIG3A_RESPONSE_Y: tuple[float, float] = (-2.0, 102.0)
 
 #: Figure 3B, number of bound targets. A count, not a percentage, and routinely in the
 #: hundreds -- so it is sized from the data plus headroom rather than pinned to 100.
@@ -594,10 +595,25 @@ def dto_venn_figure(
 
     for text in ax.texts:
         text.set_fontsize(13)
+    # Circle labels sit beside their circles, so they run into each other whenever two
+    # circles are close or one is small. A legend below the diagram never overlaps.
     if v is not None:
         for label in v.set_labels or []:
             if label is not None:
-                label.set_fontsize(14)
+                label.set_visible(False)
+    from matplotlib.patches import Patch
+
+    ax.legend(
+        handles=[
+            Patch(facecolor=c, edgecolor="none", alpha=0.6, label=n)
+            for n, c in zip(names, set_colors)
+        ],
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.0),
+        ncol=1,
+        frameon=False,
+        fontsize=13,
+    )
     ax.set_title(title, fontsize=16)
     return fig, proportional
 
