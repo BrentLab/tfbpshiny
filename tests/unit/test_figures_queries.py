@@ -196,7 +196,7 @@ def test_single_dataset_yields_no_pairs() -> None:
     assert fetch_agreement(_agreement_db(), "binding", []).empty
 
 
-def test_default_selection_is_500bp_promoter_enrichment() -> None:
+def test_default_selection_is_500bp_figure_datasets() -> None:
     """
     The headline view compares assays on one promoter definition.
 
@@ -206,7 +206,10 @@ def test_default_selection_is_500bp_promoter_enrichment() -> None:
     from tfbpshiny.modules.figures.queries import AGREEMENT_DEFAULT_BINDING
 
     assert all(d.endswith("_500bp") for d in AGREEMENT_DEFAULT_BINDING)
-    assert not any("peaks" in d for d in AGREEMENT_DEFAULT_BINDING)
+    assert [d for d in AGREEMENT_DEFAULT_BINDING if "peaks" in d] == [
+        "rossi_peaks_500bp",
+        "chec_m2025_peaks_500bp",
+    ]
 
 
 # --- figure 6 exponential weighting ----------------------------------------------
@@ -366,7 +369,8 @@ def test_figure_six_defaults_to_500bp_promoter_enrichment() -> None:
         assert db in reg, f"{db} is not a registered db_name"
         promoter_set, method = reg[db]
         assert promoter_set == "500bp", f"{db} uses promoter set {promoter_set!r}"
-        assert method == "promoter_enrichment", f"{db} uses method {method!r}"
+        expected = "promoter_enrichment" if db == "callingcards_500bp" else "peak_calling"
+        assert method == expected, f"{db} uses method {method!r}"
 
 
 def test_figure_six_default_covers_every_assay_that_can_have_500bp() -> None:
@@ -402,7 +406,8 @@ def test_figure_six_default_covers_every_assay_that_can_have_500bp() -> None:
         for r in conn.execute(
             "SELECT db_name FROM dataset_registry"
             " WHERE promoter_set_id = '500bp'"
-            "   AND binding_method_id = 'promoter_enrichment'"
+            "   AND (binding_method_id = 'peak_calling'"
+            "        OR COALESCE(primary_db_name, db_name) = 'callingcards_500bp')"
         ).fetchall()
     }
     assert available, "no 500 bp promoter-enrichment datasets in the registry"

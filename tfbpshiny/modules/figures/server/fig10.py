@@ -42,7 +42,7 @@ def register_fig10(
         Datasets figure 10 compares, matching figure 6's defaults so pair labels and
         colours agree between the two.
 
-        Binding is the three 500bp promoter-enrichment variants; perturbation is the
+        Binding is the three 500bp figure datasets; perturbation is the
         three headline datasets.
 
         :param ctype: ``'binding'`` or ``'perturbation'``.

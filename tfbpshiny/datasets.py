@@ -202,6 +202,17 @@ PROMOTER_ENRICHMENT_500BP: tuple[str, ...] = (
     "chec_m2025_500bp",
 )
 
+#: The binding datasets the Figures tab draws (figures 1, 2, 4, 5, 6 and 10): Calling
+#: Cards promoter enrichment, plus ChIP-exo and ChEC-seq peak calling, all over the
+#: 500bp start-codon window. Calling Cards has no peak-calling arm. Figures 3 and 9
+#: choose their own datasets, and figures 7 and 8 resolve variants per promoter set
+#: from :data:`PROMOTER_ENRICHMENT_500BP`'s primaries.
+FIGURE_BINDING_500BP: tuple[str, ...] = (
+    "callingcards_500bp",
+    "rossi_peaks_500bp",
+    "chec_m2025_peaks_500bp",
+)
+
 #: The headline perturbation datasets, in display order.
 HEADLINE_PERTURBATION: tuple[str, ...] = ("kemmeren", "hackett", "degron")
 
@@ -226,6 +237,7 @@ __all__ = [
     "PROMOTER_SETS",
     "Vocab",
     "SCHEMA_VERSION",
+    "FIGURE_BINDING_500BP",
     "HEADLINE_PERTURBATION",
     "METHOD_COMPARISON_ASSAYS",
     "PROMOTER_ENRICHMENT_500BP",

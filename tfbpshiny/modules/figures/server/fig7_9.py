@@ -19,6 +19,7 @@ import pandas as pd
 from shiny import reactive, render, ui
 
 from tfbpshiny.components import empty_state
+from tfbpshiny.datasets import METHOD_COMPARISON_ASSAYS, PROMOTER_ENRICHMENT_500BP
 from tfbpshiny.materialize.comparison.method_promoter_model import (
     pair_methods_on_regulators,
 )
@@ -28,7 +29,6 @@ from tfbpshiny.modules.figures.plots import (
     binding_perturbation_box_grid,
 )
 from tfbpshiny.modules.figures.queries import (
-    DTO_BINDING_ORDER,
     METHOD_COMPARISON_BINDING,
     METHOD_LEVELS,
     PR_ORDER,
@@ -83,6 +83,29 @@ def register_fig7_9(
                 if variant:
                     variant_cell[variant] = (b_primary, box_key)
         return variant_cell
+
+    def _fig78_variant_cells() -> dict[str, tuple[str, str]]:
+        """
+        Figures 7/8's cells: one variant per (assay, promoter set), peak calling for
+        the assays that have it (Rossi, ChEC-seq) and promoter enrichment for Calling
+        Cards, which has no peak-calling arm.
+
+        """
+        peak_assays = tuple(
+            b for b in PROMOTER_ENRICHMENT_500BP if b in METHOD_COMPARISON_ASSAYS
+        )
+        enrichment_assays = tuple(
+            b for b in PROMOTER_ENRICHMENT_500BP if b not in METHOD_COMPARISON_ASSAYS
+        )
+        return {
+            **_resolve_variant_cells(
+                enrichment_assays,
+                [(ps, "promoter_enrichment", ps) for ps in PROMOTER_SET_LEVELS],
+            ),
+            **_resolve_variant_cells(
+                peak_assays, [(ps, "peak_calling", ps) for ps in PROMOTER_SET_LEVELS]
+            ),
+        }
 
     def _topn_box_panels(
         variant_cell: dict[str, tuple[str, str]],
@@ -276,8 +299,7 @@ def register_fig7_9(
 
         """
         with perf(session.id, "figures.workspace", "_fig7_panels", kind="data"):
-            combos = [(ps, "promoter_enrichment", ps) for ps in PROMOTER_SET_LEVELS]
-            variant_cell = _resolve_variant_cells(DTO_BINDING_ORDER, combos)
+            variant_cell = _fig78_variant_cells()
             return _topn_box_panels(variant_cell, shared.fig7_tf_sets())
 
     @reactive.calc
@@ -290,8 +312,7 @@ def register_fig7_9(
 
         """
         with perf(session.id, "figures.workspace", "_fig8_panels", kind="data"):
-            combos = [(ps, "promoter_enrichment", ps) for ps in PROMOTER_SET_LEVELS]
-            variant_cell = _resolve_variant_cells(DTO_BINDING_ORDER, combos)
+            variant_cell = _fig78_variant_cells()
             return _dto_bar_panels(variant_cell)
 
     @reactive.calc
@@ -336,7 +357,7 @@ def register_fig7_9(
                 return empty_state(ui.p("No data for these datasets."))
             fig = binding_perturbation_box_grid(
                 panels,
-                list(DTO_BINDING_ORDER),
+                list(PROMOTER_ENRICHMENT_500BP),
                 list(PR_ORDER),
                 list(PROMOTER_SET_LEVELS),
                 ctx.labels,
@@ -365,7 +386,7 @@ def register_fig7_9(
                 return empty_state(ui.p("No DTO results."))
             fig = binding_perturbation_bar_grid(
                 panels,
-                list(DTO_BINDING_ORDER),
+                list(PROMOTER_ENRICHMENT_500BP),
                 list(PR_ORDER),
                 list(PROMOTER_SET_LEVELS),
                 ctx.labels,
