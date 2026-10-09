@@ -11,13 +11,11 @@ from tfbpshiny.components import (
     empty_state,
     scroll_row,
     scroll_viewport,
-    series_legend,
 )
 from tfbpshiny.modules.figures.plots import (
     FIG1_FACET_VISIBLE,
     authors_bound_grid,
     percent_responsive_boxes,
-    rank_response_facet,
     rank_response_figure,
 )
 from tfbpshiny.modules.figures.queries import (
@@ -91,70 +89,6 @@ def register_fig1_3(
                     ui.p("No rank-response data for the selected TF."),
                 )
             return scroll_row(*panels, gap="lg")
-
-    @render.ui
-    def fig_rank_response_facets() -> ui.Tag:
-        """
-        Every TF in the intersection, one scrolling row per perturbation dataset.
-
-        Each row shows :data:`FIG1_FACET_VISIBLE` TFs at a time; the rest are reached
-        by scrolling sideways.
-
-        :trigger: ``input.show_facets`` / ``_rank_response``.
-
-        """
-        if not read_input(input, "show_facets", False, bool):
-            return ui.span()
-        data = shared.rank_response()
-        sets = shared.tf_sets()
-        with perf(session.id, "figures.workspace", "fig_rank_response_facets"):
-            blocks = []
-            for p in PR_ORDER:
-                df = data.get(p, pd.DataFrame())
-                tfs = sets.get(p, [])
-                if df.empty or not tfs:
-                    continue
-                fig = rank_response_facet(
-                    df,
-                    ctx.labels,
-                    list(BINDING_ORDER),
-                    tfs,
-                    ctx.reg_labels,
-                    colors=ctx.binding_colors,
-                )
-                blocks.append(
-                    ui.div(
-                        ui.h4(
-                            f"{ctx.labels.get(p, p)} — all {len(tfs)} TFs",
-                            style="margin-top: 1.5rem;",
-                        ),
-                        scroll_viewport(
-                            figure_html(fig, filename=f"fig1_rank_response_all_{p}"),
-                            width_factor=len(tfs) / FIG1_FACET_VISIBLE,
-                        ),
-                    )
-                )
-            if not blocks:
-                return ui.span()
-            legend = series_legend(
-                [
-                    (
-                        ctx.labels.get(db, db),
-                        ctx.binding_colors.get(ctx.labels.get(db, db)),
-                    )
-                    for db in BINDING_ORDER
-                ]
-            )
-            return ui.div(
-                ui.p(
-                    "Percent responsive vs. top n for every TF. Scroll each row"
-                    " sideways to move through the TFs,"
-                    f" {FIG1_FACET_VISIBLE} at a time.",
-                    style="margin-top: 1rem;",
-                ),
-                legend,
-                *blocks,
-            )
 
     # ------------------------------------------------------------------
     # Figure 2

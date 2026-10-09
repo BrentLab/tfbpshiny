@@ -467,33 +467,6 @@ def scroll_viewport(child: Any, *, width_factor: float) -> ui.Tag:
     )
 
 
-def series_legend(items: list[tuple[str, str | None]]) -> ui.Tag:
-    """
-    Static colour key for figures whose own legend would scroll out of view.
-
-    CSS: ``.series-legend`` / ``.series-legend-swatch``
-
-    :param items: ``(label, colour)`` pairs in display order; a ``None`` colour draws a
-        grey swatch.
-
-    """
-    return ui.div(
-        {"class": "series-legend"},
-        *[
-            ui.span(
-                ui.span(
-                    {
-                        "class": "series-legend-swatch",
-                        "style": f"background: {colour or '#888888'};",
-                    }
-                ),
-                label,
-            )
-            for label, colour in items
-        ],
-    )
-
-
 def export_download_button(id: str) -> ui.Tag:
     """
     Full-width download button for exporting selected datasets as a tarball.

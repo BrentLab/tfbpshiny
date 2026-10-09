@@ -47,13 +47,6 @@ def _rank_response_intro() -> ui.TagList:
                 " correspond to lower response rates."
             ),
             ui.p(
-                "Switch on Show all TFs to replace the featured-TF panels with"
-                " one scrolling row per perturbation dataset: every TF in the"
-                " intersection (about 60 to 70), three visible at a time, so"
-                " you can scroll through the data behind the distributions in"
-                " figure 2. This view takes longer to draw."
-            ),
-            ui.p(
                 ui.tags.em(
                     "The x axis is the number of targets actually summarised,"
                     " not the nominal cutoff: a group of tied targets is in the"
@@ -133,21 +126,8 @@ def figures_ui() -> ui.Tag:
                 ),
             ),
             ui.output_ui("figure_status"),
-            ui.panel_conditional("!input.show_facets", _rank_response_intro()),
-            ui.input_switch(
-                "show_facets",
-                ui.tooltip(
-                    ui.span("Show all TFs"),
-                    "Draws the rank-response curve for every TF in the intersection"
-                    " (~60-70), one scrolling row per perturbation dataset, three"
-                    " TFs visible at a time. Off by default because it is the"
-                    " slowest thing on the page.",
-                    placement="right",
-                ),
-                value=False,
-            ),
+            *_rank_response_intro(),
             ui.output_ui("fig_rank_response"),
-            ui.output_ui("fig_rank_response_facets"),
             workspace_heading("2. Response rate among top binding targets"),
             sidebar_text(
                 ui.p(

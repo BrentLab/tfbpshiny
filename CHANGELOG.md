@@ -18,14 +18,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   computed from it changes on rebuild. The `responsive` column was removed from
   every perturbation dataset. The app never read it, so only
   `dataset_column_metadata` loses rows.
-- Figure 1's "Show all TFs" switch sits under the figure instead of in the sidebar,
-  since it applies only to that figure. The all-TFs view is one horizontally
-  scrolling row per perturbation dataset showing three TFs at a time, with one
-  colour key above the rows, instead of a six-column grid of small panels. Figure
-  1's heading and description are hidden while it is on, and the description
-  explains the switch. Figure 3 is a scrolling window of the same panel width as
-  figure 1, three perturbation datasets visible at a time, with each panel keeping
-  its own y axis.
+- Figure 3 is a scrolling window, three perturbation datasets visible at a time with
+  panels as wide as figure 1's; each panel keeps its own y axis.
+- Figure 1's x axis runs to 102 so a point at n = 100 is not cut off by the edge.
 - Figure 3A's y axis runs from -2 to 102 so points at 0% and 100% are not cut off.
   The Venn diagrams (figures 4, 5 and 10) name their sets in a legend under the
   diagram instead of beside each circle, where the labels ran into each other when

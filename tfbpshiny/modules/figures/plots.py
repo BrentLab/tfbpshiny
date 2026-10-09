@@ -18,7 +18,6 @@ from plotly.subplots import make_subplots
 
 from tfbpshiny.utils.figure import (
     AXIS_TITLE_SIZE,
-    FONT_SIZE,
     PAIR_COLORS,
     apply_figure_style,
     inside_legend,
@@ -43,7 +42,7 @@ FIG1_RANK_RESPONSE_Y: tuple[float, float] = (0.0, 100.0)
 #: curve is read on the same scale. Note `n` can exceed the largest materialized
 #: cutoff (100) when a tie spans it -- Calling Cards has regulators where 87 targets
 #: share a p-value of exactly 0 -- so the warning may fire here.
-FIG1_RANK_X: tuple[float, float] = (0.0, 100.0)
+FIG1_RANK_X: tuple[float, float] = (0.0, 102.0)
 
 #: Figure 2, percent responsive among top-N binding targets. A percentage, padded by
 #: 2 points each side so markers sitting at exactly 0% or 100% are drawn whole rather
@@ -248,113 +247,8 @@ def rank_response_figure(
     return fig
 
 
-#: Regulator panels visible at once in :func:`rank_response_facet`'s scroll area.
+#: Panels visible at once in a figure 1-style scrolling window (figure 3).
 FIG1_FACET_VISIBLE = 3
-
-
-def rank_response_facet(
-    df: pd.DataFrame,
-    labels: dict[str, str],
-    binding_order: list[str],
-    regulators: list[str],
-    reg_labels: dict[str, str],
-    *,
-    panel_height: int = 340,
-    colors: dict[str, str] | None = None,
-) -> go.Figure:
-    """
-    One row of rank-response curves, one panel per regulator, to be scrolled sideways.
-
-    Drawn as a single figure with subplots rather than many separate figures: the
-    intersections run to ~60-70 regulators, and one figure with N panels is markedly
-    cheaper to build and render than N figures. The figure is laid out for a container
-    :data:`FIG1_FACET_VISIBLE` times narrower than it is, so the caller wraps it in a
-    horizontally scrolling element whose inner width is ``len(regulators) /
-    FIG1_FACET_VISIBLE`` times the visible width; each panel then fills a third of the
-    visible area. Every panel keeps its own y tick labels so it stays readable when it
-    is scrolled to the middle, and the legend is left to the caller, since a legend
-    inside the figure would scroll out of view.
-
-    :param df: All rows from ``fetch_rank_response``.
-    :param labels: db_name -> display label.
-    :param binding_order: db_names to draw. Draw order (z-stacking, within each panel)
-        and legend order are each computed independently -- see :func:`_draw_order`
-        and :func:`_legend_rank_by_top_response`.
-    :param regulators: Regulators to panel, in order.
-    :param reg_labels: locus tag -> display label.
-    :param panel_height: Pixel height of the figure.
-    :param colors: Display label -> series colour (``dataset_colors``); a label
-        without one falls back to plotly's default.
-    :returns: The figure.
-
-    """
-    palette = colors or {}
-    if not regulators:
-        return go.Figure()
-    n_cols = len(regulators)
-    fig = make_subplots(
-        rows=1,
-        cols=n_cols,
-        subplot_titles=[reg_labels.get(r, r) for r in regulators],
-        shared_yaxes=False,
-        # Spacing is a fraction of the whole (very wide) figure; scale it so the gap
-        # between panels stays a fixed fraction of one visible panel.
-        horizontal_spacing=min(0.2 / n_cols, 1.0 / max(n_cols - 1, 1)),
-    )
-    # Only the first panel populates the legend (below), so its data decides legend
-    # order.
-    legend_rank = _legend_rank_by_top_response(
-        df[df["regulator_locus_tag"] == regulators[0]], binding_order, labels
-    )
-    for i, reg in enumerate(regulators):
-        sub_reg = df[df["regulator_locus_tag"] == reg]
-        for db in _draw_order(binding_order):
-            sub = sub_reg[sub_reg["binding_db"] == db].sort_values("n")
-            if sub.empty:
-                continue
-            label = labels.get(db, db)
-            fig.add_trace(
-                go.Scatter(
-                    x=sub["n"],
-                    y=sub["percent_responsive"],
-                    mode="lines",
-                    name=label,
-                    legendgroup=label,
-                    legendrank=legend_rank.get(label),
-                    # Only the first panel contributes to the legend, otherwise every
-                    # dataset appears once per panel.
-                    showlegend=(i == 0),
-                    line=dict(width=2, color=palette.get(label)),
-                    hovertemplate=(
-                        f"{reg_labels.get(reg, reg)}<br>{label}"
-                        "<br>n=%{x}<br>%{y:.1f}%<extra></extra>"
-                    ),
-                ),
-                row=1,
-                col=i + 1,
-            )
-    apply_figure_style(fig, height=panel_height, showlegend=False)
-    fig.update_annotations(font_size=FONT_SIZE - 2, font_color="black")
-    fig.update_xaxes(
-        title_text="Top n",
-        range=list(FIG1_RANK_X),
-        tickfont=dict(size=FONT_SIZE - 4, color="black"),
-    )
-    _warn_if_clipped(
-        df.get("percent_responsive"),
-        FIG1_RANK_RESPONSE_Y,
-        "Figure 1 facets (rank vs. response)",
-        "FIG1_RANK_RESPONSE_Y",
-    )
-    _warn_if_clipped(df.get("n"), FIG1_RANK_X, "Figure 1 facets x axis", "FIG1_RANK_X")
-    fig.update_yaxes(
-        title_text="",
-        range=list(FIG1_RANK_RESPONSE_Y),
-        showticklabels=True,
-        tickfont=dict(size=FONT_SIZE - 4, color="black"),
-    )
-    fig.update_layout(margin=dict(l=50, r=20, t=50, b=60))
-    return fig
 
 
 def percent_responsive_boxes(
@@ -635,7 +529,6 @@ __all__ = [
     "percent_responsive_boxes",
     "shared_targets_box_figure",
     "FIG1_FACET_VISIBLE",
-    "rank_response_facet",
     "rank_response_figure",
 ]
 

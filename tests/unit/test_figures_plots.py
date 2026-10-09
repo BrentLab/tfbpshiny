@@ -12,7 +12,6 @@ from tfbpshiny.modules.figures.plots import (  # noqa: E402
     dto_significance_bars,
     dto_venn_figure,
     percent_responsive_boxes,
-    rank_response_facet,
     rank_response_figure,
 )
 from tfbpshiny.modules.figures.queries import (  # noqa: E402
@@ -88,29 +87,6 @@ def test_rank_response_plots_n_not_top_n(rank_df: pd.DataFrame) -> None:
     assert 14 in list(fig.data[0].x)
 
 
-def test_rank_response_facet_legend_appears_once(rank_df: pd.DataFrame) -> None:
-    """Only the first panel contributes to the legend."""
-    regs = ["YAL001C", "YBR002W"]
-    fig = rank_response_facet(
-        rank_df, LABELS, list(BINDING_ORDER), regs, {r: r for r in regs}
-    )
-    assert len(fig.data) == len(regs) * len(BINDING_ORDER)
-    assert sum(1 for t in fig.data if t.showlegend) == len(BINDING_ORDER)
-
-
-def test_rank_response_facet_is_one_row_with_own_y_ticks(rank_df: pd.DataFrame) -> None:
-    """All regulators sit in a single row, each with visible y tick labels."""
-    regs = ["YAL001C", "YBR002W"]
-    fig = rank_response_facet(
-        rank_df, LABELS, list(BINDING_ORDER), regs, {r: r for r in regs}
-    )
-    assert len(fig.layout.annotations) == len(regs)
-    y_axes = [fig.layout[k] for k in fig.layout if k.startswith("yaxis")]
-    assert len(y_axes) == len(regs)
-    assert all(a.showticklabels for a in y_axes)
-    assert not fig.layout.showlegend
-
-
 def test_rank_response_draws_calling_cards_last(rank_df: pd.DataFrame) -> None:
     """
     Calling Cards is drawn on top, so its line stays visible when curves overlap.
@@ -138,12 +114,6 @@ def test_rank_response_legend_order_by_top_10_response(rank_df: pd.DataFrame) ->
     fig = rank_response_figure(sub, LABELS, list(BINDING_ORDER))
     by_rank = sorted(fig.data, key=lambda t: t.legendrank)
     assert by_rank[0].name == "2004 ChIP-chip"
-
-
-def test_rank_response_facet_empty_regulators() -> None:
-    """No regulators yields an empty figure rather than raising."""
-    fig = rank_response_facet(pd.DataFrame(), LABELS, list(BINDING_ORDER), [], {})
-    assert len(fig.data) == 0
 
 
 def test_percent_responsive_boxes_outliers_only() -> None:
