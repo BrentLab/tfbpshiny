@@ -7,6 +7,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.2.1]
+
+### Changed
+
+- Deployment targets Posit Connect Cloud through the Posit Publisher VS Code
+  extension (`.posit/publish/tfbpshiny-LARU.toml`). `requirements.txt`
+  is tracked and regenerated from `poetry.lock` by a pre-commit hook.
+- Documentation is a Quarto website (`docs/_quarto.yml`) published to GitHub
+  Pages by `.github/workflows/docs.yml`; the MkDocs configuration is removed.
+- Pull requests target `main`; the `dev` branch convention and the workflow that
+  enforced it are removed.
+
+---
+
 ## [1.2.0]
 
 ### Changed

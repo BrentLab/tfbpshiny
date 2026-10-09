@@ -338,11 +338,10 @@ def test_navigate_to_selection(page: Page, app):
 
 ## Branch Strategy
 
-- `main` — stable, production-ready
-- `dev` — active development
-- Feature branches from `dev` with descriptive names; keep up to date by rebasing
+- `main` — the only long-lived branch
+- Feature branches from `main` with descriptive names; keep up to date by rebasing
 
-To contribute: open an issue, fork the repo, branch from `dev`, open a PR to `dev`
+To contribute: open an issue, fork the repo, branch from `main`, open a PR to `main`
 when complete.
 
 ## Important Notes / Common Mistakes
