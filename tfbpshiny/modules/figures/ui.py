@@ -386,8 +386,9 @@ def figures_ui() -> ui.Tag:
                 ui.p(
                     ui.tags.em(
                         "Binding datasets are the 500bp Calling Cards promoter"
-                        " enrichment and ChIP-exo and ChEC-seq peak calling. Samples follow the dataset filters, which by"
-                        " default leave one sample per TF in each dataset."
+                        " enrichment and ChIP-exo and ChEC-seq peak calling. Samples"
+                        " follow the dataset filters, which by default leave one"
+                        " sample per TF in each dataset."
                     )
                 ),
             ),

@@ -194,8 +194,9 @@ DTO_PVALUE_THRESHOLD = 0.01
 
 #: The promoter-enrichment primaries quantified over the 500bp start-codon window:
 #: the one promoter definition every re-quantified assay shares, so comparing them
-#: compares assays rather than promoter definitions. Figures 4-10 and the
-#: ``topn_target_sets`` table are built over these.
+#: compares assays rather than promoter definitions. These are the assay primaries
+#: figures 7 and 8 resolve their per-promoter-set variants from (see
+#: :func:`figure_method`); the other figures draw :data:`FIGURE_BINDING_500BP`.
 PROMOTER_ENRICHMENT_500BP: tuple[str, ...] = (
     "callingcards_500bp",
     "rossi_500bp",
@@ -221,6 +222,21 @@ HEADLINE_PERTURBATION: tuple[str, ...] = ("kemmeren", "hackett", "degron")
 #: microarray probes with no re-quantifiable window.
 METHOD_COMPARISON_ASSAYS: tuple[str, ...] = ("rossi_500bp", "chec_m2025_500bp")
 
+
+def figure_method(primary: str) -> str:
+    """
+    Binding method the Figures tab uses for an assay primary in figures 7 and 8.
+
+    :param primary: Assay primary db_name, e.g. ``'rossi_500bp'``.
+    :returns: ``'peak_calling'`` for assays with a peak-calling arm, otherwise
+        ``'promoter_enrichment'`` (Calling Cards).
+
+    """
+    return (
+        "peak_calling" if primary in METHOD_COMPARISON_ASSAYS else "promoter_enrichment"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Database schema
 # ---------------------------------------------------------------------------
@@ -238,6 +254,7 @@ __all__ = [
     "Vocab",
     "SCHEMA_VERSION",
     "FIGURE_BINDING_500BP",
+    "figure_method",
     "HEADLINE_PERTURBATION",
     "METHOD_COMPARISON_ASSAYS",
     "PROMOTER_ENRICHMENT_500BP",

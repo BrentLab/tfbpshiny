@@ -369,7 +369,9 @@ def test_figure_six_defaults_to_500bp_promoter_enrichment() -> None:
         assert db in reg, f"{db} is not a registered db_name"
         promoter_set, method = reg[db]
         assert promoter_set == "500bp", f"{db} uses promoter set {promoter_set!r}"
-        expected = "promoter_enrichment" if db == "callingcards_500bp" else "peak_calling"
+        expected = (
+            "promoter_enrichment" if db == "callingcards_500bp" else "peak_calling"
+        )
         assert method == expected, f"{db} uses method {method!r}"
 
 

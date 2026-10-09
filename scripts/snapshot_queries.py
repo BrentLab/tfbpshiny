@@ -31,7 +31,12 @@ from typing import Any
 import duckdb
 import pandas as pd
 
-from tfbpshiny.datasets import PRESET_NAMES, TOP_N_CHOICES
+from tfbpshiny.datasets import (
+    PRESET_NAMES,
+    PROMOTER_ENRICHMENT_500BP,
+    TOP_N_CHOICES,
+    figure_method,
+)
 from tfbpshiny.modules.comparison import queries as cq
 from tfbpshiny.modules.figures import queries as fq
 from tfbpshiny.utils.corr_query import expand_filters_to_variants, fetch_corr_pairs
@@ -268,14 +273,22 @@ def _variant_cells(
     return out
 
 
-PS_COMBOS = [(ps, "promoter_enrichment") for ps in fq.PROMOTER_SET_LEVELS]
+def _fig78_cells(c: Ctx) -> dict:
+    """Figures 7/8 cells: each assay's ``figure_method`` at every promoter set."""
+    out = {}
+    for b in PROMOTER_ENRICHMENT_500BP:
+        combos = [(ps, figure_method(b)) for ps in fq.PROMOTER_SET_LEVELS]
+        out.update(_variant_cells(c, (b,), combos))
+    return out
+
+
 METHOD_COMBOS = [("500bp", m) for m in fq.METHOD_LEVELS]
 
 
 @snap("fig789__variant_cells")
 def _cells(c: Ctx) -> Any:
     return {
-        "fig7_8": _variant_cells(c, fq.DTO_BINDING_ORDER, PS_COMBOS),
+        "fig7_8": _fig78_cells(c),
         "fig9": _variant_cells(c, fq.METHOD_COMPARISON_BINDING, METHOD_COMBOS),
     }
 
@@ -287,7 +300,7 @@ def _figures_7_to_9() -> None:
 
                 @snap(f"fig7__topn_percent_variants__{p}__{preset}__top{n}")
                 def _f7(c: Ctx, p: str = p, preset: str = preset, n: int = n) -> Any:
-                    variants = list(_variant_cells(c, fq.DTO_BINDING_ORDER, PS_COMBOS))
+                    variants = list(_fig78_cells(c))
                     return fq.fetch_topn_percent_responsive(
                         c.conn, variants, p, c.fig7_tf_sets[p], n, c.filters, preset
                     )

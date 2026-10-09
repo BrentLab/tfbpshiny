@@ -19,7 +19,7 @@ import pandas as pd
 from shiny import reactive, render, ui
 
 from tfbpshiny.components import empty_state
-from tfbpshiny.datasets import METHOD_COMPARISON_ASSAYS, PROMOTER_ENRICHMENT_500BP
+from tfbpshiny.datasets import PROMOTER_ENRICHMENT_500BP, figure_method
 from tfbpshiny.materialize.comparison.method_promoter_model import (
     pair_methods_on_regulators,
 )
@@ -66,7 +66,9 @@ def register_fig7_9(
     ) -> dict[str, tuple[str, str]]:
         """
         ``variant db_name -> (binding_primary, box_key)``, for every combination that
-        resolves to a real dataset.
+        resolves to a real dataset. Keyed by variant because the plot queries take
+        variant db_names, while the grid needs the primary (row) and box_key (box)
+        each variant's data belongs to.
 
         :param binding_primaries: Assay primaries to resolve variants for.
         :param combos: ``(promoter_set_id, method_id, box_key)`` tuples defining the
@@ -86,26 +88,20 @@ def register_fig7_9(
 
     def _fig78_variant_cells() -> dict[str, tuple[str, str]]:
         """
-        Figures 7/8's cells: one variant per (assay, promoter set), peak calling for
-        the assays that have it (Rossi, ChEC-seq) and promoter enrichment for Calling
-        Cards, which has no peak-calling arm.
+        Figures 7/8's cells: one variant per (assay, promoter set), using each assay's
+        :func:`~tfbpshiny.datasets.figure_method` (peak calling for Rossi and ChEC-seq,
+        promoter enrichment for Calling Cards, which has no peak-calling arm).
 
         """
-        peak_assays = tuple(
-            b for b in PROMOTER_ENRICHMENT_500BP if b in METHOD_COMPARISON_ASSAYS
-        )
-        enrichment_assays = tuple(
-            b for b in PROMOTER_ENRICHMENT_500BP if b not in METHOD_COMPARISON_ASSAYS
-        )
-        return {
-            **_resolve_variant_cells(
-                enrichment_assays,
-                [(ps, "promoter_enrichment", ps) for ps in PROMOTER_SET_LEVELS],
-            ),
-            **_resolve_variant_cells(
-                peak_assays, [(ps, "peak_calling", ps) for ps in PROMOTER_SET_LEVELS]
-            ),
-        }
+        cells: dict[str, tuple[str, str]] = {}
+        for b_primary in PROMOTER_ENRICHMENT_500BP:
+            method = figure_method(b_primary)
+            cells.update(
+                _resolve_variant_cells(
+                    (b_primary,), [(ps, method, ps) for ps in PROMOTER_SET_LEVELS]
+                )
+            )
+        return cells
 
     def _topn_box_panels(
         variant_cell: dict[str, tuple[str, str]],

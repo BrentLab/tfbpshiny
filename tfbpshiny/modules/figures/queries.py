@@ -33,8 +33,8 @@ from tfbpshiny.utils.corr_query import (
 )
 from tfbpshiny.utils.vdb_init import DEFAULT_RESPONSIVENESS_PRESETS
 
-#: Binding datasets shown in the figures, in display order. These are the *primary*
-#: db_names -- the promoter-set and peak variants are not separate figure series.
+#: Binding datasets shown in the figures, in display order: Harbison plus the 500bp
+#: figure datasets, which are concrete db_names (two of them peak-calling variants).
 BINDING_ORDER: tuple[str, ...] = ("harbison", *FIGURE_BINDING_500BP)
 
 #: Perturbation datasets shown, in display order.
@@ -62,8 +62,9 @@ AUTHORS_PEAK_BINDING: tuple[str, ...] = (
 )
 
 #: Datasets figure 6 compares by default: the 500bp figure datasets (Calling Cards
-#: promoter enrichment, ChIP-exo and ChEC-seq peak calling), so the assays are compared on one promoter definition rather
-#: than on whichever one happens to be each dataset's primary.
+#: promoter enrichment, ChIP-exo and ChEC-seq peak calling), so the assays are
+#: compared on one promoter definition rather than on whichever one happens to be
+#: each dataset's primary.
 #:
 #: Harbison is absent, and cannot be added to a promoter-matched comparison at all:
 #: its regions are microarray probes fixed by the platform, so it has no 500bp
