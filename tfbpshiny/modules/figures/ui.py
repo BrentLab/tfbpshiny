@@ -35,23 +35,66 @@ assert FIGURES_DEFAULT_PRESET in PRESET_NAMES
 assert set(_PRESET_HELP) == set(PRESET_NAMES)
 
 
+def _rank_response_intro() -> ui.TagList:
+    """Heading and description of figure 1, which the all-TFs view replaces."""
+    return ui.TagList(
+        workspace_heading("1. Rank vs. response"),
+        sidebar_text(
+            ui.p(
+                "Percent of top-n binding targets that are transcriptionally"
+                " responsive, as a function of n. One panel per perturbation"
+                " dataset, one line per binding dataset. Lower ranks generally"
+                " correspond to lower response rates."
+            ),
+            ui.p(
+                "Switch on Show all TFs to replace the featured-TF panels with"
+                " one scrolling row per perturbation dataset: every TF in the"
+                " intersection (about 60 to 70), three visible at a time, so"
+                " you can scroll through the data behind the distributions in"
+                " figure 2. This view takes longer to draw."
+            ),
+            ui.p(
+                ui.tags.em(
+                    "The x axis is the number of targets actually summarised,"
+                    " not the nominal cutoff: a group of tied targets is in the"
+                    " top n only if its average rank is within n, so a group can"
+                    " carry the count past n or leave it short."
+                )
+            ),
+            ui.p(
+                ui.tags.strong("A line may show fewer than five points."),
+                " When many targets tie at the top, a cutoff can fall inside the"
+                " tie group without reaching its average rank, and that cutoff"
+                " then has no point; later cutoffs that include the whole group"
+                " return the same set and collapse to a single point. Calling"
+                " Cards is the usual cause: its Poisson p-values underflow to"
+                " exactly 0 for the most strongly bound targets, so those targets"
+                " are indistinguishable by rank. CBF1 is the extreme case — 87 of"
+                " its targets share a p-value of 0 (average rank 44), so the"
+                " top-10 and top-25 cutoffs have no point, and the top-50, 75 and"
+                " 100 cutoffs all return the same 87 targets and plot as one"
+                " point. Across all Calling Cards samples the median tie at the"
+                " top is only 3 targets, so most regulators are unaffected.",
+            ),
+            ui.p(
+                ui.tags.em(
+                    "This affects the underlying top-N analysis too, not just"
+                    " this figure: where a tie is large, a nominal top 25 may be"
+                    " a shorter list than the other datasets', so read that"
+                    " line's response rate as being measured over a different-"
+                    " sized set."
+                )
+            ),
+        ),
+    )
+
+
 @module.ui
 def figures_ui() -> ui.Tag:
     return ui.layout_sidebar(
         ui.sidebar(
             ui.h2("Figures"),
             ui.output_ui("tf_selector"),
-            ui.input_switch(
-                "show_facets",
-                ui.tooltip(
-                    ui.span("Show all TFs"),
-                    "Draws the rank-response curve for every TF in the intersection"
-                    " as a small-multiples grid (~60-70 panels). Off by default"
-                    " because it is the slowest thing on the page.",
-                    placement="right",
-                ),
-                value=False,
-            ),
             sidebar_label("Responsiveness"),
             ui.input_radio_buttons(
                 "scoring",
@@ -90,46 +133,18 @@ def figures_ui() -> ui.Tag:
                 ),
             ),
             ui.output_ui("figure_status"),
-            workspace_heading("1. Rank vs. response"),
-            sidebar_text(
-                ui.p(
-                    "Percent of top-n binding targets that are transcriptionally"
-                    " responsive, as a function of n. One panel per perturbation"
-                    " dataset, one line per binding dataset. Lower ranks generally"
-                    " correspond to lower response rates."
+            ui.panel_conditional("!input.show_facets", _rank_response_intro()),
+            ui.input_switch(
+                "show_facets",
+                ui.tooltip(
+                    ui.span("Show all TFs"),
+                    "Draws the rank-response curve for every TF in the intersection"
+                    " (~60-70), one scrolling row per perturbation dataset, three"
+                    " TFs visible at a time. Off by default because it is the"
+                    " slowest thing on the page.",
+                    placement="right",
                 ),
-                ui.p(
-                    ui.tags.em(
-                        "The x axis is the number of targets actually summarised,"
-                        " not the nominal cutoff: a group of tied targets is in the"
-                        " top n only if its average rank is within n, so a group can"
-                        " carry the count past n or leave it short."
-                    )
-                ),
-                ui.p(
-                    ui.tags.strong("A line may show fewer than five points."),
-                    " When many targets tie at the top, a cutoff can fall inside the"
-                    " tie group without reaching its average rank, and that cutoff"
-                    " then has no point; later cutoffs that include the whole group"
-                    " return the same set and collapse to a single point. Calling"
-                    " Cards is the usual cause: its Poisson p-values underflow to"
-                    " exactly 0 for the most strongly bound targets, so those targets"
-                    " are indistinguishable by rank. CBF1 is the extreme case — 87 of"
-                    " its targets share a p-value of 0 (average rank 44), so the"
-                    " top-10 and top-25 cutoffs have no point, and the top-50, 75 and"
-                    " 100 cutoffs all return the same 87 targets and plot as one"
-                    " point. Across all Calling Cards samples the median tie at the"
-                    " top is only 3 targets, so most regulators are unaffected.",
-                ),
-                ui.p(
-                    ui.tags.em(
-                        "This affects the underlying top-N analysis too, not just"
-                        " this figure: where a tie is large, a nominal top 25 may be"
-                        " a shorter list than the other datasets', so read that"
-                        " line's response rate as being measured over a different-"
-                        " sized set."
-                    )
-                ),
+                value=False,
             ),
             ui.output_ui("fig_rank_response"),
             ui.output_ui("fig_rank_response_facets"),

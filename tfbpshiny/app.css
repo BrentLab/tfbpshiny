@@ -452,3 +452,34 @@
 .scroll-row.gap-lg {
     gap: 1.5rem;
 }
+
+/* --- Scroll viewport -----------------------------------------------------
+   A window of fixed width onto a wider figure; the inner element's width is set
+   inline as a multiple of the window. */
+.scroll-viewport {
+    overflow-x: auto;
+    overflow-y: hidden;
+    width: 100%;
+    padding-bottom: 0.5rem;
+}
+
+.scroll-viewport-inner {
+    min-width: 100%;
+}
+
+/* --- Series legend -------------------------------------------------------
+   Colour key shown once above a scrolling figure. */
+.series-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+    margin-bottom: 0.25rem;
+}
+
+.series-legend-swatch {
+    display: inline-block;
+    width: 1.5rem;
+    height: 0.2rem;
+    margin-right: 0.4rem;
+    vertical-align: middle;
+}

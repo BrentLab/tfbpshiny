@@ -441,6 +441,59 @@ def scroll_row(*children: Any, gap: Literal["sm", "lg"] = "sm") -> ui.Tag:
     return ui.div({"class": cls}, *children)
 
 
+def scroll_viewport(child: Any, *, width_factor: float) -> ui.Tag:
+    """
+    Fixed-width window onto a wider child that the user scrolls sideways.
+
+    The child is as wide as ``width_factor`` times the window, so a factor of ``N / 3``
+    shows three of ``N`` equal panels at a time. A plotly figure inside takes the
+    child's width, so one wide figure replaces many separate ones.
+
+    CSS: ``.scroll-viewport`` / ``.scroll-viewport-inner``
+
+    :param child: The wide content, typically a plotly figure.
+    :param width_factor: Child width as a multiple of the window width; at least 1.
+
+    """
+    return ui.div(
+        {"class": "scroll-viewport"},
+        ui.div(
+            {
+                "class": "scroll-viewport-inner",
+                "style": f"width: {max(width_factor, 1.0) * 100:.3f}%;",
+            },
+            child,
+        ),
+    )
+
+
+def series_legend(items: list[tuple[str, str | None]]) -> ui.Tag:
+    """
+    Static colour key for figures whose own legend would scroll out of view.
+
+    CSS: ``.series-legend`` / ``.series-legend-swatch``
+
+    :param items: ``(label, colour)`` pairs in display order; a ``None`` colour draws a
+        grey swatch.
+
+    """
+    return ui.div(
+        {"class": "series-legend"},
+        *[
+            ui.span(
+                ui.span(
+                    {
+                        "class": "series-legend-swatch",
+                        "style": f"background: {colour or '#888888'};",
+                    }
+                ),
+                label,
+            )
+            for label, colour in items
+        ],
+    )
+
+
 def export_download_button(id: str) -> ui.Tag:
     """
     Full-width download button for exporting selected datasets as a tarball.

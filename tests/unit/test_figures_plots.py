@@ -98,6 +98,19 @@ def test_rank_response_facet_legend_appears_once(rank_df: pd.DataFrame) -> None:
     assert sum(1 for t in fig.data if t.showlegend) == len(BINDING_ORDER)
 
 
+def test_rank_response_facet_is_one_row_with_own_y_ticks(rank_df: pd.DataFrame) -> None:
+    """All regulators sit in a single row, each with visible y tick labels."""
+    regs = ["YAL001C", "YBR002W"]
+    fig = rank_response_facet(
+        rank_df, LABELS, list(BINDING_ORDER), regs, {r: r for r in regs}
+    )
+    assert len(fig.layout.annotations) == len(regs)
+    y_axes = [fig.layout[k] for k in fig.layout if k.startswith("yaxis")]
+    assert len(y_axes) == len(regs)
+    assert all(a.showticklabels for a in y_axes)
+    assert not fig.layout.showlegend
+
+
 def test_rank_response_draws_calling_cards_last(rank_df: pd.DataFrame) -> None:
     """
     Calling Cards is drawn on top, so its line stays visible when curves overlap.

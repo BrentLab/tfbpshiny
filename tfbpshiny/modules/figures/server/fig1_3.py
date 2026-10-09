@@ -7,8 +7,14 @@ from typing import Any
 import pandas as pd
 from shiny import render, ui
 
-from tfbpshiny.components import empty_state, scroll_row
+from tfbpshiny.components import (
+    empty_state,
+    scroll_row,
+    scroll_viewport,
+    series_legend,
+)
 from tfbpshiny.modules.figures.plots import (
+    FIG1_FACET_VISIBLE,
     authors_bound_grid,
     percent_responsive_boxes,
     rank_response_facet,
@@ -89,7 +95,10 @@ def register_fig1_3(
     @render.ui
     def fig_rank_response_facets() -> ui.Tag:
         """
-        Small-multiples grid over every TF in the intersection.
+        Every TF in the intersection, one scrolling row per perturbation dataset.
+
+        Each row shows :data:`FIG1_FACET_VISIBLE` TFs at a time; the rest are reached
+        by scrolling sideways.
 
         :trigger: ``input.show_facets`` / ``_rank_response``.
 
@@ -119,12 +128,33 @@ def register_fig1_3(
                             f"{ctx.labels.get(p, p)} — all {len(tfs)} TFs",
                             style="margin-top: 1.5rem;",
                         ),
-                        figure_html(fig, filename=f"fig1_rank_response_all_{p}"),
+                        scroll_viewport(
+                            figure_html(fig, filename=f"fig1_rank_response_all_{p}"),
+                            width_factor=len(tfs) / FIG1_FACET_VISIBLE,
+                        ),
                     )
                 )
             if not blocks:
                 return ui.span()
-            return ui.div(*blocks)
+            legend = series_legend(
+                [
+                    (
+                        ctx.labels.get(db, db),
+                        ctx.binding_colors.get(ctx.labels.get(db, db)),
+                    )
+                    for db in BINDING_ORDER
+                ]
+            )
+            return ui.div(
+                ui.p(
+                    "Percent responsive vs. top n for every TF. Scroll each row"
+                    " sideways to move through the TFs,"
+                    f" {FIG1_FACET_VISIBLE} at a time.",
+                    style="margin-top: 1rem;",
+                ),
+                legend,
+                *blocks,
+            )
 
     # ------------------------------------------------------------------
     # Figure 2
@@ -204,7 +234,10 @@ def register_fig1_3(
                 list(PR_ORDER),
                 colors=ctx.binding_colors,
             )
-            return ui.div(figure_html(fig, filename="fig3_authors_bound"))
+            return scroll_viewport(
+                figure_html(fig, filename="fig3_authors_bound"),
+                width_factor=len(frames) / FIG1_FACET_VISIBLE,
+            )
 
 
 __all__ = ["register_fig1_3"]

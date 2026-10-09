@@ -248,6 +248,10 @@ def rank_response_figure(
     return fig
 
 
+#: Regulator panels visible at once in :func:`rank_response_facet`'s scroll area.
+FIG1_FACET_VISIBLE = 3
+
+
 def rank_response_facet(
     df: pd.DataFrame,
     labels: dict[str, str],
@@ -255,16 +259,21 @@ def rank_response_facet(
     regulators: list[str],
     reg_labels: dict[str, str],
     *,
-    n_cols: int = 6,
-    panel_height: int = 200,
+    panel_height: int = 340,
     colors: dict[str, str] | None = None,
 ) -> go.Figure:
     """
-    Small-multiples grid of rank-response curves, one panel per regulator.
+    One row of rank-response curves, one panel per regulator, to be scrolled sideways.
 
     Drawn as a single figure with subplots rather than many separate figures: the
     intersections run to ~60-70 regulators, and one figure with N panels is markedly
-    cheaper to build and render than N figures.
+    cheaper to build and render than N figures. The figure is laid out for a container
+    :data:`FIG1_FACET_VISIBLE` times narrower than it is, so the caller wraps it in a
+    horizontally scrolling element whose inner width is ``len(regulators) /
+    FIG1_FACET_VISIBLE`` times the visible width; each panel then fills a third of the
+    visible area. Every panel keeps its own y tick labels so it stays readable when it
+    is scrolled to the middle, and the legend is left to the caller, since a legend
+    inside the figure would scroll out of view.
 
     :param df: All rows from ``fetch_rank_response``.
     :param labels: db_name -> display label.
@@ -273,8 +282,7 @@ def rank_response_facet(
         and :func:`_legend_rank_by_top_response`.
     :param regulators: Regulators to panel, in order.
     :param reg_labels: locus tag -> display label.
-    :param n_cols: Panels per row.
-    :param panel_height: Pixel height per row of panels.
+    :param panel_height: Pixel height of the figure.
     :param colors: Display label -> series colour (``dataset_colors``); a label
         without one falls back to plotly's default.
     :returns: The figure.
@@ -283,14 +291,15 @@ def rank_response_facet(
     palette = colors or {}
     if not regulators:
         return go.Figure()
-    n_rows = (len(regulators) + n_cols - 1) // n_cols
+    n_cols = len(regulators)
     fig = make_subplots(
-        rows=n_rows,
+        rows=1,
         cols=n_cols,
         subplot_titles=[reg_labels.get(r, r) for r in regulators],
-        shared_yaxes=True,
-        vertical_spacing=min(0.06, 1.0 / max(n_rows, 1)),
-        horizontal_spacing=0.02,
+        shared_yaxes=False,
+        # Spacing is a fraction of the whole (very wide) figure; scale it so the gap
+        # between panels stays a fixed fraction of one visible panel.
+        horizontal_spacing=min(0.2 / n_cols, 1.0 / max(n_cols - 1, 1)),
     )
     # Only the first panel populates the legend (below), so its data decides legend
     # order.
@@ -298,9 +307,6 @@ def rank_response_facet(
         df[df["regulator_locus_tag"] == regulators[0]], binding_order, labels
     )
     for i, reg in enumerate(regulators):
-        row, col = divmod(i, n_cols)
-        row += 1
-        col += 1
         sub_reg = df[df["regulator_locus_tag"] == reg]
         for db in _draw_order(binding_order):
             sub = sub_reg[sub_reg["binding_db"] == db].sort_values("n")
@@ -324,13 +330,13 @@ def rank_response_facet(
                         "<br>n=%{x}<br>%{y:.1f}%<extra></extra>"
                     ),
                 ),
-                row=row,
-                col=col,
+                row=1,
+                col=i + 1,
             )
-    apply_figure_style(fig, height=panel_height * n_rows + 120)
+    apply_figure_style(fig, height=panel_height, showlegend=False)
     fig.update_annotations(font_size=FONT_SIZE - 2, font_color="black")
     fig.update_xaxes(
-        title_text="",
+        title_text="Top n",
         range=list(FIG1_RANK_X),
         tickfont=dict(size=FONT_SIZE - 4, color="black"),
     )
@@ -344,12 +350,10 @@ def rank_response_facet(
     fig.update_yaxes(
         title_text="",
         range=list(FIG1_RANK_RESPONSE_Y),
+        showticklabels=True,
         tickfont=dict(size=FONT_SIZE - 4, color="black"),
     )
-    fig.update_layout(
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
-        margin=dict(l=50, r=20, t=90, b=40),
-    )
+    fig.update_layout(margin=dict(l=50, r=20, t=50, b=60))
     return fig
 
 
@@ -630,6 +634,7 @@ __all__ = [
     "dto_venn_figure",
     "percent_responsive_boxes",
     "shared_targets_box_figure",
+    "FIG1_FACET_VISIBLE",
     "rank_response_facet",
     "rank_response_figure",
 ]
@@ -641,7 +646,6 @@ def authors_bound_grid(
     binding_order: list[str],
     pr_order: list[str],
     *,
-    panel_width: int = 420,
     row_height: int = 380,
     colors: dict[str, str] | None = None,
 ) -> go.Figure:
@@ -656,11 +660,14 @@ def authors_bound_grid(
     data rather than axis differences. A tighter authors' threshold shows as a higher
     box in row A above a lower box in row B.
 
+    The figure takes the width of its container, so the caller wraps it in
+    :func:`tfbpshiny.components.scroll_viewport` sized to ``len(pr_order) /
+    FIG1_FACET_VISIBLE`` windows; each column is then as wide as a figure 1 panel.
+
     :param frames: perturbation db_name -> rows from ``fetch_authors_bound``.
     :param labels: db_name -> display label.
     :param binding_order: Peak binding db_names in draw order.
     :param pr_order: Perturbation db_names, one column each.
-    :param panel_width: Pixel width per column.
     :param row_height: Pixel height per row.
     :param colors: Display label -> series colour (``dataset_colors``); a label
         without one falls back to plotly's default.
@@ -679,11 +686,15 @@ def authors_bound_grid(
             [f"A. % responsive — {labels.get(p, p)}" for p in cols]
             + [f"B. Bound targets — {labels.get(p, p)}" for p in cols]
         ),
-        shared_yaxes=True,
+        # Every panel keeps its own y ticks so it reads on its own when the figure is
+        # scrolled sideways.
+        shared_yaxes=False,
         # Row B's subplot titles sit between the rows, so this has to clear row A's
         # rotated x tick labels as well as the title itself.
         vertical_spacing=0.24,
-        horizontal_spacing=0.05,
+        # A fraction of the whole (wide) figure, scaled to the panel count so the gap
+        # stays a fixed fraction of one visible panel.
+        horizontal_spacing=min(0.2 / len(cols), 1.0 / max(len(cols) - 1, 1)),
     )
     for j, p in enumerate(cols, start=1):
         df = frames[p]
@@ -734,12 +745,12 @@ def authors_bound_grid(
             float(all_rows["n_bound"].max()) + FIG3B_TARGET_COUNT_HEADROOM,
         )
     fig.update_yaxes(row=2, range=list(count_range))
+    fig.update_yaxes(showticklabels=True)
     fig.update_yaxes(title_text="% responsive", row=1, col=1)
     fig.update_yaxes(title_text="bound targets", row=2, col=1)
     fig.update_xaxes(tickangle=-25, automargin=True)
     fig.update_annotations(font_size=AXIS_TITLE_SIZE - 2, font_color="black")
     fig.update_layout(
-        width=panel_width * len(cols),
         legend=dict(orientation="h", yanchor="bottom", y=1.08, x=0),
         margin=dict(l=80, r=40, t=110, b=110),
     )
