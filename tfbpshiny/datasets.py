@@ -194,12 +194,25 @@ DTO_PVALUE_THRESHOLD = 0.01
 
 #: The promoter-enrichment primaries quantified over the 500bp start-codon window:
 #: the one promoter definition every re-quantified assay shares, so comparing them
-#: compares assays rather than promoter definitions. Figures 4-10 and the
-#: ``topn_target_sets`` table are built over these.
+#: compares assays rather than promoter definitions. These are the assay primaries
+#: figures 7 and 8 resolve their per-promoter-set variants from (see
+#: :func:`figure_method`); the other figures draw
+#: :data:`FIGURE_MODULE_DEFAULT_BINDING_DATASETS`.
 PROMOTER_ENRICHMENT_500BP: tuple[str, ...] = (
     "callingcards_500bp",
     "rossi_500bp",
     "chec_m2025_500bp",
+)
+
+#: The binding datasets the Figures tab draws (figures 1, 2, 4, 5, 6 and 10): Calling
+#: Cards promoter enrichment, plus ChIP-exo and ChEC-seq peak calling, all over the
+#: 500bp start-codon window. Calling Cards has no peak-calling arm. Figures 3 and 9
+#: choose their own datasets, and figures 7 and 8 resolve variants per promoter set
+#: from :data:`PROMOTER_ENRICHMENT_500BP`'s primaries.
+FIGURE_MODULE_DEFAULT_BINDING_DATASETS: tuple[str, ...] = (
+    "callingcards_500bp",
+    "rossi_peaks_500bp",
+    "chec_m2025_peaks_500bp",
 )
 
 #: The headline perturbation datasets, in display order.
@@ -209,6 +222,21 @@ HEADLINE_PERTURBATION: tuple[str, ...] = ("kemmeren", "hackett", "degron")
 #: peak-calling arm. Calling Cards has no peak-calling arm; Harbison's regions are
 #: microarray probes with no re-quantifiable window.
 METHOD_COMPARISON_ASSAYS: tuple[str, ...] = ("rossi_500bp", "chec_m2025_500bp")
+
+
+def figure_method(primary: str) -> str:
+    """
+    Binding method the Figures tab uses for an assay primary in figures 7 and 8.
+
+    :param primary: Assay primary db_name, e.g. ``'rossi_500bp'``.
+    :returns: ``'peak_calling'`` for assays with a peak-calling arm, otherwise
+        ``'promoter_enrichment'`` (Calling Cards).
+
+    """
+    return (
+        "peak_calling" if primary in METHOD_COMPARISON_ASSAYS else "promoter_enrichment"
+    )
+
 
 # ---------------------------------------------------------------------------
 # Database schema
@@ -226,6 +254,8 @@ __all__ = [
     "PROMOTER_SETS",
     "Vocab",
     "SCHEMA_VERSION",
+    "FIGURE_MODULE_DEFAULT_BINDING_DATASETS",
+    "figure_method",
     "HEADLINE_PERTURBATION",
     "METHOD_COMPARISON_ASSAYS",
     "PROMOTER_ENRICHMENT_500BP",

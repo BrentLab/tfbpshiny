@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **Rebuild required for figure 10.** ChIP-exo and ChEC-seq use peak calling
+  instead of promoter enrichment on the Figures page, still over the 500bp
+  promoter set (`rossi_peaks_500bp`, `chec_m2025_peaks_500bp`; Calling Cards stays
+  promoter enrichment, as it has no peak-calling arm). This applies to figures 1, 2,
+  4, 5, 7, 8 and 10; for figure 6 it changes only the default selection. Figures 3
+  and 9 are unchanged. `topn_target_sets` now holds the peak-calling datasets, so
+  figure 10's binding panels need a rebuild. The new constant is
+  `FIGURE_MODULE_DEFAULT_BINDING_DATASETS`.
+
+---
+
 ## [1.2.1]
 
 ### Changed
