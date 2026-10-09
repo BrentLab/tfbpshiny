@@ -264,7 +264,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#deploy" id="toc-deploy" class="nav-link" data-scroll-target="#deploy">5. Deploy</a></li>
   <li><a href="#updating-the-data" id="toc-updating-the-data" class="nav-link" data-scroll-target="#updating-the-data">Updating the data</a></li>
   </ul></li>
-  <li><a href="#documentation-site" id="toc-documentation-site" class="nav-link" data-scroll-target="#documentation-site">Documentation Site</a></li>
+  <li><a href="#documentation-site" id="toc-documentation-site" class="nav-link" data-scroll-target="#documentation-site">Documentation Site</a>
+  <ul class="collapse">
+  <li><a href="#publishing-manually" id="toc-publishing-manually" class="nav-link" data-scroll-target="#publishing-manually">Publishing manually</a></li>
+  </ul></li>
   </ul></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/BrentLab/tfbpshiny/edit/main/docs/development.md" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li></ul></div></nav>
@@ -480,8 +483,22 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> preview docs    <span class="co"># build, serve locally and rebuild on save</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> render docs     <span class="co"># write the static site to docs/_site/</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><code>.github/workflows/docs.yml</code> renders the site and publishes it to the <code>gh-pages</code> branch on every push to <code>main</code> that changes <code>docs/</code>. <code>docs/_site/</code> and the <code>.quarto</code> cache directories are gitignored.</p>
+<section id="publishing-manually" class="level3">
+<h3 class="anchored" data-anchor-id="publishing-manually">Publishing manually</h3>
+<p><code>quarto publish gh-pages</code> pushes to the remote named <code>origin</code>. When <code>origin</code> is a fork and the site belongs to the BrentLab repository, swap the remote names for the duration of the publish and restore them afterwards:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># move the fork out of the way, then make the BrentLab remote 'origin'</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> remote rename origin old-origin</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> remote rename upstream origin</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="ex">quarto</span> publish gh-pages docs</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="co"># restore the original names</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> remote rename origin upstream</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> remote rename old-origin origin</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Restore the names even if the publish fails; otherwise <code>origin</code> keeps pointing at the BrentLab repository.</p>
 
 
+</section>
 </section>
 </section>
 
