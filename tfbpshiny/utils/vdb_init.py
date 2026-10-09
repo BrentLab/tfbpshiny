@@ -106,7 +106,6 @@ DEFAULT_DATASET_FILTERS: dict[str, dict] = {
 # through VirtualDB, so this override can come from the datacard.
 FIELD_TYPE_OVERRIDES: dict[tuple[str, str], tuple[str, str]] = {
     ("hackett", "time"): ("categorical", "numeric"),
-    ("", "temperature_celsius"): ("categorical", "string"),
 }
 
 # Type alias for one responsiveness preset used by the Comparison module.
