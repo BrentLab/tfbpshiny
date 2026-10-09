@@ -1,13 +1,12 @@
 """
-Entry point for shinyapps.io deployment.
+Entry point for Posit Connect Cloud deployment.
 
 Points ``TFBPSHINY_DB_PATH`` at the bundled ``brentlab_yeast.duckdb`` before importing
 the Shiny app object, so the deployed app reads the materialized database that
 travelled with the upload bundle.
 
-Usage::
-
-    rsconnect deploy shiny . --entrypoint shinyapps_entry:app ...
+Named as the ``entrypoint`` in ``.posit/publish/tfbpshiny-LARU.toml``; see
+``docs/development.md``.
 
 """
 
