@@ -230,20 +230,31 @@ Plotly JS, or D3-based custom components.
 
 ---
 
-## shinyapps.io Deployment
+## Posit Connect Cloud Deployment
 
-The app is deployed to [shinyapps.io](https://www.shinyapps.io) (moving to Posit
-Connect, which uses the same `rsconnect` workflow).
+The app is deployed to [Posit Connect Cloud](https://connect.posit.cloud) from VS Code
+with the Posit Publisher extension. Publisher uploads the files named in
+`.posit/publish/tfbpshiny-LARU.toml` directly from the working tree; Connect Cloud
+does not pull from GitHub for this deployment.
 
 ### Prerequisites
 
-- `rsconnect-python` installed: `pip install rsconnect-python`
+- The [Posit Publisher](https://marketplace.visualstudio.com/items?itemName=posit.publisher)
+  extension (pre-installed in Positron)
+- A Connect Cloud account with access to the account the deployment targets
 - A HuggingFace token if any datasets are private
 
-### 1. Build the database locally
+### 1. Add a credential
+
+In the Posit Publisher panel, open **Credentials**, click **+** and choose **Posit
+Connect Cloud**. Log in through the browser, confirm the authorization code matches
+the one shown in the IDE, authorize, and name the credential. This is done once per
+machine.
+
+### 2. Build the database locally
 
 The app never touches the network, so the materialized database must travel with the
-bundle. Build it at the repository root (the path `shinyapps_entry.py` points at):
+upload. Build it at the repository root (the path `shinyapps_entry.py` points at):
 
 ```bash
 HF_TOKEN=<your_token> poetry run python -m tfbpshiny materialize \
@@ -251,74 +262,115 @@ HF_TOKEN=<your_token> poetry run python -m tfbpshiny materialize \
     --output brentlab_yeast.duckdb
 ```
 
-Re-run this any time the upstream datasets or the materialize code change. The file
-is gitignored, but rsconnect does not read `.gitignore`, so it is included in the
-upload bundle automatically.
+Re-run this any time the upstream datasets or the materialize code change. The
+database is roughly 200 MB; Connect Cloud's bundle limit is 1 GiB on free plans and
+5 GiB on all others.
 
-### 2. Entry point
+### 3. Keep `requirements.txt` current
 
-`shinyapps_entry.py` in the project root is the shinyapps.io entry point. It sets
-`TFBPSHINY_DB_PATH` to the bundled `brentlab_yeast.duckdb` before importing the Shiny
-app object, so no CLI flag is needed at runtime. No changes are required — the file is
-already in the repository.
-
-### 3. Set environment variables in the dashboard
-
-Nothing is required: the app reads no secrets and makes no network requests at
-runtime.
-
-### 4. Deploy
-
-Go to your shinyapps.io account, drop down the user menu, and go to **Tokens**. Click
-"show" on the Python tab — it gives the `rsconnect add` command with `name`, `account`,
-`token`, and `secret` pre-filled. Run it once to store credentials under a nickname;
-subsequent deploys use `--name`.
-
-Generate a `requirements.txt` from the Poetry lockfile before deploying (rsconnect
-requires it; it is gitignored because it is a generated artifact):
+Connect Cloud installs dependencies from `requirements.txt` at the repository root.
+It is generated from `poetry.lock`:
 
 ```bash
 poetry export --without-hashes --without dev -f requirements.txt -o requirements.txt
 ```
 
-Regenerate this file after any change to dependencies in `pyproject.toml`.
+The `poetry-export-requirements` pre-commit hook runs this whenever `poetry.lock` or
+`pyproject.toml` is committed. When the export changes the file, the commit fails
+once; stage the updated `requirements.txt` and commit again. The file is tracked, so
+it is also what Publisher uploads.
 
-Make sure the database is up to date, then deploy:
+### 4. The configuration file
 
-```bash
-rsconnect add \
-    --account <your-shinyapps-account> \
-    --name <nickname> \
-    --token <token> \
-    --secret <secret>
+`.posit/publish/tfbpshiny-LARU.toml` holds the deployment settings:
 
-CONNECT_REQUEST_TIMEOUT=3600 rsconnect deploy shiny . \
-    --name <nickname> \
-    --entrypoint shinyapps_entry:app \
-    --title "TF Binding and Perturbation" \
-    --exclude "tests" \
-    --exclude "docs" \
-    --exclude "tmp" \
-    --exclude "data" \
-    --exclude "scripts" \
-    --exclude ".github" \
-    --exclude ".vscode" \
-    --exclude ".mypy_cache" \
-    --exclude ".pytest_cache" \
-    --exclude ".claude" \
-    --exclude ".venv" \
-    --exclude "mkdocs.yml" \
-    --exclude "mkdocs_requirements.txt" \
-    --exclude "*.log"
+```toml
+type = "python-shiny"
+entrypoint = "shinyapps_entry.py"
+title = "TF Binding and Perturbation"
+files = [
+    "/shinyapps_entry.py",
+    "/requirements.txt",
+    "/brentlab_yeast.duckdb",
+    "/tfbpshiny",
+]
+product_type = "connect_cloud"
+
+[python]
+version = "3.12"
 ```
 
-rsconnect does not read `.gitignore`; it bundles everything it finds unless told
-otherwise. The `--exclude` flags above strip deployment-irrelevant directories.
-`brentlab_yeast.duckdb` is intentionally not excluded — it is the data and must travel
-with the app. Set `CONNECT_REQUEST_TIMEOUT` (seconds) high enough to cover the upload;
-3600 (one hour) is safe.
+- `entrypoint` is a file, not a `module:object` reference. `shinyapps_entry.py` sets
+  `TFBPSHINY_DB_PATH` to the bundled `brentlab_yeast.duckdb` and exposes the Shiny
+  `app` object, so no environment variables or CLI flags are needed at runtime.
+- `files` is an allowlist: only the listed paths are uploaded, so nothing needs to be
+  excluded. The database is named by its exact path because the repository root
+  holds other `brentlab_yeast*.duckdb` backups that must not be uploaded.
+- `[python] version` matches `python` in `pyproject.toml`. Connect Cloud defaults to
+  3.11, which the app does not support.
+
+`.posit/publish/deployments/` records which Connect Cloud content item the
+configuration publishes to. Both directories are committed; without the deployment
+record, Publisher cannot update the existing content item.
+
+### 5. Deploy
+
+Open the Posit Publisher panel, select the `tfbpshiny-LARU` configuration and
+credential, and under **Project Files** confirm that `brentlab_yeast.duckdb`,
+`requirements.txt` and `tfbpshiny/` (including the gitignored
+`tfbpshiny/www/plotly-*.min.js`) are included and that `__pycache__` and `*.log`
+files are not. Then click **Deploy Your Project**. The panel shows **View Content**
+on success and **View Publishing Log** on failure.
+
+The app reads no secrets and makes no network requests at runtime, so the **Secrets**
+section stays empty.
 
 ### Updating the data
 
-When upstream datasets change, re-run step 1 and redeploy with the same
-`rsconnect deploy` command as step 4.
+When upstream datasets change, re-run step 2 and deploy again from the Publisher
+panel. Any previous revision can be downloaded as a `.zip` from the content's history
+page on Connect Cloud.
+
+---
+
+## Documentation Site
+
+The pages in `docs/` are built into a static site by [Quarto](https://quarto.org),
+configured in `docs/_quarto.yml`. The sidebar lists each page explicitly, so a new
+page must be added there to appear in the navigation.
+
+Quarto is a standalone program, not a Python dependency, so `poetry install` does not
+provide it. Install it from [quarto.org/docs/download](https://quarto.org/docs/download/)
+(on Debian or Ubuntu, `sudo dpkg -i quarto-*.deb` with the downloaded `.deb`). The
+[Quarto VS Code extension](https://marketplace.visualstudio.com/items?itemName=quarto.quarto)
+adds a preview command to the editor but still needs the Quarto program installed.
+
+```bash
+quarto preview docs    # build, serve locally and rebuild on save
+quarto render docs     # write the static site to docs/_site/
+```
+
+`.github/workflows/docs.yml` renders the site and publishes it to the `gh-pages`
+branch on every push to `main` that changes `docs/`. `docs/_site/` and the `.quarto`
+cache directories are gitignored.
+
+### Publishing manually
+
+`quarto publish gh-pages` pushes to the remote named `origin`. When `origin` is a
+fork and the site belongs to the BrentLab repository, swap the remote names for the
+duration of the publish and restore them afterwards:
+
+```bash
+# move the fork out of the way, then make the BrentLab remote 'origin'
+git remote rename origin old-origin
+git remote rename upstream origin
+
+quarto publish gh-pages docs
+
+# restore the original names
+git remote rename origin upstream
+git remote rename old-origin origin
+```
+
+Restore the names even if the publish fails; otherwise `origin` keeps pointing at the
+BrentLab repository.

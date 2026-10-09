@@ -1,7 +1,9 @@
 # TFBPShiny
 
-A Shiny web application for exploring transcription factor binding and perturbation
+A [Shiny web application](https://01a120d2-d9fe-6c02-01bb-20aa7e46f40c.share.connect.posit.cloud/) for exploring transcription factor binding and perturbation
 data from the [Brent Lab yeast collection](https://huggingface.co/collections/BrentLab/yeastresources).
+
+Documentation: <https://brentlab.github.io/tfbpshiny/>
 
 ## Table of contents
 
@@ -60,13 +62,13 @@ python -m tfbpshiny launch --db-path brentlab_yeast.duckdb
 Re-run `materialize` whenever the upstream datasets change. See
 [docs/development.md](docs/development.md) for what the build produces.
 
-To install the latest development version from GitHub, use:
+To install the latest version from GitHub, use:
 
 ```bash
-python -m pip install git+https://github.com/BrentLab/tfbpshiny@dev
+python -m pip install git+https://github.com/BrentLab/tfbpshiny@main
 ```
 
-For shinyapps.io / Posit Connect deployment instructions, see
+For Posit Connect Cloud deployment instructions, see
 [docs/development.md](docs/development.md).
 
 ---
@@ -133,6 +135,22 @@ poetry run pytest tests/e2e/       # end-to-end
 poetry run pytest                   # all tests
 ```
 
+### Building the docs
+
+The docs in `docs/` are a [Quarto](https://quarto.org) website. Quarto is a
+standalone program, not a Python dependency, so `poetry install` does not provide it.
+Install it from [quarto.org/docs/download](https://quarto.org/docs/download/) (on
+Debian or Ubuntu, `sudo dpkg -i quarto-*.deb` with the downloaded `.deb`). The
+[Quarto VS Code extension](https://marketplace.visualstudio.com/items?itemName=quarto.quarto)
+adds a preview command to the editor but still needs the Quarto program installed. Then:
+
+```bash
+quarto preview docs    # build, serve locally and rebuild on save
+quarto render docs     # write the static site to docs/_site/
+```
+
+Pushes to `main` that change `docs/` publish the site to GitHub Pages.
+
 ### Code quality
 
 ```bash
@@ -141,12 +159,11 @@ pre-commit run --all-files
 
 ### Branching
 
-1. Switch to `dev`: `git switch dev`
-1. Branch from `dev` — **not** `main`: `git switch -c my-feature`
+1. Switch to `main`: `git switch main`
+1. Create a feature branch: `git switch -c my-feature`
 1. Keep branches small and focused to make review easier
-1. Rebase onto `dev` periodically: `git rebase dev`
-1. When ready, open a pull request targeting the BrentLab `dev`
-  branch — **not** `main`
+1. Rebase onto `main` periodically: `git rebase main`
+1. When ready, open a pull request targeting the BrentLab `main` branch
 
 ---
 

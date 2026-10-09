@@ -1,0 +1,30 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "TFBPShiny"
+  repo-url: https://github.com/BrentLab/tfbpshiny
+  repo-actions: [edit]
+  repo-branch: main
+  repo-subdir: docs
+  sidebar:
+    contents:
+      - index.md
+      - section: "Page guides"
+        contents:
+          - select_datasets_workflow.md
+          - binding_workflow.md
+          - perturbation_workflow.md
+          - comparison_workflow.md
+      - section: "Reference"
+        contents:
+          - binding_perturbation_reliability.md
+          - materialized_db_schema.md
+          - sql_operations.md
+      - development.md
+
+format:
+  html:
+    theme: cosmo
+    toc: true
