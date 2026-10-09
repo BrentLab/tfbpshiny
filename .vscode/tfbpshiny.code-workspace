@@ -7,14 +7,19 @@
 		// put the labretriever at the same level as tfbshiny. During development,
 		// it is very useful to have both in your workspace
 		{
-			"path": "../../../labretriever",
-			"name": "labretriever (reference)"
+			"path": "../../labretriever",
+			"name": "labretriever"
+		},
+		{
+			"path": "../../huggingface",
+			"name": "huggingface"
 		}
 	],
 	"settings": {
 		"python.testing.pytestArgs": [
 			"tests"
 		],
-		"python.testing.cwd": "${workspaceFolder:tfbpshiny}"
+		"python.testing.cwd": "${workspaceFolder:tfbpshiny}",
+		"r.lsp.promptToInstall": false
 	}
 }

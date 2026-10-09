@@ -43,9 +43,11 @@ CSS variable reference (from ``app.css`` ``:root``)
 
 from __future__ import annotations
 
+import json
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Literal
 
+import faicons as fa
 from shiny import ui
 
 # ---------------------------------------------------------------------------
@@ -145,6 +147,18 @@ def workspace_heading(text: str) -> ui.Tag:
 # ---------------------------------------------------------------------------
 
 
+def sidebar_text(*children: Any) -> ui.Tag:
+    """
+    Explanatory prose block in the sidebar's muted body style.
+
+    CSS: ``.sidebar-text``
+
+    :param children: Paragraphs or inline tags.
+
+    """
+    return ui.div({"class": "sidebar-text"}, *children)
+
+
 def empty_state(*children: Any, compact: bool = False) -> ui.Tag:
     """
     Centred placeholder shown when there is nothing to display yet.
@@ -219,35 +233,6 @@ def dataset_row(toggle: ui.Tag, label: str, filter_button: ui.Tag) -> ui.Tag:
     )
 
 
-def dataset_list(*rows: ui.Tag) -> ui.Tag:
-    """
-    Vertical stack of ``dataset_row`` elements with a small gap between them.
-
-    CSS: ``.dataset-list``
-
-    """
-    return ui.div({"class": "dataset-list"}, *rows)
-
-
-def filter_button(id: str) -> ui.Tag:
-    """
-    Small "Filter" button at the right of each dataset row.
-
-    CSS: ``.btn-filter-dataset``
-
-    """
-    return ui.input_action_button(
-        id,
-        "Filter",
-        class_="btn btn-sm btn-outline-secondary btn-filter-dataset",
-    )
-
-
-# ---------------------------------------------------------------------------
-# Filter modal building blocks
-# ---------------------------------------------------------------------------
-
-
 def filter_option_card(title: str, *controls: ui.Tag) -> ui.Tag:
     """
     Bordered card containing a single filter control (slider, selectize, switch).
@@ -275,22 +260,13 @@ def filter_option_card(title: str, *controls: ui.Tag) -> ui.Tag:
     )
 
 
-def modal_section(*cards: ui.Tag) -> ui.Tag:
-    """
-    Vertical stack of ``filter_option_card`` elements inside a modal column.
-
-    Uses Bootstrap ``d-flex flex-column gap-2``.
-
-    """
-    return ui.div({"class": "d-flex flex-column gap-2"}, *cards)
-
-
-# ---------------------------------------------------------------------------
-# Intersection matrix table
-# ---------------------------------------------------------------------------
-
-
-def matrix_cell_button(id: str, label: str, *, tooltip: str | None = None) -> ui.Tag:
+def matrix_cell_button(
+    id: str,
+    label: str,
+    *,
+    tooltip: str | None = None,
+    value: str | None = None,
+) -> ui.Tag:
     """
     Full-width, borderless button that fills a matrix table cell.
 
@@ -307,11 +283,17 @@ def matrix_cell_button(id: str, label: str, *, tooltip: str | None = None) -> ui
     :param label: Text displayed inside the button.
     :param tooltip: When provided, sets the native ``title`` attribute so
         browsers show a hover tooltip.
+    :param value: When provided, this literal value (JSON-encoded) is sent as
+        the input value instead of ``Math.random()``. Use this when many
+        buttons share a single input ``id`` (e.g. every cell of a large table)
+        and one reactive effect needs to decode which cell was clicked from
+        the value, rather than registering one reactive effect per cell.
 
     """
+    js_value = json.dumps(value) if value is not None else "Math.random()"
     attrs: dict[str, str | None] = {
         "class": "matrix-cell-button",
-        "onclick": f"Shiny.setInputValue('{id}', Math.random(), {{priority: 'event'}})",
+        "onclick": f"Shiny.setInputValue('{id}', {js_value}, {{priority: 'event'}})",
     }
     if tooltip is not None:
         attrs["title"] = tooltip
@@ -354,11 +336,12 @@ def matrix_row_label(label: str | ui.Tag) -> ui.Tag:
 
 
 def matrix_cell(
-    kind: Literal["empty", "diagonal", "interactive"],
+    kind: Literal["empty", "diagonal", "interactive", "value"],
     button: ui.Tag | None = None,
     *,
     active: bool = False,
     pending: bool = False,
+    label: str | None = None,
 ) -> ui.Tag:
     """
     Data cell (``<td>``) in the intersection matrix.
@@ -374,17 +357,24 @@ def matrix_cell(
       adds ``.matrix-cell-active`` for the committed regulator filter pair;
       when ``pending=True`` adds ``.matrix-cell-pending`` for a queued but
       uncommitted pair. ``active`` takes precedence over ``pending``.
+    - ``"value"`` — non-interactive, read-only upper-triangle cell showing a
+      value (e.g. a correlation) with no click behavior: ``.matrix-cell-value``.
+      Renders ``label`` as plain text; ``button`` is ignored.
 
-    :param kind: One of ``"empty"``, ``"diagonal"``, or ``"interactive"``.
+    :param kind: One of ``"empty"``, ``"diagonal"``, ``"interactive"``, or
+        ``"value"``.
     :param button: A ``matrix_cell_button`` element. Required for ``"diagonal"``
-        and ``"interactive"``; ignored for ``"empty"``.
+        and ``"interactive"``; ignored for ``"empty"`` and ``"value"``.
     :param active: Marks the selected item (e.g. committed regulator filter pair
         or currently selected correlation pair).
     :param pending: Marks a queued regulator filter pair not yet committed.
+    :param label: Text content for ``"value"`` cells.
 
     """
     if kind == "empty":
         return ui.tags.td({"class": "matrix-cell-empty"}, "")
+    if kind == "value":
+        return ui.tags.td({"class": "matrix-cell-value"}, label or "")
     if kind == "diagonal":
         return ui.tags.td({"class": "matrix-cell-diagonal"}, button)
     # interactive
@@ -397,64 +387,129 @@ def matrix_cell(
     return ui.tags.td({"class": cls}, button)
 
 
-def pending_regulator_banner(
-    display_a: str,
-    display_b: str,
-    n_common: int,
+def matrix_table(
+    header_row: ui.Tag, *body_rows: ui.Tag, scroll_y: bool = False
 ) -> ui.Tag:
     """
-    Persistent inline notification shown when a regulator filter is queued.
+    Full intersection matrix ``<table>``, wrapped in a horizontal-scroll container so
+    columns keep their natural width and scroll on narrow viewports instead of
+    shrinking.
 
-    Appears above the matrix table. Not a modal — clicking outside has no effect.
-    The Cancel button emits ``input.cancel_pending_regulator``.
-
-    CSS: ``.pending-regulator-banner``
-
-    :param display_a: Human-readable name of the first dataset.
-    :param display_b: Human-readable name of the second dataset.
-    :param n_common: Number of common regulators in the pending filter.
-
-    """
-    return ui.div(
-        {"class": "pending-regulator-banner"},
-        ui.div(
-            {"class": "pending-regulator-banner-body"},
-            ui.span(
-                {"class": "pending-regulator-banner-text"},
-                ui.strong(f"{n_common:,} common regulators"),
-                f" between {display_a} and {display_b} queued as a filter. "
-                "Click Apply in the sidebar to commit.",
-            ),
-            ui.input_action_button(
-                "cancel_pending_regulator",
-                "Cancel",
-                class_="btn btn-sm btn-outline-secondary",
-            ),
-        ),
-    )
-
-
-def matrix_table(header_row: ui.Tag, *body_rows: ui.Tag) -> ui.Tag:
-    """
-    Full intersection matrix ``<table>``.
-
-    CSS: ``.matrix-summary-table``
+    CSS: ``.matrix-scroll-container``, ``.matrix-summary-table``,
+    ``.matrix-scroll-container--scroll-y``
 
     :param header_row: A ``<tr>`` built from ``matrix_row_header`` and
         ``matrix_col_header`` cells.
     :param body_rows: One ``<tr>`` per active dataset, built from
         ``matrix_row_label``, ``matrix_cell_empty``, ``matrix_cell_diagonal``,
         and ``matrix_cell_interactive`` cells.
+    :param scroll_y: When ``True``, caps the table height and scrolls
+        vertically with a pinned header, for tables that can have many rows
+        (e.g. a per-regulator table) rather than the intersection matrix's
+        default unbounded height.
 
     """
-    return ui.tags.table(
-        {"class": "matrix-summary-table"},
-        ui.tags.thead(header_row),
-        ui.tags.tbody(*body_rows),
+    cls = "matrix-scroll-container"
+    if scroll_y:
+        cls += " matrix-scroll-container--scroll-y"
+    return ui.div(
+        {"class": cls},
+        ui.tags.table(
+            {"class": "matrix-summary-table"},
+            ui.tags.thead(header_row),
+            ui.tags.tbody(*body_rows),
+        ),
+    )
+
+
+def scroll_row(*children: Any, gap: Literal["sm", "lg"] = "sm") -> ui.Tag:
+    """
+    Horizontal flex row that scrolls instead of shrinking its children.
+
+    Used for rows of fixed-width plots or table cards (pair-distribution
+    plots, comparison-module table cards) that should keep their natural
+    width on narrow viewports and let the user scroll horizontally, rather
+    than squeezing graphs/column names down to fit.
+
+    CSS: ``.scroll-row`` / ``.scroll-row.gap-lg``
+
+    :param gap: ``"sm"`` (1rem, default) or ``"lg"`` (1.5rem) gap between
+        children.
+
+    """
+    cls = "scroll-row gap-lg" if gap == "lg" else "scroll-row"
+    return ui.div({"class": cls}, *children)
+
+
+def scroll_viewport(child: Any, *, width_factor: float) -> ui.Tag:
+    """
+    Fixed-width window onto a wider child that the user scrolls sideways.
+
+    The child is as wide as ``width_factor`` times the window, so a factor of ``N / 3``
+    shows three of ``N`` equal panels at a time. A plotly figure inside takes the
+    child's width, so one wide figure replaces many separate ones.
+
+    CSS: ``.scroll-viewport`` / ``.scroll-viewport-inner``
+
+    :param child: The wide content, typically a plotly figure.
+    :param width_factor: Child width as a multiple of the window width; at least 1.
+
+    """
+    return ui.div(
+        {"class": "scroll-viewport"},
+        ui.div(
+            {
+                "class": "scroll-viewport-inner",
+                "style": f"width: {max(width_factor, 1.0) * 100:.3f}%;",
+            },
+            child,
+        ),
+    )
+
+
+def export_download_button(id: str) -> ui.Tag:
+    """
+    Full-width download button for exporting selected datasets as a tarball.
+
+    CSS: ``.btn-export-datasets``
+
+    :param id: Shiny download ID (paired with a ``@render.download`` handler).
+
+    """
+    return ui.download_button(
+        id,
+        "Export Selected Datasets",
+        icon=fa.icon_svg("download", width="14px", height="14px"),
+        class_="btn-export-datasets",
+    )
+
+
+def export_instructions(run_name_placeholder: str) -> ui.Tag:
+    """
+    Extraction instructions shown above the export download button.
+
+    Tells the user to extract the archive and ``cd`` into it *before* they
+    get to the bundled README -- they need this step to even reach the
+    README, so it can't live only inside the tarball.
+
+    CSS: ``.export-instructions``
+
+    :param run_name_placeholder: Stand-in for the timestamped run name (the
+        real value isn't known until the download fires) -- used for both
+        the archive filename and the directory it extracts into.
+
+    """
+    return ui.div(
+        {"class": "export-instructions"},
+        ui.p("After downloading, extract the archive and enter its directory:"),
+        ui.tags.pre(
+            f"tar xzf {run_name_placeholder}.tar.gz\ncd {run_name_placeholder}"
+        ),
     )
 
 
 __all__ = [
+    "sidebar_text",
     # tooltips
     "tooltip",
     # typography
@@ -466,16 +521,16 @@ __all__ = [
     "github_badge",
     # dataset selection
     "dataset_row",
-    "dataset_list",
-    "filter_button",
     # filter modal
     "filter_option_card",
-    "modal_section",
     # matrix
     "matrix_cell_button",
     "matrix_header_cell",
     "matrix_row_label",
     "matrix_cell",
     "matrix_table",
-    "pending_regulator_banner",
+    "scroll_row",
+    # export
+    "export_download_button",
+    "export_instructions",
 ]

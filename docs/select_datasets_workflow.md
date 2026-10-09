@@ -1,55 +1,71 @@
-# Select Datasets
+# Dataset selection
 
-This describes the workflow through the select datasets page.
+The Dataset selection page decides which datasets, and which samples within each
+dataset, every other page analyses.
 
 ## Structure
 
-There is a sidebar that displays the binding and perturbation datasets. Each dataset 
-has a selection slider and a filter button. Clicking the filter button opens a modal that
-allows the user to set filters on the corresponding dataset. There are two columns in the
-modal, the left side is common characteristics and the right side is dataset specific characteristics. The common characteristics each have an option to set any of the 
-settings on that dataset to strictly the corresponding dataset, or across all of the
-datasets.  
+The **sidebar** lists the binding and perturbation datasets under two headings. Each
+dataset row has a switch that activates it and a filter button that opens its filter
+modal. Hovering over a dataset's name shows its description. The modal has two columns: characteristics
+shared across datasets on the left, each with an "Apply to all datasets" toggle that
+copies the setting to every dataset with that characteristic, and dataset-specific
+characteristics on the right. "Queue Filters" stages the modal's settings; "Reset"
+clears them.
 
-The workspace displays a dataset intersections matrix. When a dataset is activated 
-(either by toggling the selection slider or by setting filters), it is added as a column
-and row to the matrix. The cells of the matrix display how many regulators and how 
-many samples there are in the dataset (given any filters) in the diagonal and how many
-regulators are common between two datasets in the off diagonal (upper triangular).
-Clicking a diagonal cell opens a modal that gives information about whether or not
-the regulators are represented by unique samples, and if not, what features in that 
-dataset have multiple samples for the same regulator. Clicking an off diagonal cell
-opens a modal that has an option to set that set of regulators (those in the pairwise 
-intersection) as an "apply to all" filter on all selected datasets.
+Experimental-condition columns with defined levels appear as checkboxes, each
+labelled with the level's definition. Selecting values of another characteristic,
+such as carbon source, narrows the condition checkboxes to the conditions that occur
+with it. When the dataset already has filters, the modal opens with those other
+characteristics set to the values that occur with the filters, and offers only the
+conditions that match.
 
-## first load
+Edits are staged, not applied. While any switch or filter differs from what is applied,
+the sidebar shows "Dataset selection has changed. Click Apply Changes to update." and
+the **Apply Changes** button is highlighted; clicking it commits every staged change at
+once. A switch whose state is staged but not yet applied is drawn yellow.
 
-Clicking "dataset selection" (or any of the other navbar options) should, if it is
-the first time the user has clicked off the homepage in this session, start the
-vdb_init extended task. A message should appear on the workspace page that says
-"Loading data, please wait. This typically takes less than 5 seconds. Thank you for your patience.".  
+The **workspace** shows the dataset intersection matrix, with one row and one column
+per active dataset:
 
-There is a default set of data selections and filters that the site developer has set, 
-and those selections and filters should be added to the data object that tracks the user's
-selections. This should be present before the first rendering of the select datasets page 
-so that on first rendering, the selections and filters are already applied and the dataset
-intersections matrix is populated.  
+- a diagonal cell shows the dataset's regulator and sample counts under its filters.
+  Clicking it opens a modal that says whether every regulator is represented by one
+  sample and, if not, which characteristics distinguish a regulator's samples;
+- an off-diagonal cell (upper triangle) shows the number of regulators the two datasets
+  share. Clicking it opens a modal whose "Select common regulators" button restricts
+  every dataset to that shared set immediately, as a `regulator_locus_tag` filter; the
+  cell stays highlighted while that restriction is in force.
 
-## usage
+Below the matrix, **Regulators by Dataset** lists each regulator against the active
+datasets it appears in, with a search box to pick out regulators.
 
-At this point, the user may click through the data filters in order to understand the 
-data sets and filters. They may make changes, which accumulate until the user clicks 
-the "apply" button at which point any filters that have been changed/datasets that have 
-been selected/deselected, etc are applied. Note that choosing a set of regulators to set
-as a common filter from the off diagonal of the datasets intersections should be 
-treated similarly and queued until the user clicks applied. There should be a message 
-on the main workspace page that says a the regulator filter is pending with an option
-to cancel it. Only one of these common regulator filters should be pending at one time,
-so if the user chooses a different pairwise common rgulator intersection, and there 
-is already one selected by not applied, it should be replaced.  
+## First load
 
-## impact on other pages
+The page opens with the default selection already applied: the datasets marked
+`active_default` in the collection config's tags are switched on, and
+`DEFAULT_DATASET_FILTERS` (`tfbpshiny/utils/vdb_init.py`) is applied. The defaults are
+chosen so that every dataset has exactly one sample per regulator.
 
-The selected datasets determines what datasets, and what samples within each dataset,
-are available for analysis on the binding, perturbation and comparison tabs.
+## Export
 
+When at least one dataset is active, the sidebar footer offers an export. The download
+is not the data itself but a small kit, `tfbpshiny_export-<datetime>.tar.gz`, that the
+user runs on their own machine to pull the data through `labretriever`. Extracting it
+creates `tfbpshiny_export-<datetime>/` with:
+
+- `brentlab_yeast_collection.yaml`: a copy of the collection config, so the script
+  resolves the same HuggingFace repositories and configs as the app;
+- `fetch_data.py`: one block per active dataset, embedding the SQL and bound parameters
+  of `metadata_query` and `full_data_query` under the current filters. Run, it queries
+  `labretriever.VirtualDB` for each dataset and writes one subdirectory per dataset
+  containing `metadata.csv`, `annotated_features.csv` and, when a description is
+  available, a `README.md`;
+- `requirements.txt`: the dependencies `fetch_data.py` needs (`labretriever`);
+- `README.md`: how to create a virtual environment, install the requirements and run
+  the script.
+
+## Effect on other pages
+
+The active datasets and the applied filters determine the datasets and samples the
+Binding, Perturbation, Comparison and Figures pages draw from. Filters set on a primary
+dataset apply to all of its promoter-set and peak-calling variants.

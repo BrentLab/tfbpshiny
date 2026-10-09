@@ -2,7 +2,7 @@ exclude: ^docs/|devcontainer.json|.*/snapshots/
 default_stages: [pre-commit]
 
 default_language_version:
-  python: python3.11
+  python: python3.12
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -63,6 +63,12 @@ repos:
     rev: v1.15.0
     hooks:
       - id: mypy
+
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: 'v2.16'
+    hooks:
+      - id: vulture
+        pass_filenames: false
 
   - repo: https://github.com/markdownlint/markdownlint
     rev: v0.12.0

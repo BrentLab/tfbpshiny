@@ -20,9 +20,15 @@ repositories:
           description:
             Promoter regions defined as the intergenic region upstream of the 5' end
             of a given feature. Note that out of 6040 features, 1410 are divergently
-            transcribed
+            transcribed.
 
   BrentLab/callingcards:
+    tags:
+      data_type: "binding"
+      assay: "CallingCards"
+      base_label: "2026 Calling Cards"
+      primary: "callingcards_500bp"
+      binding_method: "promoter_enrichment"
     Regulator locus tag:
       field: regulator_locus_tag
     Regulator symbol:
@@ -33,12 +39,11 @@ repositories:
       path: experimental_conditions.temperature_celsius
       dtype: string
     dataset:
-      2026_analysis_set:
+      annotated_feature_reprocess_yiming_analysis:
         tags:
-          data_type: binding
-          assay: CallingCards
-          display_name: "2026 Calling Cards"
-        db_name: callingcards
+          display_name: "2026 Calling Cards (Kang)"
+          promoter_set: "kang"
+        db_name: callingcards_kang
         description: >-
           Data generated with calling cards, a method that inserts transposons
           near TF binding sites, from cells growing on synthetic complete media
@@ -48,9 +53,8 @@ repositories:
           field: gm_id
       annotated_feature_reprocess_mindel_analysis:
         tags:
-          data_type: binding
-          assay: CallingCards
           display_name: "2026 Calling Cards (Mindel)"
+          promoter_set: "mindel"
         db_name: callingcards_mindel
         description: >-
           Data generated with calling cards, a method that inserts transposons
@@ -58,12 +62,13 @@ repositories:
           at room temperature with galactose as the sole carbon source. Quantified
           over the Mindel promoters.
         sample_id:
-          field: combined_id
+          field: gm_id
       annotated_feature_reprocess_start_codon_500bp_analysis:
         tags:
-          data_type: binding
-          assay: CallingCards
-          display_name: "2026 Calling Cards (500bp)"
+          display_name: "2026 Calling Cards"
+          promoter_set: "500bp"
+          active_default: "true"
+          color: "#4DBBD5"
         db_name: callingcards_500bp
         description: >-
           Data generated with calling cards, a method that inserts transposons
@@ -71,12 +76,11 @@ repositories:
           at room temperature with galactose as the sole carbon source. Quantified
           over the regions 500bp upstream of the targets' start codons.
         sample_id:
-          field: combined_id
+          field: gm_id
       annotated_feature_reprocess_intergenic_analysis:
         tags:
-          data_type: binding
-          assay: CallingCards
-          display_name: "2026 Calling Cards (intergenic)"
+          display_name: "2026 Calling Cards (Intergenic)"
+          promoter_set: "intergenic"
         db_name: callingcards_intergenic
         description: >-
           Data generated with calling cards, a method that inserts transposons
@@ -84,16 +88,21 @@ repositories:
           at room temperature with galactose as the sole carbon source. Quantified
           over the intergenic regions upstream of the 5' side of the targets.
         sample_id:
-          field: combined_id
+          field: gm_id
 
   BrentLab/harbison_2004:
     dataset:
       # binding
       harbison_2004:
         tags:
-          data_type: binding
-          assay: ChIP-chip
+          data_type: "binding"
+          assay: "ChIP-chip"
+          base_label: "2004 ChIP-chip"
+          primary: "harbison"
           display_name: "2004 ChIP-chip (Harbison)"
+          promoter_set: "array"
+          binding_method: "promoter_enrichment"
+          color: "#7B4F9E"
         db_name: harbison
         sample_id:
           field: sample_id
@@ -112,6 +121,11 @@ repositories:
           field: condition
 
   BrentLab/rossi_2021:
+    tags:
+      data_type: "binding"
+      assay: "ChIPexo"
+      base_label: "2021 ChIP-exo"
+      primary: "rossi_500bp"
     # binding
     Carbon source:
       path: experimental_conditions.media.carbon_source.compound
@@ -121,9 +135,9 @@ repositories:
     dataset:
       rossi_2021_af_combined:
         tags:
-          data_type: binding
-          assay: ChIPexo
-          display_name: "2021 ChIP-exo (Rossi)"
+          display_name: "2021 ChIP-exo (Rossi, Kang)"
+          promoter_set: "kang"
+          binding_method: "promoter_enrichment"
         description: >-
           ChIP-exo (a variant of ChIP-seq) data, primarily in YPD batch
           cultures at 25C. Includes DNA-binding transcription factors and
@@ -137,9 +151,9 @@ repositories:
           field: regulator_symbol
       rossi_2021_af_combined_mindel:
         tags:
-          data_type: binding
-          assay: ChIPexo
           display_name: "2021 ChIP-exo (Rossi, Mindel)"
+          promoter_set: "mindel"
+          binding_method: "promoter_enrichment"
         description: >-
           ChIP-exo data called against the Mindel promoter annotations.
           Same underlying data as rossi, re-quantified against Mindel
@@ -153,9 +167,12 @@ repositories:
           field: regulator_symbol
       rossi_2021_af_combined_start_codon_500bp:
         tags:
-          data_type: binding
-          assay: ChIPexo
-          display_name: "2021 ChIP-exo (Rossi, 500bp)"
+          display_name: "2021 ChIP-exo (Rossi)"
+          promoter_set: "500bp"
+          binding_method: "promoter_enrichment"
+          active_default: "true"
+          color: "#E64B35"
+          peak_calling_note: "Peaks called with MACS, then intersected with each promoter set. Targets are ranked by the maximum -log10(q) of the peaks falling in the promoter."
         description: >-
           ChIP-exo data with binding scores and significance statistic called
           using the promoters defined as 500bp upstream of a given target.
@@ -168,9 +185,9 @@ repositories:
           field: regulator_symbol
       rossi_2021_af_combined_intergenic:
         tags:
-          data_type: binding
-          assay: ChIPexo
-          display_name: "2021 ChIP-exo (Rossi, intergenic)"
+          display_name: "2021 ChIP-exo (Rossi, Intergenic)"
+          promoter_set: "intergenic"
+          binding_method: "promoter_enrichment"
         description: >-
           ChIP-exo data with binding scores and significance statistic called
           using the promoters defined as the full intergenic region upstream of a
@@ -184,15 +201,82 @@ repositories:
           field: regulator_symbol
       yep_filtered_peaks_combined:
         tags:
-          data_type: binding
-          assay: ChIPexo
           display_name: "2021 ChIP-exo Peaks"
+          promoter_set: "peaks"
+          binding_method: "peak_calling"
         description: >-
           ChIP-exo data quantified by the original authors' using ChExMix.
           High quality peaks annotated to the nearest ORF. Mean peak score
           is taken both within (multiple peaks within 500bp of the ORF in a
           replicate) and across replicates
         db_name: rossi_peaks
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+      macs_kang:
+        tags:
+          display_name: "2021 ChIP-exo Peaks (MACS, Kang)"
+          promoter_set: "kang"
+          binding_method: "peak_calling"
+        description: >-
+          ChIP-exo peaks called with MACS (see scripts/rossi_peak_analysis.R),
+          then intersected with the Kang promoter set (700 bp upstream of the
+          start codon, truncated by upstream features). Targets are scored by
+          the nearest, median, and max -log10(q) of the peaks in the promoter.
+        db_name: rossi_peaks_kang
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+      macs_mindel:
+        tags:
+          display_name: "2021 ChIP-exo Peaks (MACS, Mindel)"
+          promoter_set: "mindel"
+          binding_method: "peak_calling"
+        description: >-
+          ChIP-exo peaks called with MACS (see scripts/rossi_peak_analysis.R),
+          then intersected with the Mindel promoter set. Targets are scored by
+          the nearest, median, and max -log10(q) of the peaks in the promoter.
+        db_name: rossi_peaks_mindel
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+      macs_bp500:
+        tags:
+          display_name: "2021 ChIP-exo Peaks (MACS, 500bp)"
+          promoter_set: "500bp"
+          binding_method: "peak_calling"
+        description: >-
+          ChIP-exo peaks called with MACS (see scripts/rossi_peak_analysis.R),
+          then intersected with the promoter set defined as 500 bp upstream of
+          the start codon. Targets are scored by the nearest, median, and max
+          -log10(q) of the peaks in the promoter.
+        db_name: rossi_peaks_500bp
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+      macs_intergenic:
+        tags:
+          display_name: "2021 ChIP-exo Peaks (MACS, Intergenic)"
+          promoter_set: "intergenic"
+          binding_method: "peak_calling"
+        description: >-
+          ChIP-exo peaks called with MACS (see scripts/rossi_peak_analysis.R),
+          then intersected with the intergenic promoter set from SGD 5-1.
+          Targets are scored by the nearest, median, and max -log10(q) of the
+          peaks in the promoter.
+        db_name: rossi_peaks_intergenic
         sample_id:
           field: sample_id
         Regulator locus tag:
@@ -210,8 +294,9 @@ repositories:
     dataset:
       hu_2007_reimand_2010:
         tags:
-          data_type: perturbation
-          assay: TFKO
+          data_type: "perturbation"
+          assay: "TFKO"
+          base_label: "2007 TFKO"
           display_name: "2007 TFKO (Hu)"
         db_name: hu_reimand
         sample_id:
@@ -232,9 +317,13 @@ repositories:
       # binding
       chec_mahendrawada_m2025_af_combined:
         tags:
-          data_type: binding
-          assay: ChEC-seq
-          display_name: "2025 ChEC-seq (Mahendrawada)"
+          data_type: "binding"
+          assay: "ChEC-seq"
+          base_label: "2025 ChEC-seq"
+          primary: "chec_m2025_500bp"
+          display_name: "2025 ChEC-seq (Mahendrawada, Kang)"
+          promoter_set: "kang"
+          binding_method: "promoter_enrichment"
         db_name: chec_m2025
         sample_id:
           field: sample_id
@@ -244,11 +333,21 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
+        Carbon source: &chec_carbon_source
+          field: condition
+          path: media.carbon_source.compound
+        Temperature: &chec_temperature
+          field: condition
+          path: temperature_celsius
       chec_mahendrawada_m2025_af_combined_mindel:
         tags:
-          data_type: binding
-          assay: ChEC-seq
+          data_type: "binding"
+          assay: "ChEC-seq"
+          base_label: "2025 ChEC-seq"
+          primary: "chec_m2025_500bp"
           display_name: "2025 ChEC-seq (Mahendrawada, Mindel)"
+          promoter_set: "mindel"
+          binding_method: "promoter_enrichment"
         description: >-
           ChEC-seq data called against the Mindel promoter annotations.
           Same underlying data as chec_m2025, re-quantified against Mindel
@@ -262,11 +361,20 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
       chec_mahendrawada_m2025_af_combined_start_codon_500bp:
         tags:
-          data_type: binding
-          assay: ChEC-seq
-          display_name: "2025 ChEC-seq (Mahendrawada, 500bp)"
+          data_type: "binding"
+          assay: "ChEC-seq"
+          base_label: "2025 ChEC-seq"
+          primary: "chec_m2025_500bp"
+          display_name: "2025 ChEC-seq (Mahendrawada)"
+          promoter_set: "500bp"
+          binding_method: "promoter_enrichment"
+          active_default: "true"
+          color: "#00A087"
+          peak_calling_note: "Peaks called with HOMER, replicating the peak-calling method used in the reference publication, then intersected with each promoter set. A peak is kept when it appears in at least two replicates; targets are ranked by the maximum peak score in the promoter."
         description: >-
           ChEC-seq data with binding scores and significance statistic called
           using the promoters defined as the full 500bp regions upstream of the
@@ -280,11 +388,17 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
       chec_mahendrawada_m2025_af_combined_intergenic:
         tags:
-          data_type: binding
-          assay: ChEC-seq
-          display_name: "2025 ChEC-seq (Mahendrawada, intergenic)"
+          data_type: "binding"
+          assay: "ChEC-seq"
+          base_label: "2025 ChEC-seq"
+          primary: "chec_m2025_500bp"
+          display_name: "2025 ChEC-seq (Mahendrawada, Intergenic)"
+          promoter_set: "intergenic"
+          binding_method: "promoter_enrichment"
         description: >-
           ChEC-seq data with binding scores and significance statistic called
           using the promoters defined as the full intergenic regions upstream of the
@@ -298,11 +412,17 @@ repositories:
           field: regulator_symbol
         Experimental condition:
           field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
       mahendrawada_chec_seq:
         tags:
-          data_type: binding
-          assay: ChEC-seq
+          data_type: "binding"
+          assay: "ChEC-seq"
+          base_label: "2025 ChEC-seq"
+          primary: "chec_m2025_500bp"
           display_name: "2025 ChEC-seq Peaks (Mahendrawada)"
+          promoter_set: "peaks"
+          binding_method: "peak_calling"
         Carbon source:
           path: experimental_conditions.media.carbon_source.compound
         Temperature:
@@ -317,12 +437,131 @@ repositories:
           field: regulator_locus_tag
         Regulator symbol:
           field: regulator_symbol
+        # These peak calls carry no per-sample condition column, but every sample is the
+        # standard condition. Declared as a constant so the default "Experimental
+        # condition" filter (inherited from chec_m2025_500bp) applies to this dataset
+        # like every other ChEC-seq variant, instead of being skipped for lack of the
+        # column.
+        Experimental condition:
+          expression: "'standard'"
+      kang_peaks:
+        tags:
+          data_type: "binding"
+          assay: "ChEC-seq"
+          base_label: "2025 ChEC-seq"
+          primary: "chec_m2025_500bp"
+          display_name: "2025 ChEC-seq Peaks (HOMER, Kang)"
+          promoter_set: "kang"
+          binding_method: "peak_calling"
+        description: >-
+          ChEC-seq peaks called with HOMER, replicating the peak-calling method
+          used in the reference publication (see
+          scripts/mahendrawada_peak_analysis.R), then intersected with the Kang
+          promoter set (700 bp upstream of the start codon, truncated by
+          upstream features). A peak is retained when it appears in at least two
+          replicates. Targets are scored by the nearest, median, and max peak
+          score in the promoter.
+        db_name: chec_m2025_peaks_kang
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+        Experimental condition:
+          field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
+      mindel_peaks:
+        tags:
+          data_type: "binding"
+          assay: "ChEC-seq"
+          base_label: "2025 ChEC-seq"
+          primary: "chec_m2025_500bp"
+          display_name: "2025 ChEC-seq Peaks (HOMER, Mindel)"
+          promoter_set: "mindel"
+          binding_method: "peak_calling"
+        description: >-
+          ChEC-seq peaks called with HOMER, replicating the peak-calling method
+          used in the reference publication (see
+          scripts/mahendrawada_peak_analysis.R), then intersected with the
+          Mindel promoter set. A peak is retained when it appears in at least
+          two replicates. Targets are scored by the nearest, median, and max
+          peak score in the promoter.
+        db_name: chec_m2025_peaks_mindel
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+        Experimental condition:
+          field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
+      bp500_peaks:
+        tags:
+          data_type: "binding"
+          assay: "ChEC-seq"
+          base_label: "2025 ChEC-seq"
+          primary: "chec_m2025_500bp"
+          display_name: "2025 ChEC-seq Peaks (HOMER, 500bp)"
+          promoter_set: "500bp"
+          binding_method: "peak_calling"
+        description: >-
+          ChEC-seq peaks called with HOMER, replicating the peak-calling method
+          used in the reference publication (see
+          scripts/mahendrawada_peak_analysis.R), then intersected with the
+          promoter set defined as 500 bp upstream of the start codon. A peak is
+          retained when it appears in at least two replicates. Targets are
+          scored by the nearest, median, and max peak score in the promoter.
+        db_name: chec_m2025_peaks_500bp
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+        Experimental condition:
+          field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
+      intergenic_peaks:
+        tags:
+          data_type: "binding"
+          assay: "ChEC-seq"
+          base_label: "2025 ChEC-seq"
+          primary: "chec_m2025_500bp"
+          display_name: "2025 ChEC-seq Peaks (HOMER, Intergenic)"
+          promoter_set: "intergenic"
+          binding_method: "peak_calling"
+        description: >-
+          ChEC-seq peaks called with HOMER, replicating the peak-calling method
+          used in the reference publication (see
+          scripts/mahendrawada_peak_analysis.R), then intersected with the
+          intergenic promoter set from SGD 5-1. A peak is retained when it
+          appears in at least two replicates. Targets are scored by the nearest,
+          median, and max peak score in the promoter.
+        db_name: chec_m2025_peaks_intergenic
+        sample_id:
+          field: sample_id
+        Regulator locus tag:
+          field: regulator_locus_tag
+        Regulator symbol:
+          field: regulator_symbol
+        Experimental condition:
+          field: condition
+        Carbon source: *chec_carbon_source
+        Temperature: *chec_temperature
       # perturbation
       rnaseq_reprocessed:
         tags:
-          data_type: perturbation
-          assay: ChIPexo
+          data_type: "perturbation"
+          assay: "RNA-seq"
+          base_label: "2025 Degron"
           display_name: "2025 Degron (Mahendrawada)"
+          active_default: "true"
+          color: "#91D1C2"
         description: >-
           RNA-seq expression data generated from nascent RNA (4TU labelling and
           purification) following depletion of a given TF via the auxin-inducible
@@ -336,12 +575,14 @@ repositories:
           field: regulator_symbol
 
   BrentLab/hughes_2006:
+    tags:
+      data_type: "perturbation"
     dataset:
       # perturbation
       overexpression:
         tags:
-          data_type: perturbation
-          assay: overexpression
+          assay: "overexpression"
+          base_label: "2006 Overexpression"
           display_name: "2006 Overexpression (Hughes)"
         db_name: hughes_overexpression
         sample_id:
@@ -358,9 +599,9 @@ repositories:
       # perturbation
       knockout:
         tags:
-          data_type: perturbation
-          assay: TFKO
-          display_name: "2006 Knockout (Hughes)"
+          assay: "TFKO"
+          base_label: "2006 TFKO"
+          display_name: "2006 TFKO (Hughes)"
         db_name: hughes_knockout
         sample_id:
           field: sample_id
@@ -379,9 +620,12 @@ repositories:
       # perturbation
       kemmeren_2014:
         tags:
-          data_type: perturbation
-          assay: TFKO
+          data_type: "perturbation"
+          assay: "TFKO"
+          base_label: "2014 TFKO"
           display_name: "2014 TFKO (Kemmeren)"
+          active_default: "true"
+          color: "#3C5488"
         db_name: kemmeren
         sample_id:
           field: sample_id
@@ -400,9 +644,12 @@ repositories:
       # perturbation
       hackett_2020_analysis_set:
         tags:
-          data_type: perturbation
-          assay: overexpression
+          data_type: "perturbation"
+          assay: "overexpression"
+          base_label: "2020 Overexpression"
           display_name: "2020 Overexpression (Hackett)"
+          active_default: "true"
+          color: "#F39B7F"
         db_name: hackett
         sample_id:
           field: sample_id
@@ -428,18 +675,46 @@ repositories:
           field: dto_fdr
         links:
           binding_id:
-            - [BrentLab/harbison_2004, harbison_2004]
-            - [BrentLab/callingcards, annotated_features]
-            - [BrentLab/callingcards, annotated_features_combined]
-            - [BrentLab/callingcards, annotated_features_orig_reprocess]
+            # 23 binding datasets present in the dto partitions
+            # callingcards
+            - [BrentLab/callingcards, annotated_feature_reprocess_yiming_analysis]
+            - [BrentLab/callingcards, annotated_feature_reprocess_mindel_analysis]
+            - [BrentLab/callingcards, annotated_feature_reprocess_start_codon_500bp_analysis]
+            - [BrentLab/callingcards, annotated_feature_reprocess_intergenic_analysis]
+            # rossi_2021
             - [BrentLab/rossi_2021, rossi_2021_af_combined]
+            - [BrentLab/rossi_2021, rossi_2021_af_combined_mindel]
+            - [BrentLab/rossi_2021, rossi_2021_af_combined_start_codon_500bp]
+            - [BrentLab/rossi_2021, rossi_2021_af_combined_intergenic]
+            - [BrentLab/rossi_2021, yep_filtered_peaks_combined]
+            - [BrentLab/rossi_2021, macs_kang]
+            - [BrentLab/rossi_2021, macs_mindel]
+            - [BrentLab/rossi_2021, macs_bp500]
+            - [BrentLab/rossi_2021, macs_intergenic]
+            # mahendrawada_2025
             - [BrentLab/mahendrawada_2025, chec_mahendrawada_m2025_af_combined]
+            - [BrentLab/mahendrawada_2025, chec_mahendrawada_m2025_af_combined_mindel]
+            - [BrentLab/mahendrawada_2025, chec_mahendrawada_m2025_af_combined_start_codon_500bp]
+            - [BrentLab/mahendrawada_2025, chec_mahendrawada_m2025_af_combined_intergenic]
+            - [BrentLab/mahendrawada_2025, mahendrawada_chec_seq]
+            - [BrentLab/mahendrawada_2025, kang_peaks]
+            - [BrentLab/mahendrawada_2025, mindel_peaks]
+            - [BrentLab/mahendrawada_2025, bp500_peaks]
+            - [BrentLab/mahendrawada_2025, intergenic_peaks]
+            - [BrentLab/harbison_2004, harbison_2004]
           perturbation_id:
-            - [BrentLab/kemmeren_2014, kemmeren_2014]
-            - [BrentLab/hackett_2020, hackett_2020]
+            # 6 perturbation datasets present in the dto partitions
+            # hu_2007_reimand_2010
+            - [BrentLab/hu_2007_reimand_2010, hu_2007_reimand_2010]
+            # mahendrawada_2025
+            - [BrentLab/mahendrawada_2025, rnaseq_reprocessed]
+            # hughes_2006
             - [BrentLab/hughes_2006, overexpression]
             - [BrentLab/hughes_2006, knockout]
-            - [BrentLab/mahendrawada_2025, rnaseq_reprocessed]
+            # kemmeren_2014
+            - [BrentLab/kemmeren_2014, kemmeren_2014]
+            # hackett_2020
+            - [BrentLab/hackett_2020, hackett_2020_analysis_set]
 
 factor_aliases:
   Carbon source:
