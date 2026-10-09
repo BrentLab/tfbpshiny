@@ -1,7 +1,9 @@
 # TFBPShiny
 
-A Shiny web application for exploring transcription factor binding and perturbation
+A [Shiny web application](https://01a120d2-d9fe-6c02-01bb-20aa7e46f40c.share.connect.posit.cloud/) for exploring transcription factor binding and perturbation
 data from the [Brent Lab yeast collection](https://huggingface.co/collections/BrentLab/yeastresources).
+
+Documentation: <https://brentlab.github.io/tfbpshiny/>
 
 ## Table of contents
 
