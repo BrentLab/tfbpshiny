@@ -32,18 +32,19 @@ LABELS = {
 
 def test_scoring_clause_resolves_preset_per_dataset() -> None:
     """
-    Each dataset contributes its own threshold pair, not a global one.
+    Stringent pins |effect| > 0.77 and p <= 0.05 for every dataset, Relaxed 0 and 0.05.
 
-    Kemmeren and Degron have different Stringent cutoffs, so a single global pair would
-    silently misread one of them.
+    The pair is resolved through the preset table per dataset, so a dataset given its
+    own entry later is read with that entry rather than a global pair.
 
     """
     from tfbpshiny.modules.figures.queries import scoring_clause
 
-    _, kem = scoring_clause("kemmeren", "Stringent")
-    _, deg = scoring_clause("degron", "Stringent")
-    assert kem == [0.77, 0.05]
-    assert deg == [0.38, 0.1]
+    for pr_db in ("kemmeren", "degron", "hackett", "hu_reimand"):
+        _, stringent = scoring_clause(pr_db, "Stringent")
+        _, relaxed = scoring_clause(pr_db, "Relaxed")
+        assert stringent == [0.77, 0.05]
+        assert relaxed == [0.0, 0.05]
 
 
 def test_stringent_matches_the_presets_table() -> None:

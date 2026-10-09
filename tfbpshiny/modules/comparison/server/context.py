@@ -40,12 +40,13 @@ from tfbpshiny.utils.vdb_init import (
 #: Tooltip for each responsiveness preset, keyed by name.
 PRESET_HELP: dict[str, str] = {
     "Relaxed": (
-        "Applies a uniform pvalue < 0.05 threshold. Hover over"
+        "Applies a uniform pvalue <= 0.05 threshold. Hover over"
         " perturbation column headers in Compare Datasets for"
         " per-dataset details."
     ),
     "Stringent": (
-        "Uses the original authors' thresholds for each dataset."
+        "Uses |effect| > 0.77 and pvalue <= 0.05 for every dataset"
+        " (effect only where a dataset has no p-value)."
         " Hover over perturbation column headers in Compare"
         " Datasets for per-dataset details."
     ),

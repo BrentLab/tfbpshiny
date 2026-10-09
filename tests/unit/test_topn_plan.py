@@ -58,10 +58,10 @@ def test_presets_do_not_depend_on_threshold_flags(pr_db: str) -> None:
 
 def test_per_dataset_resolution_beats_the_cross_product() -> None:
     """
-    Resolving per dataset costs far less than cross-producting the distinct pairs.
+    Resolving per dataset stores only the pairs the presets name, never a cross product.
 
-    Across the six datasets the two presets use four distinct (effect, pvalue) pairs; a
-    global cross product would be eight combinations for every dataset.
+    Each preset resolves to one (effect, pvalue) pair per dataset, so at most two pairs
+    are stored for any dataset.
 
     """
     for pr_db in PR_DATASETS:

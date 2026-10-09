@@ -464,10 +464,11 @@ CREATE TABLE topn_results (
 - **Responsiveness is decided by `(effect_threshold, pvalue_threshold)` and
   nothing else.** The build stores the pair each preset (`Relaxed`,
   `Stringent`) resolves to for each perturbation dataset, from
-  `DEFAULT_RESPONSIVENESS_PRESETS` in `utils/vdb_init.py`; `Stringent` holds
-  each dataset's published criteria. Kemmeren stores `(0.0, 0.05)` and
-  `(0.77, 0.05)`; Degron stores `(0.0, 0.05)` and `(0.38, 0.1)`. **Every read
-  must pin the pair**; a query that does not takes a median across both
+  `DEFAULT_RESPONSIVENESS_PRESETS` in `utils/vdb_init.py`. Every dataset stores
+  `(0.0, 0.05)` for `Relaxed` and `(0.77, 0.05)` for `Stringent`; a dataset with
+  no p-value column (Hackett, Hughes) ignores the p-value half. A row is
+  responsive when `|effect| > effect_threshold` and `pvalue <= pvalue_threshold`.
+  **Every read must pin the pair**; a query that does not takes a median across both
   definitions of responsive.
 
 ### `topn_agreement`
@@ -616,7 +617,7 @@ its coefficients are fitted but not stored. Harbison (`array`), the authors'
 peaks (`peaks`) and Calling Cards (no peak-calling arm) are not in the panel.
 The panel is restricted to:
 
-- samples allowed by `DEFAULT_DATASET_FILTERS` (e.g. Hackett's 45-minute
+- samples allowed by `DEFAULT_DATASET_FILTERS` (e.g. Hackett's 30-minute
   timepoint), the same default filters every Comparison query applies;
 - regulators present in the perturbation dataset and both assays, so every cell
   covers the same regulators.

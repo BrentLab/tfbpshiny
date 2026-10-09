@@ -340,12 +340,11 @@ def responsive_expr(
 
     Responsiveness is always decided by the ``(effect, pvalue)`` thresholds passed in,
     which the coordinator resolves per dataset from
-    :data:`~tfbpshiny.utils.vdb_init.DEFAULT_RESPONSIVENESS_PRESETS`. The ``Stringent``
-    preset holds each dataset's published criteria.
+    :data:`~tfbpshiny.utils.vdb_init.DEFAULT_RESPONSIVENESS_PRESETS`.
 
     :param perturbation_view: Dataset name (key in ``PERTURBATION_DATASET_COLUMNS``).
     :param effect_threshold: Absolute effect magnitude must exceed this.
-    :param pvalue_threshold: P-value must be below this (ignored when no pvalue col).
+    :param pvalue_threshold: P-value must be at most this (ignored when no pvalue col).
     :param param_prefix: Namespace prefix for SQL parameter names.
     :param params: Dict populated in-place with threshold values.
     :returns: SQL CASE expression string evaluating to 1 or 0.
@@ -595,7 +594,7 @@ def topn_pair_select_sql_v2(
 
     responsive_expr = (
         "CASE WHEN ABS(pert.effect) > v.eff_thresh"
-        " AND pert.pvalue < v.pval_thresh THEN 1 ELSE 0 END"
+        " AND pert.pvalue <= v.pval_thresh THEN 1 ELSE 0 END"
         if has_pvalue
         else "CASE WHEN ABS(pert.effect) > v.eff_thresh THEN 1 ELSE 0 END"
     )

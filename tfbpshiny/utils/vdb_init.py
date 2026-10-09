@@ -88,7 +88,7 @@ DEFAULT_DATASET_FILTERS: dict[str, dict] = {
         "Experimental condition": {"type": "categorical", "value": ["standard"]},
     },
     "hackett": {
-        "time": {"type": "categorical", "value": [45.0]},
+        "time": {"type": "categorical", "value": [30.0]},
     },
 }
 
@@ -119,19 +119,15 @@ ResponsivenessPreset = dict[str, tuple[float, float]]
 # applies to are ``tfbpshiny.datasets.PERTURBATION_DATASET_COLUMNS`` (degron is
 # thresholded on ``padj``).
 
-# provide two options: author settings (more stringent) and relaxed thresholds
-# (chose reasonable, with result)
+# Stringent applies one rule to every dataset: |effect| > 0.77 (log2(1.7), on each
+# dataset's own effect column) and p-value <= 0.05 (on its own p-value column). The
+# effect columns are all log fold changes, so the same threshold applies to each.
+# hackett and hughes publish no p-value column; the 0.05 stored for them is ignored
+# and only the effect threshold decides (it distinguishes Stringent from Relaxed).
+# Relaxed is a uniform |effect| > 0 and p-value <= 0.05.
 DEFAULT_RESPONSIVENESS_PRESETS: dict[str, ResponsivenessPreset] = {
     "Stringent": {
-        "*": (1.0, 0.05),
-        "degron": (0.38, 0.1),  # |fold change| > log2(1.3) and padj < 0.1
-        # hackett/hughes have no pvalue column; materialized with pvalue_threshold=0.05.
-        # Use effect_threshold only to distinguish Stringent from Relaxed.
-        "hackett": (0.1, 0.05),
-        "kemmeren": (0.77, 0.05),  # |Madj| > log2(1.7) and pval < 0.05
-        "hu_reimand": (0.0, 0.05),  # pval < 0.05 (no effect threshold)
-        "hughes_overexpression": (1.0, 0.05),
-        "hughes_knockout": (1.0, 0.05),
+        "*": (0.77, 0.05),
     },
     "Relaxed": {
         "*": (0.0, 0.05),
@@ -169,7 +165,7 @@ def get_responsiveness_label(preset_name: str, p_db: str) -> str:
     parts: list[str] = []
     parts.append(f"|{effect_col}| > {effect_thresh}")
     if pval_col and pval_thresh < 1.0:
-        parts.append(f"{pval_col} < {pval_thresh}")
+        parts.append(f"{pval_col} <= {pval_thresh}")
     else:
         parts.append("no p-value threshold")
 

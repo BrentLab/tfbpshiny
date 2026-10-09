@@ -137,8 +137,8 @@ def register_subparser(
         help=(
             "Materialize the (effect, pvalue) pair each perturbation dataset uses "
             "under this responsiveness preset, so the app's preset selector can "
-            "toggle between them. Stringent holds each dataset's published "
-            "criteria. Repeatable; defaults to both Relaxed and Stringent. "
+            "toggle between them. Stringent is |effect| > 0.77 and "
+            "p-value <= 0.05. Repeatable; defaults to both Relaxed and Stringent. "
             "Thresholds resolve per dataset, so the two presets together "
             "need only 1-2 pairs per dataset rather than the 8 a global cross "
             "product of --effect-threshold x --pvalue-threshold would produce."

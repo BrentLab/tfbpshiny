@@ -23,11 +23,11 @@ FIGURES_DEFAULT_PRESET = "Stringent"
 
 #: Tooltip for each responsiveness preset, keyed by name.
 _PRESET_HELP: dict[str, str] = {
-    "Relaxed": "Uniform |effect| > 0 and p < 0.05.",
+    "Relaxed": "Uniform |effect| > 0 and p <= 0.05.",
     "Stringent": (
-        "Each dataset's own published criteria, resolved per"
-        " dataset (e.g. TFKO |Madj| > log2(1.7) and p < 0.05;"
-        " degron |log2FC| > log2(1.3) and padj < 0.1)."
+        "|effect| > 0.77 (log2(1.7)) and p <= 0.05 on each dataset's own"
+        " effect and p-value columns (padj for degron); effect only for"
+        " datasets with no p-value."
     ),
 }
 
@@ -143,8 +143,8 @@ def figures_ui() -> ui.Tag:
                 ui.p(
                     ui.tags.em(
                         "The Responsiveness selector changes what counts as"
-                        " responsive. Stringent applies each dataset's published"
-                        " criteria, so its boxes sit well below Relaxed's."
+                        " responsive. Stringent also requires |effect| > 0.77, so its"
+                        " boxes sit well below Relaxed's."
                     )
                 ),
             ),

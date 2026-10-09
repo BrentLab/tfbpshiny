@@ -134,12 +134,11 @@ def scoring_clause(
     materialized by default, so a query that does not pin the pair medians across two
     incompatible definitions of responsive.
 
-    Thresholds resolve per perturbation dataset, so the pair pinned for ``kemmeren``
-    differs from the one pinned for ``degron`` under the same preset name.
+    Thresholds resolve per perturbation dataset through the preset table, which today
+    gives every dataset the same pair under a given preset name.
 
     :param pr_db: Perturbation dataset, whose own preset thresholds are used.
-    :param preset_name: Responsiveness preset (``Relaxed`` or ``Stringent``, the
-        latter being each dataset's published criteria).
+    :param preset_name: Responsiveness preset (``Relaxed`` or ``Stringent``).
     :param alias: Table alias used in the calling query.
     :returns: ``(sql_fragment, params)``.
 

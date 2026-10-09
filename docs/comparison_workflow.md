@@ -20,7 +20,8 @@ The **sidebar** has:
 - Controls for the selected metric. For Top-N: **Top N** (10, 25, 50, 75 or 100;
   default 25), **Require full overlap** (on by default: keep only regulator/sample pairs
   whose top-N list is complete after ties are resolved) and **Responsiveness** (Relaxed,
-  default: |effect| > 0 and p < 0.05; Stringent: each dataset's published criteria).
+  default: |effect| > 0 and p <= 0.05; Stringent: |effect| > 0.77 and p <= 0.05, effect
+  only for datasets with no p-value).
   For DTO: **Perturbation Ranking** (log2fc or pvalue).
 - Controls for the active tab (below).
 

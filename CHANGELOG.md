@@ -18,6 +18,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   computed from it changes on rebuild. The `responsive` column was removed from
   every perturbation dataset. The app never read it, so only
   `dataset_column_metadata` loses rows.
+- **Rebuild required.** `Stringent` responsiveness is one rule for every
+  perturbation dataset: `|effect| > 0.77` (log2(1.7)) and `pvalue <= 0.05`, each
+  on the dataset's own effect and p-value column (`padj` for Degron). Datasets
+  with no p-value column (Hackett, Hughes) use the effect threshold alone. The
+  earlier per-dataset values are gone: Degron `(0.38, 0.1)`, Hackett and Hughes
+  `(0.1 / 1.0, 0.05)`, Hu/Reimand `(0.0, 0.05)`, other datasets `(1.0, 0.05)`.
+  The p-value comparison is now `<=` in both presets (it was `<`), so `Relaxed`
+  also changes for any row whose p-value is exactly 0.05.
+- The default Hackett filter is the 30-minute time point (it was 45). It has one
+  sample per regulator, for 196 regulators (45 minutes had 193).
 - **Rebuild required; labretriever 1.1.5.** ChEC-seq `Carbon source` and
   `Temperature` follow each sample's condition. They were the dataset-wide
   default (glucose, 30) for all 197 samples, so the filter modal's narrowing of
