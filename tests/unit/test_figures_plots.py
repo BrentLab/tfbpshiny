@@ -125,25 +125,26 @@ def test_rank_response_legend_follows_the_fixed_draw_order(
     rank_df: pd.DataFrame,
 ) -> None:
     """
-    The legend order does not depend on the data: ChIP-chip, ChIP-exo, ChEC-seq, then
-    Calling Cards, the same as the draw order and from the largest marker to the
-    smallest.
+    The legend order does not depend on the data: Calling Cards at the top, then
+    ChEC-seq, ChIP-exo and ChIP-chip at the bottom -- the reverse of the draw order,
+    so the legend reads from the smallest marker to the largest.
 
     """
     sub = rank_df[rank_df.regulator_locus_tag == "YAL001C"].copy()
-    # Make Calling Cards the highest responder: the legend must not reorder for it.
+    # Make Calling Cards the lowest responder: the legend must not reorder for it.
     sub.loc[
         (sub.binding_db == "callingcards_500bp") & (sub.n == 10), "percent_responsive"
-    ] = 99.0
+    ] = 0.0
     fig = rank_response_figure(sub, LABELS, list(BINDING_ORDER))
     by_rank = [t.name for t in sorted(fig.data, key=lambda t: t.legendrank)]
     assert by_rank == [
-        "2004 ChIP-chip",
-        "2021 ChIP-exo",
-        "2025 ChEC-seq",
         "2026 Calling Cards",
+        "2025 ChEC-seq",
+        "2021 ChIP-exo",
+        "2004 ChIP-chip",
     ]
-    assert by_rank == [t.name for t in fig.data]
+    # Drawn in the opposite order, ChIP-chip first and Calling Cards last (on top).
+    assert [t.name for t in fig.data] == by_rank[::-1]
 
 
 def test_rank_response_marker_size_belongs_to_the_dataset(

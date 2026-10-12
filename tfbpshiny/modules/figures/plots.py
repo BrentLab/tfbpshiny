@@ -175,7 +175,9 @@ def rank_response_figure(
     :param labels: db_name -> display label.
     :param binding_order: db_names to draw. Their order is :func:`_draw_order`: it sets
         the z-stacking, the legend order and each dataset's marker size (the first is
-        drawn first with the largest markers), and is the same in every panel.
+        drawn first with the largest markers), and is the same in every panel. The
+        legend lists them in reverse, so the last drawn (on top, smallest marker) is
+        at the top of the legend.
     :param title: Optional figure title.
     :param height: Pixel height.
     :param colors: Display label -> series colour (``dataset_colors``); a label
@@ -202,7 +204,7 @@ def rank_response_figure(
                 y=sub["percent_responsive"],
                 mode="lines+markers",
                 name=label,
-                legendrank=i,
+                legendrank=n_behind,
                 line=dict(width=3, color=palette.get(label)),
                 marker=dict(size=RANK_MARKER_BASE + RANK_MARKER_STEP * n_behind),
                 hovertemplate=f"{label}<br>n=%{{x}}<br>%{{y:.1f}}%<extra></extra>",
