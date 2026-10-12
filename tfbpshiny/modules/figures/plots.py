@@ -143,7 +143,8 @@ def _warn_if_clipped(
 _DRAW_LAST = "callingcards_500bp"
 
 #: Marker size of the last-drawn rank-response series, and how much larger each series
-#: drawn before it is, so coincident points show as nested markers.
+#: drawn before it is, so coincident points show as nested markers. A dataset's size is
+#: fixed by its place in the draw order, not by how many series a panel happens to have.
 RANK_MARKER_BASE = 10
 RANK_MARKER_STEP = 2
 
@@ -152,33 +153,6 @@ def _draw_order(binding_order: list[str]) -> list[str]:
     """Reorder so :data:`_DRAW_LAST` is drawn last, preserving relative order
     otherwise."""
     return sorted(binding_order, key=lambda db: db == _DRAW_LAST)
-
-
-def _legend_rank_by_top_response(
-    df: pd.DataFrame, binding_order: list[str], labels: dict[str, str]
-) -> dict[str, int]:
-    """
-    Legend order for a rank-response panel: highest response rate at the smallest
-    plotted ``n`` (approximately "top 10") first.
-
-    Independent of draw order -- plotly's ``legendrank`` controls legend position
-    without affecting which trace is painted on top.
-
-    :param df: Rows for one panel (one regulator), from ``fetch_rank_response``.
-    :param binding_order: db_names to consider.
-    :param labels: db_name -> display label.
-    :returns: label -> legend rank (0 is topmost).
-
-    """
-    rates: dict[str, float] = {}
-    for db in binding_order:
-        sub = df[df["binding_db"] == db]
-        if sub.empty:
-            continue
-        smallest_n_row = sub.sort_values("n").iloc[0]
-        rates[labels.get(db, db)] = float(smallest_n_row["percent_responsive"])
-    ordered = sorted(rates, key=lambda label: -rates[label])
-    return {label: i for i, label in enumerate(ordered)}
 
 
 def rank_response_figure(
@@ -199,9 +173,9 @@ def rank_response_figure(
 
     :param df: Rows for one regulator, from ``fetch_rank_response``.
     :param labels: db_name -> display label.
-    :param binding_order: db_names to draw. Draw order (z-stacking) and legend order
-        are each computed independently of this list's order -- see
-        :func:`_draw_order` and :func:`_legend_rank_by_top_response`.
+    :param binding_order: db_names to draw. Their order is :func:`_draw_order`: it sets
+        the z-stacking, the legend order and each dataset's marker size (the first is
+        drawn first with the largest markers), and is the same in every panel.
     :param title: Optional figure title.
     :param height: Pixel height.
     :param colors: Display label -> series colour (``dataset_colors``); a label
@@ -211,22 +185,24 @@ def rank_response_figure(
     """
     palette = colors or {}
     fig = go.Figure()
-    legend_rank = _legend_rank_by_top_response(df, binding_order, labels)
-    drawn = [db for db in _draw_order(binding_order) if (df["binding_db"] == db).any()]
-    for i, db in enumerate(drawn):
+    order = _draw_order(binding_order)
+    for i, db in enumerate(order):
         sub = df[df["binding_db"] == db].sort_values("n")
+        if sub.empty:
+            continue
         label = labels.get(db, db)
         # Curves can coincide exactly (e.g. two datasets with the same hit counts at
         # every cutoff). Markers shrink with draw order so each sits inside the larger
-        # ones drawn before it and none is hidden.
-        n_behind = len(drawn) - 1 - i
+        # ones drawn before it and none is hidden. Position, not the number of series
+        # present, sets the size, so a dataset looks the same in every panel.
+        n_behind = len(order) - 1 - i
         fig.add_trace(
             go.Scatter(
                 x=sub["n"],
                 y=sub["percent_responsive"],
                 mode="lines+markers",
                 name=label,
-                legendrank=legend_rank.get(label),
+                legendrank=i,
                 line=dict(width=3, color=palette.get(label)),
                 marker=dict(size=RANK_MARKER_BASE + RANK_MARKER_STEP * n_behind),
                 hovertemplate=f"{label}<br>n=%{{x}}<br>%{{y:.1f}}%<extra></extra>",

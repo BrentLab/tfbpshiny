@@ -121,19 +121,52 @@ def test_rank_response_overlapping_series_stay_visible(rank_df: pd.DataFrame) ->
     assert all(t.line.dash in (None, "solid") for t in fig.data)
 
 
-def test_rank_response_legend_order_by_top_10_response(rank_df: pd.DataFrame) -> None:
+def test_rank_response_legend_follows_the_fixed_draw_order(
+    rank_df: pd.DataFrame,
+) -> None:
     """
-    Legend order is independent of draw order: highest response at the smallest n
-    first.
+    The legend order does not depend on the data: ChIP-chip, ChIP-exo, ChEC-seq, then
+    Calling Cards, the same as the draw order and from the largest marker to the
+    smallest.
 
     """
     sub = rank_df[rank_df.regulator_locus_tag == "YAL001C"].copy()
-    # Give harbison the highest response rate at n=10, so it must lead the legend even
-    # though it is drawn first (not last, like Calling Cards).
-    sub.loc[(sub.binding_db == "harbison") & (sub.n == 10), "percent_responsive"] = 99.0
+    # Make Calling Cards the highest responder: the legend must not reorder for it.
+    sub.loc[
+        (sub.binding_db == "callingcards_500bp") & (sub.n == 10), "percent_responsive"
+    ] = 99.0
     fig = rank_response_figure(sub, LABELS, list(BINDING_ORDER))
-    by_rank = sorted(fig.data, key=lambda t: t.legendrank)
-    assert by_rank[0].name == "2004 ChIP-chip"
+    by_rank = [t.name for t in sorted(fig.data, key=lambda t: t.legendrank)]
+    assert by_rank == [
+        "2004 ChIP-chip",
+        "2021 ChIP-exo",
+        "2025 ChEC-seq",
+        "2026 Calling Cards",
+    ]
+    assert by_rank == [t.name for t in fig.data]
+
+
+def test_rank_response_marker_size_belongs_to_the_dataset(
+    rank_df: pd.DataFrame,
+) -> None:
+    """A dataset's marker size is the same whether or not the others are present."""
+    sub = rank_df[rank_df.regulator_locus_tag == "YAL001C"]
+    full = {
+        t.name: t.marker.size
+        for t in rank_response_figure(sub, LABELS, list(BINDING_ORDER)).data
+    }
+    assert full == {
+        "2004 ChIP-chip": 16,
+        "2021 ChIP-exo": 14,
+        "2025 ChEC-seq": 12,
+        "2026 Calling Cards": 10,
+    }
+    partial = sub[sub.binding_db != "harbison"]
+    part = {
+        t.name: t.marker.size
+        for t in rank_response_figure(partial, LABELS, list(BINDING_ORDER)).data
+    }
+    assert part == {k: v for k, v in full.items() if k != "2004 ChIP-chip"}
 
 
 def test_percent_responsive_boxes_outliers_only() -> None:
