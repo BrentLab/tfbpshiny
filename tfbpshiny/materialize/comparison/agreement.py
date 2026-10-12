@@ -131,7 +131,8 @@ def agreement_pair_select_sql(
     Return a SELECT producing ``topn_agreement`` rows for one same-type dataset pair.
 
     Each side is ranked independently within a sample, then the top-N sets are
-    intersected per regulator at every cutoff.
+    intersected per regulator at every cutoff. A regulator's own gene is excluded from
+    both rankings.
 
     Ranking uses ``ROW_NUMBER()`` rather than the average-rank tie rule used by
     ``topn_results``.
@@ -186,8 +187,11 @@ def agreement_pair_select_sql(
     expr_a = f"ABS({rank_col_a})" if comparison_type == "perturbation" else rank_col_a
     expr_b = f"ABS({rank_col_b})" if comparison_type == "perturbation" else rank_col_b
 
-    conditions_a: list[str] = []
-    conditions_b: list[str] = []
+    # A regulator's own gene is never one of its targets: it is the perturbed gene in
+    # a perturbation experiment, so it ranks at the top by construction. ``topn.py``
+    # and ``authors_bound.py`` exclude it too.
+    conditions_a: list[str] = ["regulator_locus_tag <> target_locus_tag"]
+    conditions_b: list[str] = ["regulator_locus_tag <> target_locus_tag"]
     if regulator_subset:
         ph = ", ".join(f"${param_prefix}_reg_{i}" for i in range(len(regulator_subset)))
         for i, reg in enumerate(regulator_subset):
@@ -198,8 +202,8 @@ def agreement_pair_select_sql(
         conditions_a.append(f"{rank_col_a} IS NOT NULL")
     if drop_null_scores_b:
         conditions_b.append(f"{rank_col_b} IS NOT NULL")
-    reg_clause_a = f"WHERE {' AND '.join(conditions_a)}" if conditions_a else ""
-    reg_clause_b = f"WHERE {' AND '.join(conditions_b)}" if conditions_b else ""
+    reg_clause_a = f"WHERE {' AND '.join(conditions_a)}"
+    reg_clause_b = f"WHERE {' AND '.join(conditions_b)}"
 
     n_list = ", ".join(f"({n})" for n in top_n_values)
     a_prefix = f"{hf_repo_a};{hf_config_a};".replace("'", "''")

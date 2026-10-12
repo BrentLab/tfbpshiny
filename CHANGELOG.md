@@ -26,6 +26,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **Rebuild required for figures 6 and 10.** A regulator's own gene is
+  excluded from the top-N rankings behind figure 6 (`topn_agreement`) and
+  figure 10 (`topn_target_sets`). It is the perturbed gene in a perturbation
+  experiment, so it ranked at the top by construction and counted as a shared
+  target. Figures 1, 2, 3, 7, 8 and 9 already excluded it.
 - Figure 1 plotted the authors'-threshold sets (figure 3's `top_n = 0` rows) as
   extra points on the rank-vs-response curves: Harbison at n = 7 and Calling
   Cards at n = 127 for GZF3. Each dataset now shows only its five cutoffs.

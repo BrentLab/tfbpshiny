@@ -49,3 +49,16 @@ def test_with_the_flag_only_scored_rows_are_ranked() -> None:
     out = _run(_conn(), drop_null_scores=True)
     assert sorted(out["target_locus_tag"]) == ["T0", "T1", "T2"]
     assert sorted(out["rnk"]) == [1, 2, 3]
+
+
+def test_the_regulators_own_gene_is_never_a_target() -> None:
+    """
+    The perturbed gene is not one of its own targets, so it is left out and every
+    other target moves up a rank.
+
+    """
+    conn = _conn()
+    conn.execute("INSERT INTO peaks VALUES (1, 'R', 'R', 99.0)")  # best score of all
+    out = _run(conn, drop_null_scores=True)
+    assert "R" not in set(out["target_locus_tag"])
+    assert dict(zip(out["target_locus_tag"], out["rnk"])) == {"T0": 1, "T1": 2, "T2": 3}
