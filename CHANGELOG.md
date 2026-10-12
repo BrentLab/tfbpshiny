@@ -19,6 +19,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   selection. Figures 3 and 9 are unchanged. `topn_target_sets` now holds the
   peak-calling datasets, so figure 10's binding panels need a rebuild. The new
   constant is `FIGURE_MODULE_DEFAULT_BINDING_DATASETS`.
+- Figure 1's rank-vs-response markers shrink with draw order, so a series whose
+  points coincide with another's stays visible. The axes are padded (figure 1
+  x to 108 and y to -4..104, figure 6 x to 208) so markers at the edges are
+  drawn whole.
+
+### Fixed
+
+- Figure 1 plotted the authors'-threshold sets (figure 3's `top_n = 0` rows) as
+  extra points on the rank-vs-response curves: Harbison at n = 7 and Calling
+  Cards at n = 127 for GZF3. Each dataset now shows only its five cutoffs.
 
 ---
 

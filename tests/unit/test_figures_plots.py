@@ -103,6 +103,24 @@ def test_rank_response_draws_calling_cards_last(rank_df: pd.DataFrame) -> None:
     assert fig.data[-1].name == "2026 Calling Cards"
 
 
+def test_rank_response_overlapping_series_stay_visible(rank_df: pd.DataFrame) -> None:
+    """
+    Series that coincide exactly are all still distinguishable.
+
+    Markers are strictly larger the earlier a series is drawn, so each nests inside
+    the ones behind it. Lines stay solid.
+
+    """
+    sub = rank_df[rank_df.regulator_locus_tag == "YAL001C"].copy()
+    # Make every dataset identical so the curves lie exactly on top of each other.
+    sub["percent_responsive"] = sub["n"].map(lambda n: 50.0 - n / 5)
+    fig = rank_response_figure(sub, LABELS, list(BINDING_ORDER))
+    sizes = [t.marker.size for t in fig.data]
+    assert sizes == sorted(sizes, reverse=True)
+    assert len(set(sizes)) == len(sizes)
+    assert all(t.line.dash in (None, "solid") for t in fig.data)
+
+
 def test_rank_response_legend_order_by_top_10_response(rank_df: pd.DataFrame) -> None:
     """
     Legend order is independent of draw order: highest response at the smallest n

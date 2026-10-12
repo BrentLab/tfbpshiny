@@ -35,15 +35,17 @@ logger = logging.getLogger("shiny")
 #
 # Adjust these if a warning fires.
 
-#: Figure 1, rank vs. response. A percentage, padded on both sides so a line at 0% or
-#: 100% is not clipped by the axis edge.
-FIG1_RANK_RESPONSE_Y: tuple[float, float] = (-2.0, 102.0)
+#: Figure 1, rank vs. response. A percentage, padded on both sides by more than the
+#: radius of the largest marker (see ``RANK_MARKER_BASE``) so a point at 0% or 100% is
+#: drawn whole rather than clipped by the axis edge.
+FIG1_RANK_RESPONSE_Y: tuple[float, float] = (-4.0, 104.0)
 
 #: Figure 1's x axis, the number of top binding targets. Fixed so every regulator's
 #: curve is read on the same scale. Note `n` can exceed the largest materialized
-#: cutoff (100) when a tie spans it -- Calling Cards has regulators where 87 targets
-#: share a p-value of exactly 0 -- so the warning may fire here.
-FIG1_RANK_X: tuple[float, float] = (0.0, 102.0)
+#: cutoff (100) when a tie spans it, so the warning may fire here. The right edge sits
+#: past the largest observed n at the 100 cutoff (about 108) so those markers are
+#: drawn whole.
+FIG1_RANK_X: tuple[float, float] = (0.0, 108.0)
 
 #: Figure 2, percent responsive among top-N binding targets. A percentage, padded by
 #: 2 points each side so markers sitting at exactly 0% or 100% are drawn whole rather
@@ -73,8 +75,9 @@ FIG6_ENRICHMENT_Y: tuple[float, float] = (-3, 10.0)
 #: rather than cropped, and ends at the largest cutoff in
 #: ``materialize.comparison.agreement.AGREEMENT_TOP_N``. Linear, not log: with only
 #: 20 evenly-spaced cutoffs (10-200 by 10), a log axis compresses the (visually
-#: important) low end without buying readability at the high end.
-FIG6_TOP_N_X: tuple[float, float] = (0.0, 200.0)
+#: important) low end without buying readability at the high end. The right edge sits
+#: just past 200 so the marker at the largest cutoff is drawn whole.
+FIG6_TOP_N_X: tuple[float, float] = (0.0, 208.0)
 
 #: Tick interval for FIG6_TOP_N_X, matching AGREEMENT_TOP_N's own step so a tick
 #: lands at every cutoff that was actually computed, not an arbitrary plotly default.
@@ -138,6 +141,11 @@ def _warn_if_clipped(
 #: the ranking (see the module docstring in ``ui.py``), which makes its line the one
 #: most often obscured by another dataset's when curves cross.
 _DRAW_LAST = "callingcards_500bp"
+
+#: Marker size of the last-drawn rank-response series, and how much larger each series
+#: drawn before it is, so coincident points show as nested markers.
+RANK_MARKER_BASE = 10
+RANK_MARKER_STEP = 2
 
 
 def _draw_order(binding_order: list[str]) -> list[str]:
@@ -204,11 +212,14 @@ def rank_response_figure(
     palette = colors or {}
     fig = go.Figure()
     legend_rank = _legend_rank_by_top_response(df, binding_order, labels)
-    for db in _draw_order(binding_order):
+    drawn = [db for db in _draw_order(binding_order) if (df["binding_db"] == db).any()]
+    for i, db in enumerate(drawn):
         sub = df[df["binding_db"] == db].sort_values("n")
-        if sub.empty:
-            continue
         label = labels.get(db, db)
+        # Curves can coincide exactly (e.g. two datasets with the same hit counts at
+        # every cutoff). Markers shrink with draw order so each sits inside the larger
+        # ones drawn before it and none is hidden.
+        n_behind = len(drawn) - 1 - i
         fig.add_trace(
             go.Scatter(
                 x=sub["n"],
@@ -217,7 +228,7 @@ def rank_response_figure(
                 name=label,
                 legendrank=legend_rank.get(label),
                 line=dict(width=3, color=palette.get(label)),
-                marker=dict(size=9),
+                marker=dict(size=RANK_MARKER_BASE + RANK_MARKER_STEP * n_behind),
                 hovertemplate=f"{label}<br>n=%{{x}}<br>%{{y:.1f}}%<extra></extra>",
             )
         )
