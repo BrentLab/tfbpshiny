@@ -381,8 +381,8 @@ the DTO partitions.
   exist only as `log2fc`; Kemmeren, Hu and Degron have both. A comparison
   across perturbation datasets should pin one value.
 - `harbison` has DTO results (3,848 rows in the current build). The Figures
-  page draws its DTO figures over the three 500bp promoter-enrichment datasets
-  only.
+  page draws its DTO figures over the three 500bp figure datasets only (Calling Cards
+  promoter enrichment, `rossi_peaks_500bp`, `chec_m2025_peaks_500bp`).
 - DTO does not test every regulator a dataset pair shares. For
   `rossi_peaks_kang` × `kemmeren` it covers 414 of 446 shared regulators, so a
   denominator taken from `sample_regulator` is larger than DTO's own coverage.
@@ -529,7 +529,7 @@ which is routine for peak calling.
 ### `topn_target_sets`
 
 The ranked targets behind figure 10's Venn diagram and overlap boxes, per
-sample and regulator, for the datasets in `PROMOTER_ENRICHMENT_500BP` and
+sample and regulator, for the datasets in `FIGURE_MODULE_DEFAULT_BINDING_DATASETS` and
 `HEADLINE_PERTURBATION`. `topn_agreement` keeps only overlap counts on a fixed
 grid, which cannot draw a Venn diagram and lacks the 25 and 75 the Figures
 sidebar offers.
