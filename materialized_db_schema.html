@@ -1030,7 +1030,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p><strong>Notes:</strong></p>
 <ul>
 <li>Coverage of <code>pr_ranking_column</code> is uneven: Hackett and both Hughes datasets exist only as <code>log2fc</code>; Kemmeren, Hu and Degron have both. A comparison across perturbation datasets should pin one value.</li>
-<li><code>harbison</code> has DTO results (3,848 rows in the current build). The Figures page draws its DTO figures over the three 500bp promoter-enrichment datasets only.</li>
+<li><code>harbison</code> has DTO results (3,848 rows in the current build). The Figures page draws its DTO figures over the three 500bp figure datasets only (Calling Cards promoter enrichment, <code>rossi_peaks_500bp</code>, <code>chec_m2025_peaks_500bp</code>).</li>
 <li>DTO does not test every regulator a dataset pair shares. For <code>rossi_peaks_kang</code> × <code>kemmeren</code> it covers 414 of 446 shared regulators, so a denominator taken from <code>sample_regulator</code> is larger than DTO’s own coverage.</li>
 <li><code>dto_fdr</code> is not bounded by 1 (239 rows exceed it, the largest 4.71) and is not consistent with the p-value column. Check <code>scripts/parse_dto_results.R</code> upstream before using it.</li>
 </ul>
@@ -1110,7 +1110,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="topn_target_sets" class="level3">
 <h3 class="anchored" data-anchor-id="topn_target_sets"><code>topn_target_sets</code></h3>
-<p>The ranked targets behind figure 10’s Venn diagram and overlap boxes, per sample and regulator, for the datasets in <code>PROMOTER_ENRICHMENT_500BP</code> and <code>HEADLINE_PERTURBATION</code>. <code>topn_agreement</code> keeps only overlap counts on a fixed grid, which cannot draw a Venn diagram and lacks the 25 and 75 the Figures sidebar offers.</p>
+<p>The ranked targets behind figure 10’s Venn diagram and overlap boxes, per sample and regulator, for the datasets in <code>FIGURE_MODULE_DEFAULT_BINDING_DATASETS</code> and <code>HEADLINE_PERTURBATION</code>. <code>topn_agreement</code> keeps only overlap counts on a fixed grid, which cannot draw a Venn diagram and lacks the 25 and 75 the Figures sidebar offers.</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> topn_target_sets (</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    source_sample       <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- 'hf_repo;hf_config;sample_id'</span></span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    comparison_type     <span class="dt">VARCHAR</span>  <span class="kw">NOT</span> <span class="kw">NULL</span>,   <span class="co">-- 'binding' | 'perturbation'</span></span>
