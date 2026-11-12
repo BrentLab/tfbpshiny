@@ -103,19 +103,71 @@ def test_rank_response_draws_calling_cards_last(rank_df: pd.DataFrame) -> None:
     assert fig.data[-1].name == "2026 Calling Cards"
 
 
-def test_rank_response_legend_order_by_top_10_response(rank_df: pd.DataFrame) -> None:
+def test_rank_response_overlapping_series_stay_visible(rank_df: pd.DataFrame) -> None:
     """
-    Legend order is independent of draw order: highest response at the smallest n
-    first.
+    Series that coincide exactly are all still distinguishable.
+
+    Markers are strictly larger the earlier a series is drawn, so each nests inside
+    the ones behind it. Lines stay solid.
 
     """
     sub = rank_df[rank_df.regulator_locus_tag == "YAL001C"].copy()
-    # Give harbison the highest response rate at n=10, so it must lead the legend even
-    # though it is drawn first (not last, like Calling Cards).
-    sub.loc[(sub.binding_db == "harbison") & (sub.n == 10), "percent_responsive"] = 99.0
+    # Make every dataset identical so the curves lie exactly on top of each other.
+    sub["percent_responsive"] = sub["n"].map(lambda n: 50.0 - n / 5)
     fig = rank_response_figure(sub, LABELS, list(BINDING_ORDER))
-    by_rank = sorted(fig.data, key=lambda t: t.legendrank)
-    assert by_rank[0].name == "2004 ChIP-chip"
+    sizes = [t.marker.size for t in fig.data]
+    assert sizes == sorted(sizes, reverse=True)
+    assert len(set(sizes)) == len(sizes)
+    assert all(t.line.dash in (None, "solid") for t in fig.data)
+
+
+def test_rank_response_legend_follows_the_fixed_draw_order(
+    rank_df: pd.DataFrame,
+) -> None:
+    """
+    The legend order does not depend on the data: Calling Cards at the top, then
+    ChEC-seq, ChIP-exo and ChIP-chip at the bottom -- the reverse of the draw order,
+    so the legend reads from the smallest marker to the largest.
+
+    """
+    sub = rank_df[rank_df.regulator_locus_tag == "YAL001C"].copy()
+    # Make Calling Cards the lowest responder: the legend must not reorder for it.
+    sub.loc[
+        (sub.binding_db == "callingcards_500bp") & (sub.n == 10), "percent_responsive"
+    ] = 0.0
+    fig = rank_response_figure(sub, LABELS, list(BINDING_ORDER))
+    by_rank = [t.name for t in sorted(fig.data, key=lambda t: t.legendrank)]
+    assert by_rank == [
+        "2026 Calling Cards",
+        "2025 ChEC-seq",
+        "2021 ChIP-exo",
+        "2004 ChIP-chip",
+    ]
+    # Drawn in the opposite order, ChIP-chip first and Calling Cards last (on top).
+    assert [t.name for t in fig.data] == by_rank[::-1]
+
+
+def test_rank_response_marker_size_belongs_to_the_dataset(
+    rank_df: pd.DataFrame,
+) -> None:
+    """A dataset's marker size is the same whether or not the others are present."""
+    sub = rank_df[rank_df.regulator_locus_tag == "YAL001C"]
+    full = {
+        t.name: t.marker.size
+        for t in rank_response_figure(sub, LABELS, list(BINDING_ORDER)).data
+    }
+    assert full == {
+        "2004 ChIP-chip": 16,
+        "2021 ChIP-exo": 14,
+        "2025 ChEC-seq": 12,
+        "2026 Calling Cards": 10,
+    }
+    partial = sub[sub.binding_db != "harbison"]
+    part = {
+        t.name: t.marker.size
+        for t in rank_response_figure(partial, LABELS, list(BINDING_ORDER)).data
+    }
+    assert part == {k: v for k, v in full.items() if k != "2004 ChIP-chip"}
 
 
 def test_percent_responsive_boxes_outliers_only() -> None:
@@ -130,6 +182,87 @@ def test_percent_responsive_boxes_outliers_only() -> None:
     fig = percent_responsive_boxes(df, LABELS, ["rossi", "harbison"])
     assert len(fig.data) == 2
     assert all(t.boxpoints == "outliers" for t in fig.data)
+
+
+def test_method_labels_keep_only_the_experimental_method() -> None:
+    """The year and a trailing "peaks" are dropped, on each side of a pair."""
+    from tfbpshiny.modules.figures.plots import method_labels
+
+    got = method_labels(
+        [
+            "2004 ChIP-chip",
+            "2021 ChIP-exo",
+            "2014 TFKO",
+            "2025 ChEC-seq peaks vs 2021 ChIP-exo peaks",
+            "2026 Calling Cards vs 2025 ChEC-seq peaks",
+        ]
+    )
+    assert got == {
+        "2004 ChIP-chip": "ChIP-chip",
+        "2021 ChIP-exo": "ChIP-exo",
+        "2014 TFKO": "TFKO",
+        "2025 ChEC-seq peaks vs 2021 ChIP-exo peaks": "ChEC-seq vs ChIP-exo",
+        "2026 Calling Cards vs 2025 ChEC-seq peaks": "Calling Cards vs ChEC-seq",
+    }
+
+
+def test_method_labels_never_make_two_boxes_read_the_same() -> None:
+    """A dataset against its own peak-calling variant keeps its full labels."""
+    from tfbpshiny.modules.figures.plots import method_labels
+
+    pairs = [
+        "2021 ChIP-exo vs 2021 ChIP-exo peaks",
+        "2021 ChIP-exo peaks vs 2021 ChIP-exo",
+    ]
+    got = method_labels(pairs)
+    assert len(set(got.values())) == len(pairs)
+    assert got == {p: p for p in pairs}
+
+
+def test_box_labels_are_short_but_colours_still_follow_the_full_label() -> None:
+    """Under-box labels show the method only; colours are looked up by the full one."""
+    df = pd.DataFrame(
+        {
+            "binding_db": ["rossi"] * 3 + ["harbison"] * 3,
+            "regulator_locus_tag": [f"R{i}" for i in range(6)],
+            "percent_responsive": [10, 12, 14, 5, 6, 7],
+        }
+    )
+    colors = {"2021 ChIP-exo": "#E64B35", "2004 ChIP-chip": "#7B4F9E"}
+    fig = percent_responsive_boxes(df, LABELS, ["rossi", "harbison"], colors=colors)
+    assert [t.name for t in fig.data] == ["ChIP-exo", "ChIP-chip"]
+    assert [t.marker.color for t in fig.data] == ["#E64B35", "#7B4F9E"]
+
+
+def test_pair_box_figures_show_short_labels_in_figure_6_colours() -> None:
+    """Figures 6 and 10 label each box by method only; pair colours are unchanged."""
+    from tfbpshiny.modules.figures.plots import (
+        _pair_colors,
+        agreement_box_figure,
+        shared_targets_box_figure,
+    )
+
+    pair = "2025 ChEC-seq peaks vs 2021 ChIP-exo peaks"
+    other = "2026 Calling Cards vs 2025 ChEC-seq peaks"
+    agree = agreement_box_figure(
+        pd.DataFrame(
+            {
+                "pair": [pair] * 2 + [other] * 2,
+                "weighted_enrichment": [1.0, 2.0, 3.0, 4.0],
+            }
+        )
+    )
+    shared = shared_targets_box_figure(
+        pd.DataFrame({"pair": [pair] * 2 + [other] * 2, "n_shared": [1, 2, 3, 4]}),
+        top_n=10,
+    )
+    colours = _pair_colors([pair, other])
+    for fig in (agree, shared):
+        names = {t.name: t.line.color for t in fig.data}
+        assert names == {
+            "ChEC-seq vs ChIP-exo": colours[pair],
+            "Calling Cards vs ChEC-seq": colours[other],
+        }
 
 
 def test_dto_bars_single_row_annotated_with_shared_count() -> None:

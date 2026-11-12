@@ -105,3 +105,18 @@ def test_ties_among_scored_rows_break_by_target_locus_tag() -> None:
     # Both sides pick {T0, T1} (alphabetical among the four tied) so they fully overlap.
     assert int(out["n_a"].iloc[0]) == 2
     assert int(out["n_intersect"].iloc[0]) == 2
+
+
+def test_the_regulators_own_gene_is_excluded_from_both_rankings() -> None:
+    """
+    The perturbed gene is not one of its own targets. Here it scores best on both
+    sides, so counting it would add a spurious shared target to every set.
+
+    """
+    conn = _conn()
+    for view in ("peaks_a", "peaks_b"):
+        conn.execute(f"INSERT INTO {view} VALUES (1, 'R', 'R', 99.0)")
+    out = _run(conn, drop_null_scores_a=True, drop_null_scores_b=True)
+    assert int(out["n_a"].iloc[0]) == 3
+    assert int(out["n_b"].iloc[0]) == 3
+    assert int(out["n_intersect"].iloc[0]) == 3

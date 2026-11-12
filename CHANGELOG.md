@@ -19,6 +19,29 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   selection. Figures 3 and 9 are unchanged. `topn_target_sets` now holds the
   peak-calling datasets, so figure 10's binding panels need a rebuild. The new
   constant is `FIGURE_MODULE_DEFAULT_BINDING_DATASETS`.
+- Figure 1's rank-vs-response markers have a fixed size per dataset, shrinking
+  in draw order (ChIP-chip 16 px, ChIP-exo 14, ChEC-seq 12, Calling Cards 10),
+  so a series whose points coincide with another's stays visible. The legend
+  is in the same fixed order in every panel, with Calling Cards at the top and
+  ChIP-chip at the bottom, instead of sorting by response. The axes are padded
+  (figure 1 x to 108 and y to -4..104, figure 6 x to 208) so markers at the
+  edges are drawn whole.
+
+- Box plot labels (figures 2, 3, 6 and 10) name only the experimental method:
+  the year and a trailing "peaks" are dropped, so "2025 ChEC-seq peaks vs 2021
+  ChIP-exo peaks" reads "ChEC-seq vs ChIP-exo". Colours are unchanged. Two
+  boxes that would read the same keep their full labels.
+
+### Fixed
+
+- **Rebuild required for figures 6 and 10.** A regulator's own gene is
+  excluded from the top-N rankings behind figure 6 (`topn_agreement`) and
+  figure 10 (`topn_target_sets`). It is the perturbed gene in a perturbation
+  experiment, so it ranked at the top by construction and counted as a shared
+  target. Figures 1, 2, 3, 7, 8 and 9 already excluded it.
+- Figure 1 plotted the authors'-threshold sets (figure 3's `top_n = 0` rows) as
+  extra points on the rank-vs-response curves: Harbison at n = 7 and Calling
+  Cards at n = 127 for GZF3. Each dataset now shows only its five cutoffs.
 
 ---
 

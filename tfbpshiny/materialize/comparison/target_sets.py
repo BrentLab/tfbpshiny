@@ -76,7 +76,7 @@ def target_sets_select_sql(
 
     Every sample's top ``max_n`` targets per regulator, with their rank. Whether a
     target is "in the top N" is then ``rnk <= N`` at read time, for any ``N`` up to
-    ``max_n``.
+    ``max_n``. A regulator's own gene is excluded.
 
     Perturbation datasets are ranked by absolute effect, as in ``agreement.py``.
 
@@ -100,7 +100,13 @@ def target_sets_select_sql(
     prefix = f"{hf_repo};{hf_config};".replace("'", "''")
     ctype = comparison_type.replace("'", "''")
     db_safe = view.replace("'", "''")
-    where = f"WHERE {rank_col} IS NOT NULL" if drop_null_scores else ""
+    # A regulator's own gene is never one of its targets (it is the perturbed gene in a
+    # perturbation experiment, so it ranks at the top by construction); ``topn.py``
+    # excludes it too.
+    conditions = ["regulator_locus_tag <> target_locus_tag"]
+    if drop_null_scores:
+        conditions.append(f"{rank_col} IS NOT NULL")
+    where = f"WHERE {' AND '.join(conditions)}"
     return f"""
     WITH dedup AS (
         SELECT CAST({sample_col} AS VARCHAR) AS sample_id,

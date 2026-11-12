@@ -100,6 +100,25 @@ def test_binding_filter_is_applied_in_the_rank_response_and_authors_bound_querie
     assert float(ab.percent_responsive.iloc[0]) == 20.0
 
 
+def test_rank_response_excludes_the_authors_threshold_rows() -> None:
+    """
+    Rows at ``top_n = 0`` are figure 3's authors'-threshold sets, not points on the
+    rank-response curve, so figure 1 must not plot them.
+
+    """
+    conn = _conn()
+    # An authors'-threshold row (top_n = 0) with a much smaller n than any cutoff.
+    conn.execute(
+        "INSERT INTO topn_results VALUES ('R;c1;s_ok', 'R;cp;ps', 'R1', 0, 0.0, 0.05,"
+        " 7, 1.0, 'b1', 's_ok', 'p1', 'ps')"
+    )
+    rr = fetch_rank_response(conn, ["b1"], "p1", ["R1"], {"b1": NORMAL})
+    assert 7 not in set(rr["n"])
+    # figure 3 still reads that row.
+    ab = fetch_authors_bound(conn, ["b1"], "p1", {"b1": NORMAL})
+    assert not ab.empty
+
+
 def test_a_filtered_dataset_with_no_passing_samples_contributes_no_rows() -> None:
     conn = _conn()
     none_pass = {"treatment": {"type": "categorical", "value": ["no such value"]}}

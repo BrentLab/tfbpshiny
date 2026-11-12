@@ -248,7 +248,9 @@ def fetch_rank_response(
     Response rate as a function of binding rank, for figure 1.
 
     ``topn_results`` is materialized at five cutoffs, giving a five-point cumulative
-    curve per (binding dataset, regulator).
+    curve per (binding dataset, regulator). Rows at ``top_n = TOP_N_ALL`` are the
+    authors'-threshold sets figure 3 reads (no rank cutoff was applied), not points on
+    this curve, so they are excluded.
 
     The x value is ``n``, **not** ``top_n``. A tie group is in the top N only when its
     average rank is within N, so ``n`` can fall below or above ``top_n`` -- ``n`` is
@@ -286,12 +288,14 @@ def fetch_rank_response(
     FROM topn_results t
     WHERE t.binding_db IN ({b_ph})
       AND t.perturbation_db = ?
+      AND t.top_n <> ?
       AND t.regulator_locus_tag IN ({r_ph}){s_clause}{p_clause}{b_clause}
     GROUP BY t.binding_db, t.regulator_locus_tag, t.n
     ORDER BY t.binding_db, t.regulator_locus_tag, t.n
     """
     return conn.execute(
-        sql, binding_dbs + [pr_db] + regulators + s_params + p_params + b_params
+        sql,
+        binding_dbs + [pr_db, TOP_N_ALL] + regulators + s_params + p_params + b_params,
     ).df()
 
 
