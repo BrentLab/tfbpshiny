@@ -184,6 +184,87 @@ def test_percent_responsive_boxes_outliers_only() -> None:
     assert all(t.boxpoints == "outliers" for t in fig.data)
 
 
+def test_method_labels_keep_only_the_experimental_method() -> None:
+    """The year and a trailing "peaks" are dropped, on each side of a pair."""
+    from tfbpshiny.modules.figures.plots import method_labels
+
+    got = method_labels(
+        [
+            "2004 ChIP-chip",
+            "2021 ChIP-exo",
+            "2014 TFKO",
+            "2025 ChEC-seq peaks vs 2021 ChIP-exo peaks",
+            "2026 Calling Cards vs 2025 ChEC-seq peaks",
+        ]
+    )
+    assert got == {
+        "2004 ChIP-chip": "ChIP-chip",
+        "2021 ChIP-exo": "ChIP-exo",
+        "2014 TFKO": "TFKO",
+        "2025 ChEC-seq peaks vs 2021 ChIP-exo peaks": "ChEC-seq vs ChIP-exo",
+        "2026 Calling Cards vs 2025 ChEC-seq peaks": "Calling Cards vs ChEC-seq",
+    }
+
+
+def test_method_labels_never_make_two_boxes_read_the_same() -> None:
+    """A dataset against its own peak-calling variant keeps its full labels."""
+    from tfbpshiny.modules.figures.plots import method_labels
+
+    pairs = [
+        "2021 ChIP-exo vs 2021 ChIP-exo peaks",
+        "2021 ChIP-exo peaks vs 2021 ChIP-exo",
+    ]
+    got = method_labels(pairs)
+    assert len(set(got.values())) == len(pairs)
+    assert got == {p: p for p in pairs}
+
+
+def test_box_labels_are_short_but_colours_still_follow_the_full_label() -> None:
+    """Under-box labels show the method only; colours are looked up by the full one."""
+    df = pd.DataFrame(
+        {
+            "binding_db": ["rossi"] * 3 + ["harbison"] * 3,
+            "regulator_locus_tag": [f"R{i}" for i in range(6)],
+            "percent_responsive": [10, 12, 14, 5, 6, 7],
+        }
+    )
+    colors = {"2021 ChIP-exo": "#E64B35", "2004 ChIP-chip": "#7B4F9E"}
+    fig = percent_responsive_boxes(df, LABELS, ["rossi", "harbison"], colors=colors)
+    assert [t.name for t in fig.data] == ["ChIP-exo", "ChIP-chip"]
+    assert [t.marker.color for t in fig.data] == ["#E64B35", "#7B4F9E"]
+
+
+def test_pair_box_figures_show_short_labels_in_figure_6_colours() -> None:
+    """Figures 6 and 10 label each box by method only; pair colours are unchanged."""
+    from tfbpshiny.modules.figures.plots import (
+        _pair_colors,
+        agreement_box_figure,
+        shared_targets_box_figure,
+    )
+
+    pair = "2025 ChEC-seq peaks vs 2021 ChIP-exo peaks"
+    other = "2026 Calling Cards vs 2025 ChEC-seq peaks"
+    agree = agreement_box_figure(
+        pd.DataFrame(
+            {
+                "pair": [pair] * 2 + [other] * 2,
+                "weighted_enrichment": [1.0, 2.0, 3.0, 4.0],
+            }
+        )
+    )
+    shared = shared_targets_box_figure(
+        pd.DataFrame({"pair": [pair] * 2 + [other] * 2, "n_shared": [1, 2, 3, 4]}),
+        top_n=10,
+    )
+    colours = _pair_colors([pair, other])
+    for fig in (agree, shared):
+        names = {t.name: t.line.color for t in fig.data}
+        assert names == {
+            "ChEC-seq vs ChIP-exo": colours[pair],
+            "Calling Cards vs ChEC-seq": colours[other],
+        }
+
+
 def test_dto_bars_single_row_annotated_with_shared_count() -> None:
     """
     One bar per (binding, perturbation) pair, in a single row.

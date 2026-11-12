@@ -10,6 +10,7 @@ these can be exercised directly from a notebook or a test.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import pandas as pd
@@ -241,6 +242,39 @@ def rank_response_figure(
 FIG1_FACET_VISIBLE = 3
 
 
+_YEAR_PREFIX = re.compile(r"^\d{4}\s+")
+_PEAKS_SUFFIX = re.compile(r"\s+peaks$")
+
+
+def method_labels(labels: list[str]) -> dict[str, str]:
+    """
+    Short category labels for box plots: the experimental method only.
+
+    Drops the leading year and a trailing ``peaks`` from each label, and from each side
+    of a ``"A vs B"`` pair, so ``"2025 ChEC-seq peaks vs 2021 ChIP-exo peaks"`` reads
+    ``"ChEC-seq vs ChIP-exo"``. Colours stay keyed on the full label, so callers look
+    colours up by the original. If stripping would make two labels identical (for
+    example a dataset compared with its own peak-calling variant), those labels keep
+    their full text so two boxes never read the same.
+
+    :param labels: Full display labels on one figure.
+    :returns: full label -> short label.
+
+    """
+
+    def short(label: str) -> str:
+        sides = [
+            _PEAKS_SUFFIX.sub("", _YEAR_PREFIX.sub("", s)) for s in label.split(" vs ")
+        ]
+        return " vs ".join(sides)
+
+    mapping = {label: short(label) for label in labels}
+    counts: dict[str, int] = {}
+    for text in mapping.values():
+        counts[text] = counts.get(text, 0) + 1
+    return {k: (v if counts[v] == 1 else k) for k, v in mapping.items()}
+
+
 def percent_responsive_boxes(
     df: pd.DataFrame,
     labels: dict[str, str],
@@ -269,6 +303,7 @@ def percent_responsive_boxes(
     """
     palette = colors or {}
     fig = go.Figure()
+    short = method_labels([labels.get(db, db) for db in binding_order])
     for db in binding_order:
         sub = df[df["binding_db"] == db]
         if sub.empty:
@@ -277,7 +312,7 @@ def percent_responsive_boxes(
         fig.add_trace(
             go.Box(
                 y=sub["percent_responsive"],
-                name=label,
+                name=short[label],
                 marker=dict(color=palette.get(label), size=7),
                 line=dict(width=2),
                 boxpoints="outliers",
@@ -579,6 +614,7 @@ def authors_bound_grid(
         # stays a fixed fraction of one visible panel.
         horizontal_spacing=min(0.2 / len(cols), 1.0 / max(len(cols) - 1, 1)),
     )
+    short = method_labels([labels.get(db, db) for db in binding_order])
     for j, p in enumerate(cols, start=1):
         df = frames[p]
         for row, col_name in ((1, "percent_responsive"), (2, "n_bound")):
@@ -590,7 +626,7 @@ def authors_bound_grid(
                 fig.add_trace(
                     go.Box(
                         y=sub[col_name],
-                        name=label,
+                        name=short[label],
                         legendgroup=label,
                         # One legend entry per dataset, from the first panel only.
                         showlegend=(row == 1 and j == 1),
@@ -780,12 +816,13 @@ def agreement_box_figure(
     )
     fig = go.Figure()
     colors = _pair_colors(list(df["pair"].unique()))
+    short = method_labels(list(df["pair"].unique()))
     for pair in sorted(df["pair"].unique()):
         sub = df[df["pair"] == pair]
         fig.add_trace(
             go.Box(
                 y=sub["weighted_enrichment"],
-                name=pair,
+                name=short[pair],
                 boxpoints="outliers",
                 line=dict(width=2, color=colors[pair]),
                 marker=dict(size=7, color=colors[pair]),
@@ -835,12 +872,13 @@ def shared_targets_box_figure(
     """
     fig = go.Figure()
     colors = _pair_colors(list(df["pair"].unique()))
+    short = method_labels(list(df["pair"].unique()))
     for pair in sorted(df["pair"].unique()):
         sub = df[df["pair"] == pair]
         fig.add_trace(
             go.Box(
                 y=sub["n_shared"],
-                name=pair,
+                name=short[pair],
                 boxpoints="outliers",
                 line=dict(width=2, color=colors[pair]),
                 marker=dict(size=7, color=colors[pair]),
